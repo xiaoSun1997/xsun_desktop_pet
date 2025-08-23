@@ -1,0 +1,18 @@
+body {
+    margin: 0;
+    background: transparent; /* 窗口背景透明 */
+}
+
+.pet-container {
+    bottom: 20px;    /* 距离底部 */
+    right: 20px;     /* 距离右边 */
+    cursor: pointer; /* 鼠标悬停时变为可点击 */
+    user-select: none;
+    background: transparent; /* 背景透明 */
+    box-shadow: none !important;  /* 去掉容器的阴影 */
+}
+
+.pet-image {
+    width: 300px;  /* 设置宠物图片的宽度 */
+    height: 300px;  /* 自动调整高度 */
+}

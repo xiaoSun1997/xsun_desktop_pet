@@ -1,0 +1,14 @@
+{
+  "identifier": "main",
+  "description": "Main window permissions for xsun_desktop_pet",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:event:default",
+    "core:window:allow-set-always-on-top",
+    "core:window:allow-set-title",
+    "core:window:allow-show",
+    "core:window:allow-set-size",
+    "core:window:allow-set-position"
+  ]
+}
