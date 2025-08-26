@@ -15,8 +15,8 @@ html, body {
 }
 
 .pet-image {
-    width: 300px;
-    height: 100%;
+    width: 50%;
+    height: 50%;
     pointer-events: auto;      /* 仅图片可接收事件（点击/拖拽） */
     cursor: grab;
 }
