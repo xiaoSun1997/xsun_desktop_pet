@@ -1,18 +1,23 @@
-body {
+html, body {
     margin: 0;
-    background: transparent; /* 窗口背景透明 */
+    background: transparent;
+    overflow: hidden;
 }
 
 .pet-container {
-    bottom: 20px;    /* 距离底部 */
-    right: 20px;     /* 距离右边 */
-    cursor: pointer; /* 鼠标悬停时变为可点击 */
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
     user-select: none;
-    background: transparent; /* 背景透明 */
-    box-shadow: none !important;  /* 去掉容器的阴影 */
+    background: transparent;
+    box-shadow: none !important;
+    pointer-events: none;      /* 容器透明区点击穿透 */
 }
 
 .pet-image {
-    width: 300px;  /* 设置宠物图片的宽度 */
-    height: 300px;  /* 自动调整高度 */
+    width: 300px;
+    height: 100%;
+    pointer-events: auto;      /* 仅图片可接收事件（点击/拖拽） */
+    cursor: grab;
 }
+.pet-image:active { cursor: grabbing; }

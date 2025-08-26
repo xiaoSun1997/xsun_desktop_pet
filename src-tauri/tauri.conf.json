@@ -22,15 +22,21 @@
         "label": "pet",
         "title": "桌宠",
         "width": 320,
-        "height": 320,
+        "height": 350,
         "transparent": true,
         "decorations": false,
         "resizable": false,
         "alwaysOnTop": true,
-        "fullscreen": false      }
+        "fullscreen": false,
+        "shadow": false,
+        "skipTaskbar": true,
+        "titleBarStyle": "overlay"
+      }
+
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "capabilities": ["drag"]
     }
   },
   "bundle": {

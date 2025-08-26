@@ -122,4 +122,8 @@ body, html {
   height: 100%;
   overflow: hidden;  /* 防止显示滚动条 */
   box-shadow: none;  /* 强制去掉阴影 */
+  pointer-events: none;
+}
+#pet {
+  pointer-events: auto;  /* 让桌宠区域响应点击 */
 }
