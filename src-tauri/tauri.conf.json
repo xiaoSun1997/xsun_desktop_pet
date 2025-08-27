@@ -21,20 +21,21 @@
       {
         "label": "pet",
         "title": "桌宠",
-        "width": 320,
-        "height": 380,
+        "width": 300,
+        "height": 300,
         "transparent": true,
         "decorations": false,
         "resizable": false,
         "alwaysOnTop": true,
         "fullscreen": false,
         "shadow": false,
-        "skipTaskbar": true
+        "skipTaskbar": true,
+        "focusable": true
       }
     ],
     "security": {
       "csp": null,
-      "capabilities": ["drag"]
+      "capabilities": ["drag", "window-management", "main-capability"]
     }
   },
   "bundle": {

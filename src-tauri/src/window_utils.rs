@@ -1,4 +1,4 @@
-use tauri::{Runtime, Window};
+use tauri::{Runtime, WebviewWindow}; // 改为使用 WebviewWindow
 
 #[cfg(target_os = "windows")]
 use windows::Win32::{
@@ -6,14 +6,12 @@ use windows::Win32::{
     UI::WindowsAndMessaging::{GetWindowLongW, SetWindowLongW, GWL_EXSTYLE, WS_EX_LAYERED, WS_EX_TRANSPARENT},
 };
 
-pub fn set_click_through<R: Runtime>(window: &Window<R>, enabled: bool) -> Result<(), String> {
+// 修改函数签名，使用 WebviewWindow 而不是 Window
+pub fn set_click_through<R: Runtime>(window: &WebviewWindow<R>, enabled: bool) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        // 获取窗口句柄
+        // 获取窗口句柄 - 在 Tauri 2 中使用不同的方法
         let hwnd = window.hwnd().map_err(|e| e.to_string())?;
-
-        // 将 hwnd 转换为 usize（内存地址），然后转换为 *mut c_void
-        let hwnd_ptr: *mut std::ffi::c_void = hwnd.0 as *mut std::ffi::c_void;
 
         unsafe {
             // 通过 HWND 获取扩展样式

@@ -1,0 +1,18 @@
+[
+  {
+    "label": "关于",
+    "action": "open-about"
+  },
+  {
+    "label": "剪贴板",
+    "action": "open-clipboard"
+  },
+  {
+    "label": "系统信息",
+    "action": "open-main"
+  },
+  {
+    "label": "JSON对比",
+    "action": "open-jsonCompare"
+  }
+]
