@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect } from "react";
 import { getCurrentWindow, getAllWindows } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import bubblesConfig from "../../public/config/bubbles.json";
 import "./PetComponent.css";
 
@@ -17,16 +18,18 @@ export default function PetComponent() {
     const [index, setIndex] = useState(0);
     const [showBubbles, setShowBubbles] = useState(false);
     const [isClickThrough, setIsClickThrough] = useState(true);
+    const [isDormant, setIsDormant] = useState(false); // 新增：是否处于休眠状态
     const downPos = useRef<{ x: number; y: number } | null>(null);
     const dragged = useRef(false);
     const DRAG_THRESHOLD = 6;
     const hideTimer = useRef<number | null>(null);
+    const dormantTimer = useRef<number | null>(null); // 新增：休眠定时器
 
     const bubbles: Bubble[] = bubblesConfig as Bubble[];
 
     // 设置点击穿透状态
     const setClickThrough = async (enabled: boolean) => {
-        if (enabled === isClickThrough) return; // 避免重复设置
+        if (enabled === isClickThrough) return;
 
         try {
             await invoke("set_click_through", { enabled });
@@ -37,32 +40,56 @@ export default function PetComponent() {
         }
     };
 
-    // 鼠标进入时禁用穿透
-    const onMouseEnter = () => {
-        if (isClickThrough) {
-            setClickThrough(false);
+    // 新增：唤醒桌宠
+    const wakeUpPet = async () => {
+        console.log("桌宠被唤醒");
+        setIsDormant(false);
+        setClickThrough(false);
+        if (dormantTimer.current) {
+            clearTimeout(dormantTimer.current);
+            dormantTimer.current = null;
         }
     };
 
-    // 鼠标离开时启用穿透（如果没有气泡）
+    // 新增：设置桌宠进入休眠状态
+    const setDormant = () => {
+        console.log("桌宠进入休眠状态");
+        setIsDormant(true);
+        setClickThrough(true);
+        setShowBubbles(false);
+    };
+
+    // 鼠标进入时的处理
+    const onMouseEnter = () => {
+        if (!isDormant && isClickThrough) {
+            setClickThrough(false);
+        }
+        // 清除休眠定时器
+        if (dormantTimer.current) {
+            clearTimeout(dormantTimer.current);
+            dormantTimer.current = null;
+        }
+    };
+
+    // 鼠标离开时的处理
     const onMouseLeave = () => {
-        if (!showBubbles) {
-            setTimeout(() => {
-                if (!showBubbles) {
-                    setClickThrough(true);
-                }
-            }, 1000);
+        if (!showBubbles && !isDormant) {
+            // 设置休眠定时器
+            dormantTimer.current = window.setTimeout(() => {
+                setDormant();
+            }, 5000); // 5秒后进入休眠状态
         }
     };
 
     const onPointerDown: React.PointerEventHandler<HTMLImageElement> = (e) => {
+        if (isDormant) return; // 休眠状态下不响应
         downPos.current = { x: e.clientX, y: e.clientY };
         dragged.current = false;
         (e.target as Element).setPointerCapture?.(e.pointerId);
     };
 
     const onPointerMove: React.PointerEventHandler<HTMLImageElement> = async (e) => {
-        if (!downPos.current || dragged.current) return;
+        if (isDormant || !downPos.current || dragged.current) return; // 休眠状态下不响应
         const dx = e.clientX - downPos.current.x;
         const dy = e.clientY - downPos.current.y;
         if (Math.hypot(dx, dy) >= DRAG_THRESHOLD) {
@@ -72,6 +99,7 @@ export default function PetComponent() {
     };
 
     const onPointerUp: React.PointerEventHandler<HTMLImageElement> = () => {
+        if (isDormant) return; // 休眠状态下不响应
         if (!dragged.current) {
             setIndex((prev) => (prev + 1) % actions.length);
             setShowBubbles((prev) => !prev);
@@ -84,8 +112,40 @@ export default function PetComponent() {
     useEffect(() => {
         if (showBubbles) {
             setClickThrough(false);
+            // 清除休眠定时器
+            if (dormantTimer.current) {
+                clearTimeout(dormantTimer.current);
+                dormantTimer.current = null;
+            }
         }
     }, [showBubbles]);
+
+    // 监听唤醒事件
+    useEffect(() => {
+        const setupListeners = async () => {
+            // 监听桌宠唤醒事件
+            await listen("pet://wake-up", () => {
+                wakeUpPet();
+            });
+
+            // 设置全局鼠标钩子
+            try {
+                await invoke("setup_global_mouse_hook");
+            } catch (error) {
+                console.error("设置全局鼠标钩子失败:", error);
+            }
+        };
+
+        setupListeners();
+
+        return () => {
+            // 清理钩子
+            invoke("remove_global_mouse_hook").catch(console.error);
+            if (dormantTimer.current) {
+                clearTimeout(dormantTimer.current);
+            }
+        };
+    }, []);
 
     // 初始化时启用穿透
     useEffect(() => {
@@ -161,7 +221,7 @@ export default function PetComponent() {
 
     return (
         <div
-            className="pet-container"
+            className={`pet-container ${isDormant ? 'dormant' : ''}`}
             onMouseEnter={onMouseEnter}
             onMouseLeave={onMouseLeave}
         >
@@ -173,7 +233,12 @@ export default function PetComponent() {
                 onPointerMove={onPointerMove}
                 onPointerUp={onPointerUp}
             />
-            {showBubbles && <div className="bubbles">{renderBubbles()}</div>}
+            {showBubbles && !isDormant && (
+                <div className="bubbles">{renderBubbles()}</div>
+            )}
+            {isDormant && (
+                <div className="wake-up-hint">双击唤醒</div>
+            )}
         </div>
     );
 }

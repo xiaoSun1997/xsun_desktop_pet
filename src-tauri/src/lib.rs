@@ -1,7 +1,7 @@
 use serde::Serialize;
 use std::sync::{Arc, Mutex};
 use sysinfo::System;
-use tauri::{AppHandle, Emitter, Manager, WebviewWindow}; // 添加 WebviewWindow
+use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 use tokio::time::Duration;
 
 mod window_utils;
@@ -20,10 +20,22 @@ fn get_system_info(state: tauri::State<Arc<Mutex<System>>>) -> SystemInfo {
     collect_system_info(&mut *sys)
 }
 
-/// 修改：使用 WebviewWindow 而不是 Window
+/// 设置点击穿透
 #[tauri::command]
 async fn set_click_through(window: WebviewWindow, enabled: bool) -> Result<(), String> {
     window_utils::set_click_through(&window, enabled)
+}
+
+/// 新增：设置全局鼠标钩子用于双击唤醒
+#[tauri::command]
+async fn setup_global_mouse_hook(app_handle: AppHandle) -> Result<(), String> {
+    window_utils::setup_global_mouse_hook(app_handle).await
+}
+
+/// 新增：移除全局鼠标钩子
+#[tauri::command]
+async fn remove_global_mouse_hook() -> Result<(), String> {
+    window_utils::remove_global_mouse_hook().await
 }
 
 // 提取公共逻辑为函数
@@ -45,14 +57,27 @@ pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(Arc::new(Mutex::new(System::new_all())))
-        .invoke_handler(tauri::generate_handler![get_system_info, set_click_through])
+        .invoke_handler(tauri::generate_handler![
+            get_system_info, 
+            set_click_through,
+            setup_global_mouse_hook,
+            remove_global_mouse_hook
+        ])
         .setup(|app| {
+            // 启动时隐藏main窗口
+            if let Some(main_window) = app.get_webview_window("main") {
+                if let Err(e) = main_window.hide() {
+                    eprintln!("Failed to hide main window: {}", e);
+                }
+            }
+
             // 启动时设置 pet 窗口为点击穿透
-            // if let Some(pet_window) = app.get_webview_window("pet") {
-            //     if let Err(e) = window_utils::set_click_through(&pet_window, true) {
-            //         eprintln!("Failed to set click through for pet window: {}", e);
-            //     }
-            // }
+            if let Some(pet_window) = app.get_webview_window("pet") {
+                if let Err(e) = window_utils::set_click_through(&pet_window, true) {
+                    eprintln!("Failed to set click through for pet window: {}", e);
+                }
+            }
+
             Ok(())
         })
         .build(tauri::generate_context!())

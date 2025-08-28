@@ -87,3 +87,29 @@ html, body {
         transform: translateY(0) scale(1);
     }
 }
+
+
+.pet-container.dormant .pet-image {
+    opacity: 0.5;
+    filter: grayscale(50%);
+    transition: opacity 0.3s ease, filter 0.3s ease;
+}
+
+.wake-up-hint {
+    position: absolute;
+    bottom: -30px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.7);
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    pointer-events: none;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 0.6; }
+    50% { opacity: 1; }
+}
