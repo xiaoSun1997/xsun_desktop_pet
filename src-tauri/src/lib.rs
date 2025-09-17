@@ -13,32 +13,26 @@ struct SystemInfo {
     used_memory: u64,
 }
 
-/// 普通命令：前端 invoke 调用
 #[tauri::command]
 fn get_system_info(state: tauri::State<Arc<Mutex<System>>>) -> SystemInfo {
     let mut sys = state.lock().unwrap();
     collect_system_info(&mut *sys)
 }
 
-/// 设置点击穿透
 #[tauri::command]
 async fn set_click_through(window: WebviewWindow, enabled: bool) -> Result<(), String> {
     window_utils::set_click_through(&window, enabled)
 }
 
-/// 新增：设置全局鼠标钩子用于双击唤醒
 #[tauri::command]
-async fn setup_global_mouse_hook(app_handle: AppHandle) -> Result<(), String> {
-    window_utils::setup_global_mouse_hook(app_handle).await
+async fn wake_up_pet(app: AppHandle) -> Result<(), String> {
+    if let Some(pet_window) = app.get_webview_window("pet") {
+        window_utils::set_click_through(&pet_window, false)?;
+        app.emit("pet://wake-up", ()).map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
-/// 新增：移除全局鼠标钩子
-#[tauri::command]
-async fn remove_global_mouse_hook() -> Result<(), String> {
-    window_utils::remove_global_mouse_hook().await
-}
-
-// 提取公共逻辑为函数
 fn collect_system_info(sys: &mut System) -> SystemInfo {
     sys.refresh_all();
     let cpu_usage = sys.cpus().iter().map(|c| c.cpu_usage()).sum::<f32>() / sys.cpus().len() as f32;
@@ -54,17 +48,12 @@ fn collect_system_info(sys: &mut System) -> SystemInfo {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let app = tauri::Builder::default()
+    tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(Arc::new(Mutex::new(System::new_all())))
-        .invoke_handler(tauri::generate_handler![
-            get_system_info, 
-            set_click_through,
-            setup_global_mouse_hook,
-            remove_global_mouse_hook
-        ])
+        .invoke_handler(tauri::generate_handler![get_system_info, set_click_through, wake_up_pet])
         .setup(|app| {
-            // 启动时隐藏main窗口
+            // 启动时隐藏 main 窗口
             if let Some(main_window) = app.get_webview_window("main") {
                 if let Err(e) = main_window.hide() {
                     eprintln!("Failed to hide main window: {}", e);
@@ -73,45 +62,41 @@ pub fn run() {
 
             // 启动时设置 pet 窗口为点击穿透
             if let Some(pet_window) = app.get_webview_window("pet") {
-                if let Err(e) = window_utils::set_click_through(&pet_window, true) {
+                if let Err(e) = window_utils::set_click_through(&pet_window, false) {
                     eprintln!("Failed to set click through for pet window: {}", e);
                 }
             }
 
-            Ok(())
-        })
-        .build(tauri::generate_context!())
-        .expect("error while building tauri application");
+            // 克隆 app_handle 以拥有独立的生命周期
+            let app_handle = app.app_handle().clone();
+            let sys_state = app.state::<Arc<Mutex<System>>>().inner().clone();
 
-    // 获取需要的引用
-    let app_handle = app.app_handle().clone();
-    let sys_state = app.state::<Arc<Mutex<System>>>().inner().clone();
+            tauri::async_runtime::spawn(async move {
+                let mut interval = tokio::time::interval(Duration::from_secs(1));
 
-    // 启动后台任务
-    tauri::async_runtime::spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_secs(1));
+                loop {
+                    interval.tick().await;
 
-        loop {
-            interval.tick().await;
+                    let payload = {
+                        let mut sys = match sys_state.lock() {
+                            Ok(sys) => sys,
+                            Err(e) => {
+                                eprintln!("Failed to lock system state: {}", e);
+                                break;
+                            }
+                        };
+                        collect_system_info(&mut *sys)
+                    };
 
-            let payload = {
-                let mut sys = match sys_state.lock() {
-                    Ok(sys) => sys,
-                    Err(e) => {
-                        eprintln!("Failed to lock system state: {}", e);
+                    if let Err(e) = app_handle.emit("system://stats", &payload) {
+                        eprintln!("Failed to emit system stats: {}", e);
                         break;
                     }
-                };
-                collect_system_info(&mut *sys)
-            };
+                }
+            });
 
-            if let Err(e) = app_handle.emit("system://stats", &payload) {
-                eprintln!("Failed to emit system stats: {}", e);
-                break;
-            }
-        }
-    });
-
-    // 运行应用
-    app.run(|_app, _event| {});
+            Ok(())
+        })
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
 }

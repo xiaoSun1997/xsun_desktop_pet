@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "identifier": "com.xsun.pet",
   "build": {
-    "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist"
   },

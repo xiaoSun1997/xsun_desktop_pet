@@ -5,12 +5,7 @@ description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [lib]
-# The `_lib` suffix may seem redundant but it is necessary
-# to make the lib name unique and wouldn't conflict with the bin name.
-# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
 name = "xsun_desktop_pet_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
@@ -18,7 +13,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["tray-icon"] } # 添加 tray-icon 功能
 tauri-plugin-opener = "2"
 tauri-plugin-shell = "2"
 tauri-plugin-fs = "2"
@@ -31,8 +26,10 @@ reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
 rusqlite = { version = "0.31", features = ["bundled"] }
 chrono = { version = "0.4", features = ["serde"] }
 raw-window-handle = "0.6"
+
+[target.'cfg(windows)'.dependencies]
 windows = { version = "0.58", features = [
     "Win32_System_LibraryLoader",
     "Win32_Foundation",
-    "Win32_UI_WindowsAndMessaging"
+    "Win32_UI_WindowsAndMessaging"  # 添加鼠标钩子需要的功能
 ] }
