@@ -4,7 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import bubblesConfig from "../../public/config/bubbles.json";
 import "./PetComponent.css";
-import {WebviewWindow} from "@tauri-apps/api/webviewWindow";
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 
 const actions = [
     { name: "move", src: "/pet/linglan/wave.gif" }
@@ -183,7 +183,6 @@ export default function PetComponent() {
             if (hideTimer.current) clearTimeout(hideTimer.current);
         };
     }, [showBubbles]);
-
     const createOrShowMain = async () => {
         // 先查是否已有 main 窗口（没有被销毁）
         const windows = await getAllWindows();
@@ -200,12 +199,10 @@ export default function PetComponent() {
         }
 
         // 如果不存在，则新建窗口
-        // 根据当前运行环境选择 URL（dev 用 localhost，prod 用打包 index.html）
         const url = import.meta.env.DEV ? "http://localhost:1420" : "index.html";
 
         try {
             const webview = new WebviewWindow("main", {
-                // 如果是 SPA 且需要跳到特定路由，可以用 `${url}/#/<route>` 或 `${url}/?window=main`
                 url,
                 title: "系统信息",
                 width: 200,
@@ -213,19 +210,37 @@ export default function PetComponent() {
                 visible: true,
             });
 
-            // 给一点时间让窗口初始化，再尝试聚焦（有时立即调用 focus 会失败）
-            await new Promise((r) => setTimeout(r, 120));
+            // 等待窗口创建完成再操作（必须 await）
+            await new Promise<void>((resolve, reject) => {
+                // 如果创建成功会触发 tauri://created
+                const timeout = setTimeout(() => {
+                    // 防止无限等待（可调）
+                    reject(new Error("等待窗口创建超时"));
+                }, 5_000);
+
+                webview.once("tauri://created", () => {
+                    clearTimeout(timeout);
+                    resolve();
+                });
+
+                webview.once("tauri://error", (e) => {
+                    clearTimeout(timeout);
+                    reject(new Error(`创建窗口时出错: ${JSON.stringify(e)}`));
+                });
+            });
+
+            // 创建成功后再安全地 show / focus（有些 API 返回 Promise，推荐 await）
             try {
                 await webview.show();
                 await webview.setFocus();
-            } catch {
-                // ignore
+                console.log("主窗口已创建并显示");
+            } catch (e) {
+                console.warn("创建后 show/setFocus 失败：", e);
             }
         } catch (err) {
             console.error("创建主窗口失败：", err);
         }
     };
-
     const handleBubbleClick = async (bubble: Bubble) => {
         if (bubble.action === "open-main") {
             await createOrShowMain();

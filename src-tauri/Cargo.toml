@@ -2,7 +2,7 @@
 name = "xsun_desktop_pet"
 version = "0.1.0"
 description = "A Tauri App"
-authors = ["you"]
+authors = ["xiaosun"]
 edition = "2021"
 
 [lib]
