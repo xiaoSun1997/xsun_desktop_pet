@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import bubblesConfig from "../../public/config/bubbles.json";
 import "./PetComponent.css";
+import {WebviewWindow} from "@tauri-apps/api/webviewWindow";
 
 const actions = [
     { name: "move", src: "/pet/linglan/wave.gif" }
@@ -52,7 +53,7 @@ export default function PetComponent() {
 
     // 让桌宠休眠
     const putPetToSleep = () => {
-        setClickThrough(true);
+        setClickThrough(false);
         setIsSleeping(true);
         setShowBubbles(false);
         console.log("桌宠进入休眠");
@@ -183,15 +184,54 @@ export default function PetComponent() {
         };
     }, [showBubbles]);
 
+    const createOrShowMain = async () => {
+        // 先查是否已有 main 窗口（没有被销毁）
+        const windows = await getAllWindows();
+        const existing = windows.find((w) => w.label === "main");
+
+        if (existing) {
+            try {
+                await existing.show();
+                await existing.setFocus();
+            } catch (e) {
+                console.warn("已有主窗口，但 show/setFocus 失败，尝试重新创建：", e);
+            }
+            return;
+        }
+
+        // 如果不存在，则新建窗口
+        // 根据当前运行环境选择 URL（dev 用 localhost，prod 用打包 index.html）
+        const url = import.meta.env.DEV ? "http://localhost:1420" : "index.html";
+
+        try {
+            const webview = new WebviewWindow("main", {
+                // 如果是 SPA 且需要跳到特定路由，可以用 `${url}/#/<route>` 或 `${url}/?window=main`
+                url,
+                title: "系统信息",
+                width: 200,
+                height: 600,
+                visible: true,
+            });
+
+            // 给一点时间让窗口初始化，再尝试聚焦（有时立即调用 focus 会失败）
+            await new Promise((r) => setTimeout(r, 120));
+            try {
+                await webview.show();
+                await webview.setFocus();
+            } catch {
+                // ignore
+            }
+        } catch (err) {
+            console.error("创建主窗口失败：", err);
+        }
+    };
+
     const handleBubbleClick = async (bubble: Bubble) => {
         if (bubble.action === "open-main") {
-            const windows = await getAllWindows();
-            const main = windows.find((w) => w.label === "main");
-            if (main) {
-                await main.show();
-                await main.setFocus();
-            }
+            await createOrShowMain();
         }
+
+        // 关闭气泡（原逻辑）
         setShowBubbles(false);
     };
 
