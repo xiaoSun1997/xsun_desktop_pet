@@ -26,27 +26,76 @@ impl ClipboardHistory {
         }
     }
 
-    pub fn check_and_update(&self, app: &AppHandle) -> Result<bool, String> {
-        // 直接调用，不使用 catch_unwind
-        let current_content = match app.clipboard().read_text() {
-            Ok(content) => content,
-            Err(e) => return Err(format!("读取剪贴板失败: {}", e)),
+    // 修复的添加项目方法
+    fn add_item_safe(&self, content: String) -> Result<(), String> {
+        let mut items = self.items.lock()
+            .map_err(|e| format!("获取items锁失败: {}", e))?;
+
+        let mut next_id = self.next_id.lock()
+            .map_err(|e| format!("获取next_id锁失败: {}", e))?;
+
+        // 检查是否与最近的内容重复
+        if let Some(last_item) = items.front() {
+            if last_item.content == content {
+                return Ok(()); // 内容重复，直接返回
+            }
+        }
+
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+
+        let new_item = ClipboardItem {
+            content: content.clone(),
+            timestamp,
+            id: *next_id,
         };
 
-        // 检查内容是否为空或只有空白字符
+        // 先添加新项目到队列前面
+        items.push_front(new_item);
+        *next_id += 1;
+
+        // 确保队列长度不超过5
+        // 使用更安全的方式：检查长度并明确移除最后一个元素
+        const MAX_ITEMS: usize = 5;
+        while items.len() > MAX_ITEMS {
+            if let Some(removed) = items.pop_back() {
+                println!("移除旧记录: ID {} (保持最大 {} 条记录)", removed.id, MAX_ITEMS);
+            } else {
+                // 如果pop_back返回None，说明队列为空，这不应该发生
+                eprintln!("警告: 尝试从空队列移除元素");
+                break;
+            }
+        }
+
+        let preview = if content.len() > 50 {
+            format!("{}...", &content[..50])
+        } else {
+            content
+        };
+
+        println!("添加剪贴板项目: ID {}, 内容: {}, 当前总数: {}",
+                 *next_id - 1, preview, items.len());
+
+        Ok(())
+    }
+
+    // 更安全的检查和更新方法
+    pub fn check_and_update_safe(&self, app: &AppHandle) -> Result<bool, String> {
+        let current_content = app.clipboard().read_text()
+            .map_err(|e| format!("读取剪贴板失败: {}", e))?;
+
         if current_content.trim().is_empty() {
             return Ok(false);
         }
 
-        // 限制内容长度，防止内存问题
         if current_content.len() > 10000 {
             return Err("剪贴板内容过长".to_string());
         }
 
-        let mut last_content = match self.last_content.lock() {
-            Ok(guard) => guard,
-            Err(e) => return Err(format!("获取锁失败: {}", e)),
-        };
+        let mut last_content = self.last_content.lock()
+            .map_err(|e| format!("获取last_content锁失败: {}", e))?;
 
         let is_new = match &*last_content {
             Some(last) => last != &current_content,
@@ -64,73 +113,20 @@ impl ClipboardHistory {
             *last_content = Some(current_content.clone());
             drop(last_content); // 显式释放锁
 
-            self.add_item(current_content)?;
+            self.add_item_safe(current_content)?;
             return Ok(true);
         }
 
         Ok(false)
     }
-
-    fn add_item(&self, content: String) -> Result<(), String> {
-        let mut items = match self.items.lock() {
-            Ok(guard) => guard,
-            Err(e) => return Err(format!("获取items锁失败: {}", e)),
-        };
-
-        let mut next_id = match self.next_id.lock() {
-            Ok(guard) => guard,
-            Err(e) => return Err(format!("获取next_id锁失败: {}", e)),
-        };
-
-        // 检查是否与最近的内容重复
-        if let Some(last_item) = items.front() {
-            if last_item.content == content {
-                return Ok(());
-            }
-        }
-
-        let timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs() as i64;
-
-        let new_item = ClipboardItem {
-            content: content.clone(),
-            timestamp,
-            id: *next_id,
-        };
-
-        items.push_front(new_item);
-        *next_id += 1;
-
-        // 保持最多5个历史记录
-        while items.len() > 5 {
-            items.pop_back();
-        }
-
-        let preview = if content.len() > 50 {
-            format!("{}...", &content[..50])
-        } else {
-            content
-        };
-        println!("添加剪贴板项目: ID {}, 内容: {}", *next_id - 1, preview);
-
-        Ok(())
-    }
 }
 
 #[tauri::command]
 pub fn get_clipboard_history(
-    app: AppHandle,
     history: State<'_, std::sync::Arc<ClipboardHistory>>
 ) -> Result<Vec<ClipboardItem>, String> {
-    // 先检查是否有新内容，忽略错误
-    let _ = history.check_and_update(&app);
-
-    let items = match history.items.lock() {
-        Ok(guard) => guard,
-        Err(e) => return Err(format!("获取历史记录失败: {}", e)),
-    };
+    let items = history.items.lock()
+        .map_err(|e| format!("获取历史记录失败: {}", e))?;
 
     let result: Vec<ClipboardItem> = items.iter().cloned().collect();
     println!("获取剪贴板历史，共 {} 条记录", result.len());
@@ -157,7 +153,7 @@ pub fn add_to_clipboard_history(
     };
     println!("手动添加剪贴板项目: {}", preview);
 
-    history.add_item(content)?;
+    history.add_item_safe(content)?;
     Ok(())
 }
 
@@ -165,7 +161,6 @@ pub fn add_to_clipboard_history(
 pub fn copy_to_clipboard(
     content: String,
     app: AppHandle,
-    history: State<'_, std::sync::Arc<ClipboardHistory>>
 ) -> Result<(), String> {
     if content.trim().is_empty() {
         return Err("内容不能为空".to_string());
@@ -175,32 +170,24 @@ pub fn copy_to_clipboard(
         return Err("内容过长".to_string());
     }
 
-    app.clipboard().write_text(content.clone())
-        .map_err(|e| format!("设置剪贴板内容失败: {}", e))?;
+    let preview = if content.len() > 50 {
+        format!("{}...", &content[..50])
+    } else {
+        content.clone()
+    };
+    println!("复制内容: {}", preview);
 
-    // 更新最后内容，避免重复添加
-    if let Ok(mut last_content) = history.last_content.lock() {
-        *last_content = Some(content);
-    }
+    app.clipboard().write_text(content)
+        .map_err(|e| format!("复制失败: {}", e))?;
 
-    println!("已复制到剪贴板");
+    println!("复制成功");
     Ok(())
 }
 
 #[tauri::command]
 pub fn get_current_clipboard(app: AppHandle) -> Result<String, String> {
-    match app.clipboard().read_text() {
-        Ok(content) => {
-            let preview = if content.len() > 50 {
-                format!("{}...", &content[..50])
-            } else {
-                content.clone()
-            };
-            println!("获取当前剪贴板内容: {}", preview);
-            Ok(content)
-        },
-        Err(e) => Err(format!("获取剪贴板内容失败: {}", e))
-    }
+    app.clipboard().read_text()
+        .map_err(|e| format!("获取剪贴板内容失败: {}", e))
 }
 
 #[tauri::command]
@@ -209,13 +196,18 @@ pub fn clear_clipboard_history(
 ) -> Result<(), String> {
     if let Ok(mut items) = history.items.lock() {
         items.clear();
+        println!("清空 {} 条历史记录", items.len());
     }
 
     if let Ok(mut next_id) = history.next_id.lock() {
         *next_id = 0;
     }
 
-    println!("剪贴板历史已清空");
+    if let Ok(mut last_content) = history.last_content.lock() {
+        *last_content = None;
+    }
+
+    println!("剪贴板历史已完全清空");
     Ok(())
 }
 
@@ -224,9 +216,35 @@ pub fn manual_clipboard_check(
     app: AppHandle,
     history: State<'_, std::sync::Arc<ClipboardHistory>>
 ) -> Result<String, String> {
-    match history.check_and_update(&app) {
-        Ok(true) => Ok("发现新内容".to_string()),
+    match history.check_and_update_safe(&app) {
+        Ok(true) => Ok("发现并添加新内容".to_string()),
         Ok(false) => Ok("无新内容".to_string()),
         Err(e) => Ok(format!("检查失败: {}", e)),
     }
+}
+
+// 新增：安全的批量添加测试命令
+#[tauri::command]
+pub fn test_add_multiple_items(
+    history: State<'_, std::sync::Arc<ClipboardHistory>>
+) -> Result<String, String> {
+    println!("开始批量添加测试...");
+
+    for i in 1..=10 {
+        let content = format!("测试内容 {}", i);
+        match history.add_item_safe(content) {
+            Ok(()) => println!("成功添加测试项目 {}", i),
+            Err(e) => {
+                let error_msg = format!("添加测试项目 {} 失败: {}", i, e);
+                eprintln!("{}", error_msg);
+                return Err(error_msg);
+            }
+        }
+    }
+
+    let items_count = history.items.lock()
+        .map(|items| items.len())
+        .unwrap_or(0);
+
+    Ok(format!("批量添加测试完成，当前共 {} 条记录", items_count))
 }
