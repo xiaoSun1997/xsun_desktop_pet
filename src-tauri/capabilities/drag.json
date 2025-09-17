@@ -3,7 +3,7 @@
   "identifier": "drag",
   "description": "Allow frontend to start native window dragging and manage click-through",
   "windows": [
-    "pet"
+    "pet","main"
   ],
   "permissions": [
     "core:window:default",
