@@ -205,9 +205,11 @@ export default function PetComponent() {
             const webview = new WebviewWindow("main", {
                 url,
                 title: "系统信息",
-                width: 200,
-                height: 600,
+                width: 400,
+                height: 500,
                 visible: true,
+                transparent: true,
+                decorations: false,
             });
 
             // 等待窗口创建完成再操作（必须 await）
