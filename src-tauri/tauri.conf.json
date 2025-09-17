@@ -14,9 +14,12 @@
       {
         "label": "main",
         "title": "系统信息",
-        "width": 200,
-        "height": 600,
-        "decorations": true
+        "width": 400,
+        "height": 500,
+        "decorations": false,
+        "transparent": true,
+        "resizable": false,
+        "alwaysOnTop": false
       },
       {
         "label": "pet",
