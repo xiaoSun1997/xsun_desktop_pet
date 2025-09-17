@@ -1,0 +1,242 @@
+.clipboard-container {
+    width: 100%;
+    height: 100vh;
+    padding: 8px 8px 50px 8px;
+    background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+    color: white;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    overflow-y: auto;
+    box-sizing: border-box;
+}
+
+.clipboard-header {
+    text-align: center;
+    margin-bottom: 16px;
+    padding-top: 8px;
+}
+
+.clipboard-title {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.clipboard-badge {
+    display: inline-block;
+    background: rgba(255, 255, 255, 0.2);
+    padding: 3px 6px;
+    border-radius: 10px;
+    font-size: 9px;
+    margin-top: 6px;
+    backdrop-filter: blur(10px);
+}
+
+.clipboard-items {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 0 4px;
+}
+
+.clipboard-item {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    padding: 12px 10px;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.2s ease;
+    box-sizing: border-box;
+}
+
+.clipboard-item:hover {
+    background: rgba(255, 255, 255, 0.15);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+.clipboard-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.content-text {
+    font-size: 11px;
+    line-height: 1.4;
+    margin-bottom: 4px;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+.content-time {
+    font-size: 9px;
+    opacity: 0.7;
+    font-weight: 400;
+}
+
+.copy-button {
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.2);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.copy-button:hover {
+    background: rgba(255, 255, 255, 0.3);
+    transform: scale(1.05);
+}
+
+.copy-button.copied {
+    background: rgba(34, 197, 94, 0.8);
+    transform: scale(1.05);
+}
+
+.copy-icon {
+    width: 12px;
+    height: 12px;
+    position: relative;
+}
+
+.copy-icon::before {
+    content: '';
+    position: absolute;
+    width: 8px;
+    height: 10px;
+    border: 1.5px solid rgba(255, 255, 255, 0.9);
+    border-radius: 2px;
+    top: 0;
+    left: 2px;
+}
+
+.copy-icon::after {
+    content: '';
+    position: absolute;
+    width: 8px;
+    height: 10px;
+    border: 1.5px solid rgba(255, 255, 255, 0.9);
+    border-radius: 2px;
+    top: 2px;
+    left: 0;
+    background: rgba(79, 70, 229, 0.3);
+}
+
+.check-icon {
+    width: 12px;
+    height: 12px;
+    position: relative;
+}
+
+.check-icon::after {
+    content: '';
+    position: absolute;
+    left: 4px;
+    top: 2px;
+    width: 4px;
+    height: 8px;
+    border: solid white;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+
+.empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    opacity: 0.7;
+}
+
+.empty-state p {
+    font-size: 12px;
+    margin: 0;
+}
+
+/* 关闭按钮样式 */
+.close-button-container {
+    position: fixed;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+}
+
+.close-button {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: linear-gradient(135deg,
+    rgba(255, 255, 255, 0.3) 0%,
+    rgba(255, 255, 255, 0.1) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    backdrop-filter: blur(10px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    user-select: none;
+}
+
+.close-button:hover {
+    background: linear-gradient(135deg,
+    rgba(255, 255, 255, 0.4) 0%,
+    rgba(255, 255, 255, 0.2) 100%);
+    transform: scale(1.05);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+    border-color: rgba(255, 255, 255, 0.3);
+}
+
+.close-icon {
+    width: 14px;
+    height: 14px;
+    position: relative;
+}
+
+.close-icon::before,
+.close-icon::after {
+    content: '';
+    position: absolute;
+    width: 14px;
+    height: 2px;
+    background: rgba(255, 255, 255, 0.9);
+    border-radius: 1px;
+    top: 50%;
+    left: 50%;
+    transform-origin: center;
+    transition: background 0.2s ease;
+}
+
+.close-icon::before {
+    transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.close-icon::after {
+    transform: translate(-50%, -50%) rotate(-45deg);
+}
+
+/* 滚动条样式 */
+.clipboard-container::-webkit-scrollbar {
+    width: 3px;
+}
+
+.clipboard-container::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.clipboard-container::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 2px;
+}
+
+.clipboard-container::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.5);
+}

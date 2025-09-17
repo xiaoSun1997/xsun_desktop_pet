@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import PetComponent from "./components/PetComponent";
 import SystemInfoComponent from "./components/SystemInfoComponent";
+import Clipboard from "./components/ClipboardComponent";
+
 
 function App() {
     const [label, setLabel] = useState<string>("");
@@ -14,8 +16,10 @@ function App() {
 
     if (label === "pet") {
         return <PetComponent />;      // 桌宠窗口
-    } else {
+    } else if (label === "main"){
         return <SystemInfoComponent />; // 系统监控窗口
+    }else if (label === "clipboard"){
+        return <Clipboard />; // 系统监控窗口
     }
 }
 

@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/capability/1",
   "identifier": "main-capability",
   "description": "permits for main functionality",
-  "windows": ["main", "pet"],
+  "windows": ["main", "pet","clipboard"],
   "permissions": [
     "core:default",
     "core:window:default",
@@ -11,6 +11,9 @@
     "core:window:allow-set-focus",
     "core:window:allow-start-dragging",
     "core:window:allow-close",
-    "core:webview:allow-create-webview-window"
+    "core:webview:allow-create-webview-window",
+    "clipboard-manager:allow-read-text",
+    "clipboard-manager:allow-write-text",
+    "clipboard-manager:default"
   ]
 }

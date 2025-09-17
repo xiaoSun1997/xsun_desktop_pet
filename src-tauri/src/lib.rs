@@ -5,6 +5,17 @@ use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 use tokio::time::Duration;
 
 mod window_utils;
+mod clipboard;
+
+use clipboard::{
+    ClipboardHistory,
+    get_clipboard_history,
+    add_to_clipboard_history,
+    copy_to_clipboard,
+    get_current_clipboard,
+    clear_clipboard_history,
+    manual_clipboard_check
+};
 
 #[derive(Serialize, Clone)]
 struct SystemInfo {
@@ -50,24 +61,42 @@ fn collect_system_info(sys: &mut System) -> SystemInfo {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_clipboard_manager::init()) // 添加剪贴板插件
         .manage(Arc::new(Mutex::new(System::new_all())))
-        .invoke_handler(tauri::generate_handler![get_system_info, set_click_through, wake_up_pet])
+        .manage(Arc::new(ClipboardHistory::new()))
+        .invoke_handler(tauri::generate_handler![
+            get_system_info,
+            set_click_through,
+            wake_up_pet,
+            get_clipboard_history,
+            add_to_clipboard_history,
+            copy_to_clipboard,
+            get_current_clipboard,
+            clear_clipboard_history,
+            manual_clipboard_check // 用于调试
+        ])
         .setup(|app| {
-            // 启动时隐藏 main 窗口
+            // 启动时隐藏窗口
             if let Some(main_window) = app.get_webview_window("main") {
                 if let Err(e) = main_window.hide() {
                     eprintln!("Failed to hide main window: {}", e);
                 }
             }
 
-            // 启动时设置 pet 窗口为点击穿透
+            if let Some(clipboard_window) = app.get_webview_window("clipboard") {
+                if let Err(e) = clipboard_window.hide() {
+                    eprintln!("Failed to hide clipboard window: {}", e);
+                }
+            }
+
+            // 设置 pet 窗口
             if let Some(pet_window) = app.get_webview_window("pet") {
                 if let Err(e) = window_utils::set_click_through(&pet_window, false) {
                     eprintln!("Failed to set click through for pet window: {}", e);
                 }
             }
 
-            // 克隆 app_handle 以拥有独立的生命周期
+            // 系统信息定时任务
             let app_handle = app.app_handle().clone();
             let sys_state = app.state::<Arc<Mutex<System>>>().inner().clone();
 
@@ -95,6 +124,46 @@ pub fn run() {
                 }
             });
 
+            // 剪贴板监控任务
+            let app_handle_clipboard = app.app_handle().clone();
+            let clipboard_history = app.state::<Arc<ClipboardHistory>>().inner().clone();
+
+            tauri::async_runtime::spawn(async move {
+                let mut interval = tokio::time::interval(Duration::from_secs(3)); // 增加到3秒间隔
+                let mut error_count = 0;
+                const MAX_ERRORS: usize = 10;
+
+                loop {
+                    interval.tick().await;
+
+                    // 添加错误计数和退出机制
+                    match clipboard_history.check_and_update(&app_handle_clipboard) {
+                        Ok(true) => {
+                            println!("✓ 检测到新的剪贴板内容");
+                            error_count = 0; // 重置错误计数
+                        },
+                        Ok(false) => {
+                            error_count = 0; // 重置错误计数
+                        },
+                        Err(e) => {
+                            error_count += 1;
+                            eprintln!("剪贴板检查失败 ({}/{}): {}", error_count, MAX_ERRORS, e);
+
+                            if error_count >= MAX_ERRORS {
+                                eprintln!("剪贴板监控因连续错误过多而停止");
+                                break;
+                            }
+
+                            // 错误时增加延迟
+                            tokio::time::sleep(Duration::from_secs(5)).await;
+                        }
+                    }
+                }
+
+                println!("剪贴板监控任务已退出");
+            });
+
+            println!("剪贴板监控已启动");
             Ok(())
         })
         .run(tauri::generate_context!())

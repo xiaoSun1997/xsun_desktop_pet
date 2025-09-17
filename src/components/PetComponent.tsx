@@ -183,8 +183,9 @@ export default function PetComponent() {
             if (hideTimer.current) clearTimeout(hideTimer.current);
         };
     }, [showBubbles]);
+
+    // 创建或显示系统信息窗口
     const createOrShowMain = async () => {
-        // 先查是否已有 main 窗口（没有被销毁）
         const windows = await getAllWindows();
         const existing = windows.find((w) => w.label === "main");
 
@@ -192,33 +193,29 @@ export default function PetComponent() {
             try {
                 await existing.show();
                 await existing.setFocus();
+                return;
             } catch (e) {
                 console.warn("已有主窗口，但 show/setFocus 失败，尝试重新创建：", e);
             }
-            return;
         }
 
-        // 如果不存在，则新建窗口
         const url = import.meta.env.DEV ? "http://localhost:1420" : "index.html";
 
         try {
             const webview = new WebviewWindow("main", {
                 url,
                 title: "系统信息",
-                width: 400,
-                height: 500,
+                width: 200,
+                height: 600,
                 visible: true,
                 transparent: true,
                 decorations: false,
             });
 
-            // 等待窗口创建完成再操作（必须 await）
             await new Promise<void>((resolve, reject) => {
-                // 如果创建成功会触发 tauri://created
                 const timeout = setTimeout(() => {
-                    // 防止无限等待（可调）
                     reject(new Error("等待窗口创建超时"));
-                }, 5_000);
+                }, 5000);
 
                 webview.once("tauri://created", () => {
                     clearTimeout(timeout);
@@ -231,7 +228,6 @@ export default function PetComponent() {
                 });
             });
 
-            // 创建成功后再安全地 show / focus（有些 API 返回 Promise，推荐 await）
             try {
                 await webview.show();
                 await webview.setFocus();
@@ -243,12 +239,79 @@ export default function PetComponent() {
             console.error("创建主窗口失败：", err);
         }
     };
-    const handleBubbleClick = async (bubble: Bubble) => {
-        if (bubble.action === "open-main") {
-            await createOrShowMain();
+
+    // 创建或显示剪贴板窗口
+    const createOrShowClipboard = async () => {
+        const windows = await getAllWindows();
+        const existing = windows.find((w) => w.label === "clipboard");
+
+        if (existing) {
+            try {
+                await existing.show();
+                await existing.setFocus();
+                return;
+            } catch (e) {
+                console.warn("已有剪贴板窗口，但 show/setFocus 失败，尝试重新创建：", e);
+            }
         }
 
-        // 关闭气泡（原逻辑）
+        const url = import.meta.env.DEV
+            ? "http://localhost:1420/clipboard"
+            : "clipboard.html";
+
+        try {
+            const webview = new WebviewWindow("clipboard", {
+                url,
+                title: "剪贴板历史",
+                width: 280,
+                height: 600,
+                visible: true,
+                transparent: true,
+                decorations: false,
+            });
+
+            await new Promise<void>((resolve, reject) => {
+                const timeout = setTimeout(() => {
+                    reject(new Error("等待剪贴板窗口创建超时"));
+                }, 5000);
+
+                webview.once("tauri://created", () => {
+                    clearTimeout(timeout);
+                    resolve();
+                });
+
+                webview.once("tauri://error", (e) => {
+                    clearTimeout(timeout);
+                    reject(new Error(`创建剪贴板窗口时出错: ${JSON.stringify(e)}`));
+                });
+            });
+
+            try {
+                await webview.show();
+                await webview.setFocus();
+                console.log("剪贴板窗口已创建并显示");
+            } catch (e) {
+                console.warn("创建后 show/setFocus 失败：", e);
+            }
+        } catch (err) {
+            console.error("创建剪贴板窗口失败：", err);
+        }
+    };
+
+    // 处理气泡点击事件
+    const handleBubbleClick = async (bubble: Bubble) => {
+        switch (bubble.action) {
+            case "open-main":
+                await createOrShowMain();
+                break;
+            case "open-clipboard":
+                await createOrShowClipboard();
+                break;
+            default:
+                console.warn(`未知的气泡动作: ${bubble.action}`);
+        }
+
+        // 关闭气泡
         setShowBubbles(false);
     };
 
