@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex};
 use sysinfo::System;
 use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 use tokio::time::Duration;
+use std::path::PathBuf;
 mod clipboard;
 mod window_utils;
 
@@ -126,30 +127,6 @@ struct ChatResponse {
 }
 
 // 读取配置文件
-#[tauri::command]
-async fn load_deepseek_config(app: tauri::AppHandle) -> Result<DeepSeekConfig, String> {
-    // 获取资源路径
-    let resource_path = app
-        .path()
-        .resolve("config/deepseek.json", tauri::path::BaseDirectory::Resource)
-        .map_err(|e| format!("无法解析资源路径: {}", e))?;
-
-    // 读取文件内容
-    let config_content = tokio::fs::read_to_string(&resource_path)
-        .await
-        .map_err(|e| format!("读取配置文件失败: {}。文件路径: {:?}", e, resource_path))?;
-
-    // 解析 JSON
-    let config: DeepSeekConfig = serde_json::from_str(&config_content)
-        .map_err(|e| format!("解析配置文件失败: {}", e))?;
-
-    // 验证配置是否完整
-    if config.api_key.is_empty() || config.api_key == "your_deepseek_api_key_here" {
-        return Err("请在配置文件中设置有效的API Key".to_string());
-    }
-
-    Ok(config)
-}
 
 // 发送聊天消息
 #[tauri::command]
@@ -189,6 +166,87 @@ async fn send_chat_message(app: tauri::AppHandle, messages: Vec<ChatMessage>) ->
         .map(|choice| choice.message.content.clone())
         .ok_or_else(|| "AI响应为空".to_string())
 }
+// 获取配置存储路径
+async fn get_config_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("无法获取应用数据目录: {}", e))?;
+
+    // 先await异步操作，再处理错误
+    tokio::fs::create_dir_all(&app_data_dir)
+        .await
+        .map_err(|e| format!("创建配置目录失败: {}", e))?;
+
+    Ok(app_data_dir.join("deepseek_config.json"))
+}
+
+// 保存配置到本地
+#[tauri::command]
+async fn save_deepseek_config(app: tauri::AppHandle, config: DeepSeekConfig) -> Result<(), String> {
+    let config_path = get_config_path(&app).await?;
+
+    let config_json = serde_json::to_string_pretty(&config)
+        .map_err(|e| format!("序列化配置失败: {}", e))?;
+
+    tokio::fs::write(&config_path, config_json)
+        .await
+        .map_err(|e| format!("保存配置文件失败: {}", e))?;
+
+    Ok(())
+}
+
+// 从本地加载配置
+#[tauri::command]
+async fn load_local_deepseek_config(app: tauri::AppHandle) -> Result<Option<DeepSeekConfig>, String> {
+    let config_path = get_config_path(&app).await?;
+
+    // 使用tokio的异步方法检查文件是否存在
+    if !tokio::fs::try_exists(&config_path)
+        .await
+        .map_err(|e| format!("检查配置文件是否存在失败: {}", e))? {
+        return Ok(None);
+    }
+
+    let config_content = tokio::fs::read_to_string(&config_path)
+        .await
+        .map_err(|e| format!("读取本地配置文件失败: {}", e))?;
+
+    let config: DeepSeekConfig = serde_json::from_str(&config_content)
+        .map_err(|e| format!("解析本地配置文件失败: {}", e))?;
+
+    Ok(Some(config))
+}
+
+// 修改原有的加载配置函数，优先使用本地配置
+#[tauri::command]
+async fn load_deepseek_config(app: tauri::AppHandle) -> Result<DeepSeekConfig, String> {
+    // 先尝试加载本地配置
+    if let Ok(Some(local_config)) = load_local_deepseek_config(app.clone()).await {
+        if !local_config.api_key.is_empty() && local_config.api_key != "your_deepseek_api_key_here" {
+            return Ok(local_config);
+        }
+    }
+
+    // 如果本地配置不存在或无效，尝试加载资源文件配置
+    let resource_path = app
+        .path()
+        .resolve("config/deepseek.json", tauri::path::BaseDirectory::Resource)
+        .map_err(|e| format!("无法解析资源路径: {}", e))?;
+
+    let config_content = tokio::fs::read_to_string(&resource_path)
+        .await
+        .map_err(|e| format!("读取配置文件失败: {}。文件路径: {:?}", e, resource_path))?;
+
+    let config: DeepSeekConfig = serde_json::from_str(&config_content)
+        .map_err(|e| format!("解析配置文件失败: {}", e))?;
+
+    if config.api_key.is_empty() || config.api_key == "your_deepseek_api_key_here" {
+        return Err("请配置有效的API Key".to_string());
+    }
+
+    Ok(config)
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -209,7 +267,9 @@ pub fn run() {
             manual_clipboard_check,
             open_expand_window,
             load_deepseek_config,
-            send_chat_message
+            send_chat_message,
+            save_deepseek_config,
+            load_local_deepseek_config
         ])
         .setup(|app| {
             // 窗口初始化

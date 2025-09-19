@@ -14,18 +14,33 @@ type ChatMessage = {
     content: string;
 };
 
+type DeepSeekConfig = {
+    apiKey: string;
+    baseUrl: string;
+    model: string;
+};
+
 export default function AIChatComponent() {
     const [messages, setMessages] = useState<Message[]>([]);
     const [inputValue, setInputValue] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [configError, setConfigError] = useState<string | null>(null);
+    const [showSettings, setShowSettings] = useState(false);
+    const [config, setConfig] = useState<DeepSeekConfig>({
+        apiKey: '',
+        baseUrl: 'https://api.deepseek.com',
+        model: 'deepseek-chat'
+    });
+    const [tempConfig, setTempConfig] = useState<DeepSeekConfig>({
+        apiKey: '',
+        baseUrl: 'https://api.deepseek.com',
+        model: 'deepseek-chat'
+    });
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
     useEffect(() => {
-        // 检查配置
         checkConfig();
-        // 添加欢迎消息
         setMessages([{
             role: 'assistant',
             content: '你好！我是你的AI助手，有什么可以帮助你的吗？',
@@ -39,6 +54,11 @@ export default function AIChatComponent() {
 
     const checkConfig = async () => {
         try {
+            const loadedConfig = await invoke<DeepSeekConfig>('load_local_deepseek_config');
+            if (loadedConfig) {
+                setConfig(loadedConfig);
+                setTempConfig(loadedConfig);
+            }
             await invoke('load_deepseek_config');
             setConfigError(null);
         } catch (error) {
@@ -46,9 +66,25 @@ export default function AIChatComponent() {
             setConfigError(error as string);
         }
     };
+
+    const saveConfig = async () => {
+        try {
+            await invoke('save_deepseek_config', { config: tempConfig });
+            setConfig(tempConfig);
+            setShowSettings(false);
+            setConfigError(null);
+            // 重新检查配置
+            await checkConfig();
+        } catch (error) {
+            console.error('保存配置失败:', error);
+            alert(`保存配置失败: ${error}`);
+        }
+    };
+
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     };
+
     const handleSendMessage = async () => {
         if (!inputValue.trim() || isLoading) return;
 
@@ -63,7 +99,6 @@ export default function AIChatComponent() {
         setIsLoading(true);
 
         try {
-            // 准备发送给API的消息格式
             const chatMessages: ChatMessage[] = [
                 ...messages.map(msg => ({
                     role: msg.role,
@@ -130,7 +165,12 @@ export default function AIChatComponent() {
         });
     };
 
-    if (configError) {
+    const handleSettingsClose = () => {
+        setTempConfig(config); // 恢复原配置
+        setShowSettings(false);
+    };
+
+    if (configError && !config.apiKey) {
         return (
             <div className="ai-chat-container">
                 <div className="ai-chat-header" data-tauri-drag-region>
@@ -141,13 +181,57 @@ export default function AIChatComponent() {
                 </div>
                 <div className="config-error">
                     <div className="error-icon">⚠️</div>
-                    <h3>配置错误</h3>
+                    <h3>需要配置</h3>
                     <p>{configError}</p>
-                    <p>请检查 public/config/deepseek.json 文件</p>
-                    <button className="retry-button" onClick={checkConfig}>
-                        重试
+                    <button className="retry-button" onClick={() => setShowSettings(true)}>
+                        配置API Key
                     </button>
                 </div>
+                {showSettings && (
+                    <div className="settings-overlay">
+                        <div className="settings-modal">
+                            <div className="settings-header">
+                                <h3>DeepSeek 配置</h3>
+                                <button className="settings-close" onClick={handleSettingsClose}>
+                                    <div className="close-icon"></div>
+                                </button>
+                            </div>
+                            <div className="settings-content">
+                                <div className="setting-item">
+                                    <label>API Key:</label>
+                                    <input
+                                        type="password"
+                                        value={tempConfig.apiKey}
+                                        onChange={(e) => setTempConfig(prev => ({ ...prev, apiKey: e.target.value }))}
+                                        placeholder="输入你的 DeepSeek API Key"
+                                    />
+                                </div>
+                                <div className="setting-item">
+                                    <label>Base URL:</label>
+                                    <input
+                                        type="text"
+                                        value={tempConfig.baseUrl}
+                                        onChange={(e) => setTempConfig(prev => ({ ...prev, baseUrl: e.target.value }))}
+                                        placeholder="API 基础URL"
+                                    />
+                                </div>
+                                <div className="setting-item">
+                                    <label>模型:</label>
+                                    <input
+                                        type="text"
+                                        value={tempConfig.model}
+                                        onChange={(e) => setTempConfig(prev => ({ ...prev, model: e.target.value }))}
+                                        placeholder="模型名称"
+                                    />
+                                </div>
+                            </div>
+                            <div className="settings-actions">
+                                <button className="cancel-button" onClick={handleSettingsClose}>取消</button>
+                                <button className="save-button" onClick={saveConfig}>保存</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         );
     }
@@ -156,7 +240,7 @@ export default function AIChatComponent() {
         <div className="ai-chat-container">
             <div className="ai-chat-header" data-tauri-drag-region>
                 <div className="header-left">
-                    <div className="ai-avatar">🤖</div>
+                    <div className="ai-avatar"></div>
                     <div className="header-info">
                         <h1 className="ai-chat-title">AI对话助手</h1>
                         <div className="status-indicator">
@@ -166,6 +250,13 @@ export default function AIChatComponent() {
                     </div>
                 </div>
                 <div className="header-actions">
+                    <button
+                        className="settings-button"
+                        onClick={() => setShowSettings(true)}
+                        title="设置"
+                    >
+                        <div className="settings-icon"></div>
+                    </button>
                     <button
                         className="clear-chat-button"
                         onClick={clearChat}
@@ -185,9 +276,7 @@ export default function AIChatComponent() {
                         key={index}
                         className={`message ${message.role === 'user' ? 'user-message' : 'assistant-message'}`}
                     >
-                        <div className="message-avatar">
-                            {message.role === 'user' ? '👤' : '🤖'}
-                        </div>
+                        <div className="message-avatar"></div>
                         <div className="message-content">
                             <div className="message-text">{message.content}</div>
                             <div className="message-time">{formatTime(message.timestamp)}</div>
@@ -196,7 +285,7 @@ export default function AIChatComponent() {
                 ))}
                 {isLoading && (
                     <div className="message assistant-message">
-                        <div className="message-avatar">🤖</div>
+                        <div className="message-avatar"></div>
                         <div className="message-content">
                             <div className="typing-indicator">
                                 <span></span>
@@ -230,6 +319,52 @@ export default function AIChatComponent() {
                     </button>
                 </div>
             </div>
+
+            {showSettings && (
+                <div className="settings-overlay">
+                    <div className="settings-modal">
+                        <div className="settings-header">
+                            <h3>DeepSeek 配置</h3>
+                            <button className="settings-close" onClick={handleSettingsClose}>
+                                <div className="close-icon"></div>
+                            </button>
+                        </div>
+                        <div className="settings-content">
+                            <div className="setting-item">
+                                <label>API Key:</label>
+                                <input
+                                    type="password"
+                                    value={tempConfig.apiKey}
+                                    onChange={(e) => setTempConfig(prev => ({ ...prev, apiKey: e.target.value }))}
+                                    placeholder="输入你的 DeepSeek API Key"
+                                />
+                            </div>
+                            <div className="setting-item">
+                                <label>Base URL:</label>
+                                <input
+                                    type="text"
+                                    value={tempConfig.baseUrl}
+                                    onChange={(e) => setTempConfig(prev => ({ ...prev, baseUrl: e.target.value }))}
+                                    placeholder="API 基础URL"
+                                />
+                            </div>
+                            <div className="setting-item">
+                                <label>模型:</label>
+                                <input
+                                    type="text"
+                                    value={tempConfig.model}
+                                    onChange={(e) => setTempConfig(prev => ({ ...prev, model: e.target.value }))}
+                                    placeholder="模型名称"
+                                />
+                            </div>
+                        </div>
+                        <div className="settings-actions">
+                            <button className="cancel-button" onClick={handleSettingsClose}>取消</button>
+                            <button className="save-button" onClick={saveConfig}>保存</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
