@@ -2,18 +2,28 @@
   "$schema": "https://schema.tauri.app/capability/1",
   "identifier": "main-capability",
   "description": "permits for main functionality",
-  "windows": ["main", "pet","clipboard"],
+  "windows": ["*"],
   "permissions": [
     "core:default",
     "core:window:default",
+    "core:window:allow-create",
     "core:window:allow-show",
     "core:window:allow-hide",
+    "core:window:allow-close",
+    "core:window:allow-center",
+    "core:window:allow-set-position",
+    "core:window:allow-set-size",
     "core:window:allow-set-focus",
     "core:window:allow-start-dragging",
-    "core:window:allow-close",
+    "core:window:allow-set-ignore-cursor-events",
     "core:webview:allow-create-webview-window",
+    "core:webview:allow-webview-position",
+    "core:webview:allow-webview-size",
     "clipboard-manager:allow-read-text",
     "clipboard-manager:allow-write-text",
-    "clipboard-manager:default"
+    "clipboard-manager:default",
+    "core:app:default",
+    "core:event:default",
+    "core:tray:default"
   ]
 }

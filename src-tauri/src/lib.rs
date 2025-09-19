@@ -56,7 +56,44 @@ fn collect_system_info(sys: &mut System) -> SystemInfo {
         used_memory,
     }
 }
+// 在现有命令函数后添加
+#[tauri::command]
+async fn open_expand_window(content: String, app: AppHandle) -> Result<(), String> {
+    use tauri::{WebviewUrl, WebviewWindowBuilder};
 
+    // 生成唯一的窗口标签
+    let window_label = format!("expand_{}",
+                               std::time::SystemTime::now()
+                                   .duration_since(std::time::UNIX_EPOCH)
+                                   .unwrap()
+                                   .as_millis()
+    );
+
+    // 创建窗口
+    let webview_window = WebviewWindowBuilder::new(
+        &app,
+        &window_label,
+        WebviewUrl::App("index.html".into())
+    )
+        .title("剪贴板内容编辑")
+        .inner_size(600.0, 500.0)
+        .visible(true)
+        .transparent(true)
+        .decorations(false)
+        .resizable(true)
+        .initialization_script(&format!(
+            "window.__EXPAND_CONTENT__ = {};",
+            serde_json::to_string(&content).map_err(|e| e.to_string())?
+        ))
+        .build()
+        .map_err(|e| format!("创建窗口失败: {}", e))?;
+
+    // 显示并聚焦窗口
+    webview_window.show().map_err(|e| format!("显示窗口失败: {}", e))?;
+    webview_window.set_focus().map_err(|e| format!("聚焦窗口失败: {}", e))?;
+
+    Ok(())
+}
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -73,7 +110,8 @@ pub fn run() {
             copy_to_clipboard,
             get_current_clipboard,
             clear_clipboard_history,
-            manual_clipboard_check
+            manual_clipboard_check,
+            open_expand_window
         ])
         .setup(|app| {
             // 窗口初始化

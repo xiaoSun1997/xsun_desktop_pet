@@ -13,6 +13,7 @@
     text-align: center;
     margin-bottom: 16px;
     padding-top: 8px;
+    position: relative;
 }
 
 .clipboard-title {
@@ -30,6 +31,59 @@
     font-size: 9px;
     margin-top: 6px;
     backdrop-filter: blur(10px);
+}
+
+/* 清空按钮样式 */
+.clear-button {
+    position: absolute;
+    top: 0;
+    right: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    padding: 6px 10px;
+    color: white;
+    font-size: 10px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    backdrop-filter: blur(10px);
+    transition: all 0.2s ease;
+    user-select: none;
+}
+
+.clear-button:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+.clear-icon {
+    width: 10px;
+    height: 10px;
+    position: relative;
+}
+
+.clear-icon::before,
+.clear-icon::after {
+    content: '';
+    position: absolute;
+    width: 10px;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.9);
+    border-radius: 0.5px;
+    top: 50%;
+    left: 50%;
+    transform-origin: center;
+}
+
+.clear-icon::before {
+    transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.clear-icon::after {
+    transform: translate(-50%, -50%) rotate(-45deg);
 }
 
 .clipboard-items {
@@ -77,7 +131,15 @@
     font-weight: 400;
 }
 
-.copy-button {
+/* 操作按钮容器 */
+.action-buttons {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.copy-button, .expand-button {
     width: 28px;
     height: 28px;
     border: none;
@@ -91,7 +153,7 @@
     flex-shrink: 0;
 }
 
-.copy-button:hover {
+.copy-button:hover, .expand-button:hover {
     background: rgba(255, 255, 255, 0.3);
     transform: scale(1.05);
 }
@@ -146,6 +208,25 @@
     border: solid white;
     border-width: 0 2px 2px 0;
     transform: rotate(45deg);
+}
+
+/* 展开按钮图标 */
+.expand-icon {
+    width: 12px;
+    height: 12px;
+    position: relative;
+}
+
+.expand-icon::before {
+    content: '';
+    position: absolute;
+    width: 6px;
+    height: 6px;
+    border-top: 2px solid rgba(255, 255, 255, 0.9);
+    border-right: 2px solid rgba(255, 255, 255, 0.9);
+    transform: rotate(45deg);
+    top: 3px;
+    left: 3px;
 }
 
 .empty-state {
@@ -239,4 +320,31 @@
 
 .clipboard-container::-webkit-scrollbar-thumb:hover {
     background: rgba(255, 255, 255, 0.5);
+}
+/* 添加到现有 CSS 中 */
+.content-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 4px;
+}
+
+.content-size {
+    font-size: 10px;
+    color: #666;
+    background: #f0f0f0;
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-weight: 500;
+}
+
+.content-time {
+    font-size: 11px;
+    color: #999;
+}
+
+.expand-button:hover {
+    background: linear-gradient(135deg, #4CAF50, #45a049);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
 }

@@ -11,14 +11,15 @@
 
 ![wave.gif](public/pet/linglan/wave.gif)
 ## 目前大致功能支持
-![img.png](img.png)
+![img.png](public/result_show/img.png)
 ## 功能支持
 ### 1. 读取五条剪贴板历史记录
-![img_1.png](img_1.png)
+![img_1.png](public/result_show/img_1.png)
 ### 2. 读取系统监控 
-![img_2.png](img_2.png)
+![img_2.png](public/result_show/img_2.png)
 
 ## 后续功能规划 
 1. 添加json 对比功能
 2. AI 聊天对话等
-3. 有什么想要添加的功能欢迎给出你的idea
+3. 支持点击穿透的 每日日程安排（TODO List等）
+4. 有什么想要添加的功能欢迎给出你的idea

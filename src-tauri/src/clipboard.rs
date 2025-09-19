@@ -69,8 +69,8 @@ impl ClipboardHistory {
             }
         }
 
-        let preview = if content.len() > 50 {
-            format!("{}...", &content[..50])
+        let preview = if content.len() > 100  {
+            format!("{}...", &content[..100])
         } else {
             content
         };
@@ -90,7 +90,7 @@ impl ClipboardHistory {
             return Ok(false);
         }
 
-        if current_content.len() > 10000 {
+        if current_content.len() > 200_000 {
             return Err("剪贴板内容过长".to_string());
         }
 
@@ -146,8 +146,8 @@ pub fn add_to_clipboard_history(
         return Err("内容过长".to_string());
     }
 
-    let preview = if content.len() > 50 {
-        format!("{}...", &content[..50])
+    let preview = if content.len() > 100 {
+        format!("{}...", &content[..100])
     } else {
         content.clone()
     };
@@ -170,8 +170,8 @@ pub fn copy_to_clipboard(
         return Err("内容过长".to_string());
     }
 
-    let preview = if content.len() > 50 {
-        format!("{}...", &content[..50])
+    let preview = if content.len() > 100 {
+        format!("{}...", &content[..100])
     } else {
         content.clone()
     };

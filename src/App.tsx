@@ -3,6 +3,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import PetComponent from "./components/PetComponent";
 import SystemInfoComponent from "./components/SystemInfoComponent";
 import Clipboard from "./components/ClipboardComponent";
+import ExpandWindow from "./components/ExpandWindow";
 
 
 function App() {
@@ -20,7 +21,11 @@ function App() {
         return <SystemInfoComponent />; // 系统监控窗口
     }else if (label === "clipboard"){
         return <Clipboard />; // 系统监控窗口
+    }else if (label.startsWith("expand_")){
+        return <ExpandWindow />; // 系统监控窗口
     }
+
+    return null;
 }
 
 export default App;

@@ -16,10 +16,7 @@ export default function ClipboardComponent() {
 
     useEffect(() => {
         loadClipboardHistory();
-
-        // 定期检查剪贴板变化
         const interval = setInterval(loadClipboardHistory, 2000);
-
         return () => clearInterval(interval);
     }, []);
 
@@ -37,17 +34,20 @@ export default function ClipboardComponent() {
     const handleCopy = async (content: string, id: number) => {
         try {
             await invoke("copy_to_clipboard", { content });
-
-            // 显示复制成功状态
             setCopyStatus(prev => ({ ...prev, [id]: true }));
-
-            // 2秒后清除状态
             setTimeout(() => {
                 setCopyStatus(prev => ({ ...prev, [id]: false }));
             }, 2000);
-
         } catch (error) {
             console.error("复制失败:", error);
+        }
+    };
+
+    const handleExpand = async (content: string) => {
+        try {
+            await invoke("open_expand_window", { content });
+        } catch (error) {
+            console.error("打开详情窗口失败:", error);
         }
     };
 
@@ -90,6 +90,13 @@ export default function ClipboardComponent() {
         return text.substring(0, maxLength) + "...";
     };
 
+    const formatContentSize = (content: string): string => {
+        const size = new Blob([content]).size;
+        if (size < 1024) return `${size}B`;
+        if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)}KB`;
+        return `${(size / (1024 * 1024)).toFixed(1)}MB`;
+    };
+
     return (
         <div className="clipboard-container">
             <div className="clipboard-header">
@@ -101,7 +108,8 @@ export default function ClipboardComponent() {
                         onClick={handleClearHistory}
                         title="清空历史"
                     >
-                        清空
+                        <div className="clear-icon"></div>
+                        <span>清空</span>
                     </button>
                 )}
             </div>
@@ -119,21 +127,35 @@ export default function ClipboardComponent() {
                                 <div className="content-text">
                                     {truncateText(item.content)}
                                 </div>
-                                <div className="content-time">
-                                    {formatTime(item.timestamp)}
+                                <div className="content-meta">
+                                    <span className="content-time">
+                                        {formatTime(item.timestamp)}
+                                    </span>
+                                    <span className="content-size">
+                                        {formatContentSize(item.content)}
+                                    </span>
                                 </div>
                             </div>
-                            <button
-                                className={`copy-button ${copyStatus[item.id] ? 'copied' : ''}`}
-                                onClick={() => handleCopy(item.content, item.id)}
-                                title={copyStatus[item.id] ? "已复制!" : "复制"}
-                            >
-                                {copyStatus[item.id] ? (
-                                    <div className="check-icon"></div>
-                                ) : (
-                                    <div className="copy-icon"></div>
-                                )}
-                            </button>
+                            <div className="action-buttons">
+                                <button
+                                    className={`copy-button ${copyStatus[item.id] ? 'copied' : ''}`}
+                                    onClick={() => handleCopy(item.content, item.id)}
+                                    title={copyStatus[item.id] ? "已复制!" : "复制"}
+                                >
+                                    {copyStatus[item.id] ? (
+                                        <div className="check-icon"></div>
+                                    ) : (
+                                        <div className="copy-icon"></div>
+                                    )}
+                                </button>
+                                <button
+                                    className="expand-button"
+                                    onClick={() => handleExpand(item.content)}
+                                    title="编辑/查看详情"
+                                >
+                                    <div className="expand-icon"></div>
+                                </button>
+                            </div>
                         </div>
                     ))
                 ) : (
@@ -144,7 +166,6 @@ export default function ClipboardComponent() {
                 )}
             </div>
 
-            {/* 关闭按钮 */}
             <div className="close-button-container">
                 <button
                     className="close-button"

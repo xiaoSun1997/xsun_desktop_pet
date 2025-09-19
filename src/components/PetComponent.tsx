@@ -263,8 +263,8 @@ export default function PetComponent() {
             const webview = new WebviewWindow("clipboard", {
                 url,
                 title: "剪贴板历史",
-                width: 280,
-                height: 600,
+                width: 300,
+                height: 400,
                 visible: true,
                 transparent: true,
                 decorations: false,

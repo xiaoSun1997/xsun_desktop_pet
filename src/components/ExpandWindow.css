@@ -1,0 +1,267 @@
+.expand-container {
+    width: 100%;
+    height: 100vh;
+    background: rgba(248, 249, 250, 0.95);
+    backdrop-filter: blur(10px);
+    display: flex;
+    flex-direction: column;
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.expand-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 20px 24px 16px;
+    background: rgba(255, 255, 255, 0.8);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(5px);
+}
+
+.header-left {
+    flex: 1;
+}
+
+.expand-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: #2c3e50;
+    margin: 0 0 8px 0;
+}
+
+.content-info {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+.content-size, .content-length {
+    font-size: 12px;
+    color: #666;
+    background: #e9ecef;
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-weight: 500;
+}
+
+.header-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.copy-button, .edit-button, .save-button, .cancel-button {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.copy-button {
+    background: linear-gradient(135deg, #3498db, #2980b9);
+    color: white;
+}
+
+.copy-button:hover {
+    background: linear-gradient(135deg, #2980b9, #1f5f8b);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
+}
+
+.copy-button.saved {
+    background: linear-gradient(135deg, #27ae60, #2ecc71);
+}
+
+.edit-button {
+    background: linear-gradient(135deg, #f39c12, #e67e22);
+    color: white;
+}
+
+.edit-button:hover {
+    background: linear-gradient(135deg, #e67e22, #d35400);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(243, 156, 18, 0.3);
+}
+
+.save-button {
+    background: linear-gradient(135deg, #27ae60, #2ecc71);
+    color: white;
+}
+
+.save-button:hover:not(.disabled) {
+    background: linear-gradient(135deg, #2ecc71, #27ae60);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(39, 174, 96, 0.3);
+}
+
+.save-button.disabled {
+    background: #bdc3c7;
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.save-button.saved {
+    background: linear-gradient(135deg, #27ae60, #2ecc71);
+}
+
+.save-button.error {
+    background: linear-gradient(135deg, #e74c3c, #c0392b);
+}
+
+.cancel-button {
+    background: #6c757d;
+    color: white;
+}
+
+.cancel-button:hover {
+    background: #545b62;
+    transform: translateY(-1px);
+}
+
+.expand-content {
+    flex: 1;
+    padding: 20px 24px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.content-display {
+    flex: 1;
+    overflow: auto;
+    background: rgba(255, 255, 255, 0.8);
+    border-radius: 8px;
+    padding: 16px;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.content-text {
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 14px;
+    line-height: 1.6;
+    color: #2c3e50;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    margin: 0;
+}
+
+.content-editor {
+    flex: 1;
+    width: 100%;
+    background: rgba(255, 255, 255, 0.9);
+    border: 2px solid #3498db;
+    border-radius: 8px;
+    padding: 16px;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 14px;
+    line-height: 1.6;
+    color: #2c3e50;
+    resize: none;
+    outline: none;
+    transition: all 0.2s ease;
+}
+
+.content-editor:focus {
+    border-color: #2980b9;
+    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+}
+
+.expand-close-container {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 10;
+}
+
+.expand-close-button {
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: rgba(231, 76, 60, 0.9);
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    backdrop-filter: blur(5px);
+}
+
+.expand-close-button:hover {
+    background: rgba(192, 57, 43, 0.95);
+    transform: scale(1.1);
+}
+
+.close-icon {
+    width: 16px;
+    height: 16px;
+    position: relative;
+}
+
+.close-icon::before,
+.close-icon::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 12px;
+    height: 2px;
+    background: white;
+    border-radius: 1px;
+}
+
+.close-icon::before {
+    transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.close-icon::after {
+    transform: translate(-50%, -50%) rotate(-45deg);
+}
+
+.copy-icon {
+    width: 14px;
+    height: 14px;
+    border: 2px solid currentColor;
+    border-radius: 2px;
+    position: relative;
+}
+
+.copy-icon::after {
+    content: '';
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    width: 12px;
+    height: 12px;
+    border: 2px solid currentColor;
+    border-radius: 2px;
+    background: currentColor;
+}
+
+.edit-icon {
+    width: 14px;
+    height: 14px;
+    border: 2px solid currentColor;
+    border-radius: 2px;
+    position: relative;
+}
+
+.edit-icon::after {
+    content: '';
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-bottom: 6px solid currentColor;
+    transform: rotate(45deg);
+}
