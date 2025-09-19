@@ -21,6 +21,9 @@
 ![img.png](public/result_show/clipboard-his-expand.png)
 ### 2. 读取系统监控 
 ![img_2.png](public/result_show/img_2.png)
+### 3. AI对话
+![img_2.png](public/result_show/ai-chat.png)
+![img_2.png](public/result_show/ai-chat-config.png)
 
 ## 后续功能规划 
 1. 添加json 对比功能
