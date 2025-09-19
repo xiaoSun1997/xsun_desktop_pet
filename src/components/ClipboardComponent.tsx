@@ -138,16 +138,14 @@ export default function ClipboardComponent() {
                             </div>
                             <div className="action-buttons">
                                 <button
-                                    className={`copy-button ${copyStatus[item.id] ? 'copied' : ''}`}
+                                    className={`action-copy-button ${copyStatus[item.id] ? 'copied' : ''}`}
                                     onClick={() => handleCopy(item.content, item.id)}
                                     title={copyStatus[item.id] ? "已复制!" : "复制"}
                                 >
-                                    {copyStatus[item.id] ? (
-                                        <div className="check-icon"></div>
-                                    ) : (
-                                        <div className="copy-icon"></div>
-                                    )}
+                                    <div className="copy-icon"></div>
+                                    <span>{copyStatus[item.id] ? "已复制" : "复制"}</span>
                                 </button>
+
                                 <button
                                     className="expand-button"
                                     onClick={() => handleExpand(item.content)}
