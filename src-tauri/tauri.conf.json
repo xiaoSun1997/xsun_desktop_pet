@@ -44,6 +44,18 @@
         "transparent": true,
         "resizable": false,
         "visible": false
+      },
+      {
+        "label": "ai-chat",
+        "title": "AI对话助手",
+        "width": 800,
+        "height": 600,
+        "decorations": false,
+        "transparent": true,
+        "resizable": true,
+        "visible": false,
+        "minWidth": 600,
+        "minHeight": 500
       }
     ],
     "security": {
@@ -52,6 +64,9 @@
     }
   },
   "bundle": {
+    "resources": [
+      "config/*"
+    ],
     "active": true,
     "targets": "all",
     "icon": [
@@ -61,5 +76,12 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "fs": {
+      "scope": [
+        "$RESOURCE/**"
+      ]
+    }
   }
 }

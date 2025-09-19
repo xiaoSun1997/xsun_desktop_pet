@@ -14,5 +14,9 @@
   {
     "label": "JSON对比",
     "action": "open-jsonCompare"
+  },
+  {
+    "label": "AI对话",
+    "action": "open-ai"
   }
 ]

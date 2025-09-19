@@ -1,20 +1,15 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use sysinfo::System;
 use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 use tokio::time::Duration;
-
-mod window_utils;
 mod clipboard;
+mod window_utils;
 
 use clipboard::{
-    ClipboardHistory,
-    get_clipboard_history,
-    add_to_clipboard_history,
-    copy_to_clipboard,
-    get_current_clipboard,
-    clear_clipboard_history,
-    manual_clipboard_check
+    add_to_clipboard_history, clear_clipboard_history, copy_to_clipboard, get_clipboard_history,
+    get_current_clipboard, manual_clipboard_check, ClipboardHistory,
 };
 
 #[derive(Serialize, Clone)]
@@ -62,38 +57,139 @@ async fn open_expand_window(content: String, app: AppHandle) -> Result<(), Strin
     use tauri::{WebviewUrl, WebviewWindowBuilder};
 
     // 生成唯一的窗口标签
-    let window_label = format!("expand_{}",
-                               std::time::SystemTime::now()
-                                   .duration_since(std::time::UNIX_EPOCH)
-                                   .unwrap()
-                                   .as_millis()
+    let window_label = format!(
+        "expand_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis()
     );
 
     // 创建窗口
-    let webview_window = WebviewWindowBuilder::new(
-        &app,
-        &window_label,
-        WebviewUrl::App("index.html".into())
-    )
-        .title("剪贴板内容编辑")
-        .inner_size(600.0, 500.0)
-        .visible(true)
-        .transparent(true)
-        .decorations(false)
-        .resizable(true)
-        .initialization_script(&format!(
-            "window.__EXPAND_CONTENT__ = {};",
-            serde_json::to_string(&content).map_err(|e| e.to_string())?
-        ))
-        .build()
-        .map_err(|e| format!("创建窗口失败: {}", e))?;
+    let webview_window =
+        WebviewWindowBuilder::new(&app, &window_label, WebviewUrl::App("index.html".into()))
+            .title("剪贴板内容编辑")
+            .inner_size(600.0, 500.0)
+            .visible(true)
+            .transparent(true)
+            .decorations(false)
+            .resizable(true)
+            .initialization_script(&format!(
+                "window.__EXPAND_CONTENT__ = {};",
+                serde_json::to_string(&content).map_err(|e| e.to_string())?
+            ))
+            .build()
+            .map_err(|e| format!("创建窗口失败: {}", e))?;
 
     // 显示并聚焦窗口
-    webview_window.show().map_err(|e| format!("显示窗口失败: {}", e))?;
-    webview_window.set_focus().map_err(|e| format!("聚焦窗口失败: {}", e))?;
+    webview_window
+        .show()
+        .map_err(|e| format!("显示窗口失败: {}", e))?;
+    webview_window
+        .set_focus()
+        .map_err(|e| format!("聚焦窗口失败: {}", e))?;
 
     Ok(())
 }
+
+// 添加新的结构体
+// DeepSeek 配置结构体
+#[derive(Serialize, Deserialize, Clone)]
+struct DeepSeekConfig {
+    #[serde(rename = "apiKey")]
+    api_key: String,
+    #[serde(rename = "baseUrl")]
+    base_url: String,
+    model: String,
+}
+
+#[derive(Serialize, Deserialize)]
+struct ChatMessage {
+    role: String,
+    content: String,
+}
+#[derive(Serialize, Deserialize)]
+struct ChatRequest {
+    model: String,
+    messages: Vec<ChatMessage>,
+    stream: bool,
+}
+
+#[derive(Serialize, Deserialize)]
+struct ChatChoice {
+    message: ChatMessage,
+}
+
+#[derive(Serialize, Deserialize)]
+struct ChatResponse {
+    choices: Vec<ChatChoice>,
+}
+
+// 读取配置文件
+#[tauri::command]
+async fn load_deepseek_config(app: tauri::AppHandle) -> Result<DeepSeekConfig, String> {
+    // 获取资源路径
+    let resource_path = app
+        .path()
+        .resolve("config/deepseek.json", tauri::path::BaseDirectory::Resource)
+        .map_err(|e| format!("无法解析资源路径: {}", e))?;
+
+    // 读取文件内容
+    let config_content = tokio::fs::read_to_string(&resource_path)
+        .await
+        .map_err(|e| format!("读取配置文件失败: {}。文件路径: {:?}", e, resource_path))?;
+
+    // 解析 JSON
+    let config: DeepSeekConfig = serde_json::from_str(&config_content)
+        .map_err(|e| format!("解析配置文件失败: {}", e))?;
+
+    // 验证配置是否完整
+    if config.api_key.is_empty() || config.api_key == "your_deepseek_api_key_here" {
+        return Err("请在配置文件中设置有效的API Key".to_string());
+    }
+
+    Ok(config)
+}
+
+// 发送聊天消息
+#[tauri::command]
+async fn send_chat_message(app: tauri::AppHandle, messages: Vec<ChatMessage>) -> Result<String, String> {
+    let config = load_deepseek_config(app).await?;
+
+    let client = reqwest::Client::new();
+    let chat_request = ChatRequest {
+        model: config.model,
+        messages,
+        stream: false,
+    };
+
+    let response = client
+        .post(&format!("{}/chat/completions", config.base_url))
+        .header("Authorization", format!("Bearer {}", config.api_key))
+        .header("Content-Type", "application/json")
+        .json(&chat_request)
+        .send()
+        .await
+        .map_err(|e| format!("发送请求失败: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let error_text = response.text().await.unwrap_or_default();
+        return Err(format!("API请求失败 ({}): {}", status, error_text));
+    }
+
+    let chat_response: ChatResponse = response
+        .json()
+        .await
+        .map_err(|e| format!("解析响应失败: {}", e))?;
+
+    chat_response
+        .choices
+        .first()
+        .map(|choice| choice.message.content.clone())
+        .ok_or_else(|| "AI响应为空".to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -111,7 +207,9 @@ pub fn run() {
             get_current_clipboard,
             clear_clipboard_history,
             manual_clipboard_check,
-            open_expand_window
+            open_expand_window,
+            load_deepseek_config,
+            send_chat_message
         ])
         .setup(|app| {
             // 窗口初始化
@@ -180,13 +278,16 @@ pub fn run() {
                         Ok(true) => {
                             println!("✓ 检测到新的剪贴板内容");
                             consecutive_errors = 0;
-                        },
+                        }
                         Ok(false) => {
                             consecutive_errors = 0;
-                        },
+                        }
                         Err(e) => {
                             consecutive_errors += 1;
-                            eprintln!("剪贴板检查失败 ({}/{}): {}", consecutive_errors, MAX_CONSECUTIVE_ERRORS, e);
+                            eprintln!(
+                                "剪贴板检查失败 ({}/{}): {}",
+                                consecutive_errors, MAX_CONSECUTIVE_ERRORS, e
+                            );
 
                             if consecutive_errors >= MAX_CONSECUTIVE_ERRORS {
                                 eprintln!("剪贴板监控因连续错误过多而暂停60秒");
