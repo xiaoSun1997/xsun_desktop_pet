@@ -52,16 +52,24 @@ html, body {
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    animation: floatIn 0.3s ease-out;
     pointer-events: auto;
     width: 100px;
     height: 50px;
+    /* 重要：初始状态设置，不要覆盖JavaScript计算的位置 */
+    animation: fadeIn 0.4s ease-out;
 }
+/* 延迟动画让气泡依次出现 */
+.bubble:nth-child(1) { animation-delay: 0ms; }
+.bubble:nth-child(2) { animation-delay: 80ms; }
+.bubble:nth-child(3) { animation-delay: 160ms; }
+.bubble:nth-child(4) { animation-delay: 240ms; }
+.bubble:nth-child(5) { animation-delay: 320ms; }
 
 .bubble-bg {
     width: 100%;
     height: auto;
     object-fit: contain;
+    transition: transform 0.2s ease;
 }
 
 .bubble-text {
@@ -75,6 +83,7 @@ html, body {
     text-align: center;
     max-width: 80px;
     word-break: break-all;
+    transition: transform 0.2s ease;
 }
 
 @keyframes floatIn {
@@ -113,3 +122,50 @@ html, body {
     0%, 100% { opacity: 0.6; }
     50% { opacity: 1; }
 }
+/* 关键修改：动画不能改变translate，只能改变其他属性 */
+@keyframes smoothFloatIn {
+    0% {
+        opacity: 0;
+        transform: scale(0.5) rotate(-15deg);
+    }
+
+    60% {
+        opacity: 0.9;
+        transform: scale(1.15) rotate(5deg);
+    }
+
+    100% {
+        opacity: 1;
+        transform: scale(1) rotate(0deg);
+    }
+}
+
+/* 悬停效果 */
+.bubble:hover {
+    transition: transform 0.2s ease;
+}
+
+.bubble:hover .bubble-bg {
+    transform: scale(1.1);
+}
+
+.bubble:hover .bubble-text {
+    transform: scale(1.05);
+}
+
+/* 消失动画 */
+.bubbles.hiding .bubble {
+    animation: smoothFloatOut 0.25s ease-in forwards;
+}
+
+@keyframes smoothFloatOut {
+    0% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    100% {
+        opacity: 0;
+        transform: scale(0.6);
+    }
+}
+

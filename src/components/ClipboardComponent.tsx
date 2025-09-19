@@ -99,7 +99,10 @@ export default function ClipboardComponent() {
 
     return (
         <div className="clipboard-container">
-            <div className="clipboard-header">
+            <div
+                className="clipboard-header"
+                data-tauri-drag-region  // 添加这个属性使整个头部可拖拽
+            >
                 <h1 className="clipboard-title">剪贴板历史</h1>
                 <div className="clipboard-badge">最近5条</div>
                 {clipboardItems.length > 0 && (

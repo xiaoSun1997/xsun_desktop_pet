@@ -14,6 +14,7 @@
     margin-bottom: 16px;
     padding-top: 8px;
     position: relative;
+    cursor: move; /* 添加移动光标提示 */
 }
 
 .clipboard-title {

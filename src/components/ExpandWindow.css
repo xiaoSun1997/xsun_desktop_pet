@@ -17,6 +17,7 @@
     background: rgba(255, 255, 255, 0.8);
     border-bottom: 1px solid rgba(0, 0, 0, 0.1);
     backdrop-filter: blur(5px);
+    cursor: move; /* 添加移动光标提示 */
 }
 
 .header-left {
@@ -264,4 +265,89 @@
     border-right: 4px solid transparent;
     border-bottom: 6px solid currentColor;
     transform: rotate(45deg);
+}
+.format-button {
+    background: linear-gradient(135deg, #9b59b6, #8e44ad);
+    color: white;
+}
+
+.format-button:hover {
+    background: linear-gradient(135deg, #8e44ad, #732d91);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(155, 89, 182, 0.3);
+}
+
+.format-icon {
+    width: 14px;
+    height: 14px;
+    border: 2px solid currentColor;
+    border-radius: 2px;
+    position: relative;
+}
+
+.format-icon::before,
+.format-icon::after {
+    content: '';
+    position: absolute;
+    background: currentColor;
+    border-radius: 1px;
+}
+
+.format-icon::before {
+    top: 2px;
+    left: 2px;
+    width: 8px;
+    height: 1.5px;
+}
+
+.format-icon::after {
+    top: 6px;
+    left: 2px;
+    width: 6px;
+    height: 1.5px;
+}
+
+.action-copy-button {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border: none;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background: linear-gradient(135deg, #3498db, #2980b9);
+    color: white;
+}
+
+.action-copy-button:hover {
+    background: linear-gradient(135deg, #2980b9, #1f5f8b);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(52, 152, 219, 0.3);
+}
+
+.action-copy-button.copied {
+    background: linear-gradient(135deg, #27ae60, #2ecc71);
+}
+
+.action-copy-button .copy-icon {
+    width: 12px;
+    height: 12px;
+    border: 1.5px solid currentColor;
+    border-radius: 2px;
+    position: relative;
+}
+
+.action-copy-button .copy-icon::after {
+    content: '';
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    width: 10px;
+    height: 10px;
+    border: 1.5px solid currentColor;
+    border-radius: 2px;
+    background: currentColor;
 }

@@ -9,11 +9,28 @@ export default function ExpandWindow() {
     const [saveStatus, setSaveStatus] = useState<"" | "saving" | "saved" | "error">("");
     const [originalContent, setOriginalContent] = useState("");
 
+    // 自动格式化函数
+    const autoFormat = (text: string): string => {
+        try {
+            // 尝试解析为JSON
+            const parsed = JSON.parse(text);
+            return JSON.stringify(parsed, null, 2);
+        } catch (error) {
+            // 如果不是JSON，按逗号换行
+            return text
+                .split(',')
+                .map(item => item.trim())
+                .join(',\n');
+        }
+    };
+
     useEffect(() => {
         // 从全局变量获取内容
         const initialContent = (window as any).__EXPAND_CONTENT__ || "";
-        setContent(initialContent);
-        setOriginalContent(initialContent);
+        // 自动格式化内容
+        const formattedContent = autoFormat(initialContent);
+        setContent(formattedContent);
+        setOriginalContent(initialContent); // 保存原始内容用于比较
     }, []);
 
     const handleClose = async () => {
@@ -40,9 +57,7 @@ export default function ExpandWindow() {
     const handleSave = async () => {
         try {
             setSaveStatus("saving");
-            // 将编辑后的内容添加到剪贴板历史
             await invoke("add_to_clipboard_history", { content });
-            // 同时复制到系统剪贴板
             await invoke("copy_to_clipboard", { content });
             setOriginalContent(content);
             setSaveStatus("saved");
@@ -55,11 +70,12 @@ export default function ExpandWindow() {
     };
 
     const handleCancel = () => {
-        setContent(originalContent);
+        const formattedOriginal = autoFormat(originalContent);
+        setContent(formattedOriginal);
         setIsEditing(false);
     };
 
-    const hasChanges = content !== originalContent;
+    const hasChanges = content !== autoFormat(originalContent);
     const contentSize = new Blob([content]).size;
     const formatSize = (size: number): string => {
         if (size < 1024) return `${size}B`;
@@ -69,7 +85,7 @@ export default function ExpandWindow() {
 
     return (
         <div className="expand-container">
-            <div className="expand-header">
+            <div className="expand-header" data-tauri-drag-region>
                 <div className="header-left">
                     <h1 className="expand-title">剪贴板内容编辑</h1>
                     <div className="content-info">
@@ -101,7 +117,7 @@ export default function ExpandWindow() {
                     ) : (
                         <>
                             <button
-                                className={`copy-button ${saveStatus}`}
+                                className={`action-copy-button ${saveStatus}`}
                                 onClick={handleCopy}
                                 title="复制全部内容"
                             >

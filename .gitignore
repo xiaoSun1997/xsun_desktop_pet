@@ -21,3 +21,5 @@ rad.json
 #Test results file
 TestResults.xml
 /dist/pet/move.gif
+dist/
+node_modules/

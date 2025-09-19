@@ -14,7 +14,11 @@
 ![img.png](public/result_show/img.png)
 ## 功能支持
 ### 1. 读取五条剪贴板历史记录
-![img_1.png](public/result_show/img_1.png)
+![img.png](public/result_show/clipboard-his.png)
+#### 1.1 复制可以复制信息
+![img.png](public/result_show/clipboard-his-copy.png)
+#### 1.2 向右的角标会打开新的窗口，json会格式化
+![img.png](public/result_show/clipboard-his-expand.png)
 ### 2. 读取系统监控 
 ![img_2.png](public/result_show/img_2.png)
 

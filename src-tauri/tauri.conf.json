@@ -38,8 +38,8 @@
       {
         "label": "clipboard",
         "title": "剪贴板历史",
-        "width": 300,
-        "height": 400,
+        "width": 400,
+        "height": 500,
         "decorations": false,
         "transparent": true,
         "resizable": false,

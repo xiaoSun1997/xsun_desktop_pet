@@ -263,8 +263,8 @@ export default function PetComponent() {
             const webview = new WebviewWindow("clipboard", {
                 url,
                 title: "剪贴板历史",
-                width: 300,
-                height: 400,
+                width: 400,
+                height: 500,
                 visible: true,
                 transparent: true,
                 decorations: false,
@@ -315,11 +315,12 @@ export default function PetComponent() {
         setShowBubbles(false);
     };
 
+    // 修改气泡渲染函数，添加更平滑的位置计算
     const renderBubbles = () => {
         const radius = 120;
         const count = bubbles.length;
         return bubbles.map((bubble, i) => {
-            const angle = (360 / count) * i - 90;
+            const angle = (360 / count) * i - 90; // 从-90度开始，确保第一个气泡在上方
             const rad = (angle * Math.PI) / 180;
             const x = radius * Math.cos(rad);
             const y = radius * Math.sin(rad);
@@ -329,6 +330,7 @@ export default function PetComponent() {
                     key={i}
                     className="bubble"
                     style={{
+                        // 保持原来的定位方式
                         transform: `translate(${x}px, ${y}px)`,
                         left: '50%',
                         top: '50%',
