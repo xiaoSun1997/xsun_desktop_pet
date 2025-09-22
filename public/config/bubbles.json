@@ -18,5 +18,9 @@
   {
     "label": "AI对话",
     "action": "open-ai"
+  },
+  {
+    "label": "关闭桌宠",
+    "action": "close-pet"
   }
 ]

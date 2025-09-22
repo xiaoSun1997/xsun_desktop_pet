@@ -362,6 +362,9 @@ export default function PetComponent() {
             case "open-ai":  // 添加这个
                 await createOrShowAIChat();
                 break;
+            case "close-pet":
+                await handleClosePet();
+                break;
             default:
                 console.warn(`未知的气泡动作: ${bubble.action}`);
         }
@@ -369,7 +372,16 @@ export default function PetComponent() {
         // 关闭气泡
         setShowBubbles(false);
     };
-
+// 添加关闭桌宠的函数
+    const handleClosePet = async () => {
+        try {
+            const appWindow = getCurrentWindow();
+            await appWindow.close();
+            console.log("桌宠已关闭");
+        } catch (error) {
+            console.error("关闭桌宠失败:", error);
+        }
+    };
     // 修改气泡渲染函数，添加更平滑的位置计算
     const renderBubbles = () => {
         const radius = 120;
@@ -415,6 +427,17 @@ export default function PetComponent() {
                 onPointerMove={onPointerMove}
                 onPointerUp={onPointerUp}
             />
+
+            {/* 添加透明的关闭按钮 */}
+            {!isSleeping && !showBubbles && (
+                <button
+                    className="pet-close-button"
+                    onClick={handleClosePet}
+                    title="关闭桌宠"
+                >
+                    <div className="pet-close-icon"></div>
+                </button>
+            )}
             {showBubbles && !isSleeping && <div className="bubbles">{renderBubbles()}</div>}
         </div>
     );
