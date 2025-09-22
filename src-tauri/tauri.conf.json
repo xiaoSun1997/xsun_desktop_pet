@@ -60,7 +60,11 @@
     ],
     "security": {
       "csp": null,
-      "capabilities": ["drag", "window-management", "main-capability"]
+      "capabilities": [
+        "drag",
+        "window-management",
+        "main-capability"
+      ]
     }
   },
   "bundle": {
@@ -68,7 +72,11 @@
       "config/*"
     ],
     "active": true,
-    "targets": "all",
+    "targets": [
+      "msi",
+      "nsis",
+      "dmg"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
