@@ -56,7 +56,20 @@
         "visible": false,
         "minWidth": 600,
         "minHeight": 500
+      },
+      {
+        "label": "translator",
+        "title": "有道翻译",
+        "width": 1000,
+        "height": 700,
+        "decorations": false,
+        "transparent": true,
+        "resizable": true,
+        "visible": false,
+        "minWidth": 800,
+        "minHeight": 600
       }
+
     ],
     "security": {
       "csp": null,

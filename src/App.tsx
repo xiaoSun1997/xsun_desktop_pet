@@ -5,6 +5,7 @@ import SystemInfoComponent from "./components/SystemInfoComponent";
 import Clipboard from "./components/ClipboardComponent";
 import ExpandWindow from "./components/ExpandWindow";
 import AIChatComponent from "./components/AIChatComponent";  // 添加这个导入
+import TranslatorComponent from "./components/TranslatorComponent"; // 添加这个导入
 
 
 function App() {
@@ -26,6 +27,8 @@ function App() {
         return <ExpandWindow />; // 系统监控窗口
     }else if (label === "ai-chat"){  // 添加这个
         return <AIChatComponent />;
+    } else   if (label === "translator") {  // 添加这个条件
+        return <TranslatorComponent />;
     }
 
     return null;

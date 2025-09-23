@@ -20,6 +20,10 @@
     "action": "open-ai"
   },
   {
+    "label": "有道翻译",
+    "action": "translator"
+  },
+  {
     "label": "关闭桌宠",
     "action": "close-pet"
   }

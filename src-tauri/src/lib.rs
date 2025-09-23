@@ -1,10 +1,10 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use sysinfo::System;
 use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 use tokio::time::Duration;
-use std::path::PathBuf;
 mod clipboard;
 mod window_utils;
 
@@ -130,7 +130,10 @@ struct ChatResponse {
 
 // 发送聊天消息
 #[tauri::command]
-async fn send_chat_message(app: tauri::AppHandle, messages: Vec<ChatMessage>) -> Result<String, String> {
+async fn send_chat_message(
+    app: tauri::AppHandle,
+    messages: Vec<ChatMessage>,
+) -> Result<String, String> {
     let config = load_deepseek_config(app).await?;
 
     let client = reqwest::Client::new();
@@ -186,8 +189,8 @@ async fn get_config_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 async fn save_deepseek_config(app: tauri::AppHandle, config: DeepSeekConfig) -> Result<(), String> {
     let config_path = get_config_path(&app).await?;
 
-    let config_json = serde_json::to_string_pretty(&config)
-        .map_err(|e| format!("序列化配置失败: {}", e))?;
+    let config_json =
+        serde_json::to_string_pretty(&config).map_err(|e| format!("序列化配置失败: {}", e))?;
 
     tokio::fs::write(&config_path, config_json)
         .await
@@ -198,13 +201,16 @@ async fn save_deepseek_config(app: tauri::AppHandle, config: DeepSeekConfig) -> 
 
 // 从本地加载配置
 #[tauri::command]
-async fn load_local_deepseek_config(app: tauri::AppHandle) -> Result<Option<DeepSeekConfig>, String> {
+async fn load_local_deepseek_config(
+    app: tauri::AppHandle,
+) -> Result<Option<DeepSeekConfig>, String> {
     let config_path = get_config_path(&app).await?;
 
     // 使用tokio的异步方法检查文件是否存在
     if !tokio::fs::try_exists(&config_path)
         .await
-        .map_err(|e| format!("检查配置文件是否存在失败: {}", e))? {
+        .map_err(|e| format!("检查配置文件是否存在失败: {}", e))?
+    {
         return Ok(None);
     }
 
@@ -223,7 +229,8 @@ async fn load_local_deepseek_config(app: tauri::AppHandle) -> Result<Option<Deep
 async fn load_deepseek_config(app: tauri::AppHandle) -> Result<DeepSeekConfig, String> {
     // 先尝试加载本地配置
     if let Ok(Some(local_config)) = load_local_deepseek_config(app.clone()).await {
-        if !local_config.api_key.is_empty() && local_config.api_key != "your_deepseek_api_key_here" {
+        if !local_config.api_key.is_empty() && local_config.api_key != "your_deepseek_api_key_here"
+        {
             return Ok(local_config);
         }
     }
@@ -238,8 +245,8 @@ async fn load_deepseek_config(app: tauri::AppHandle) -> Result<DeepSeekConfig, S
         .await
         .map_err(|e| format!("读取配置文件失败: {}。文件路径: {:?}", e, resource_path))?;
 
-    let config: DeepSeekConfig = serde_json::from_str(&config_content)
-        .map_err(|e| format!("解析配置文件失败: {}", e))?;
+    let config: DeepSeekConfig =
+        serde_json::from_str(&config_content).map_err(|e| format!("解析配置文件失败: {}", e))?;
 
     if config.api_key.is_empty() || config.api_key == "your_deepseek_api_key_here" {
         return Err("请配置有效的API Key".to_string());
@@ -247,7 +254,169 @@ async fn load_deepseek_config(app: tauri::AppHandle) -> Result<DeepSeekConfig, S
 
     Ok(config)
 }
+// 有道翻译
+#[derive(Serialize, Deserialize, Clone)]
+struct YoudaoConfig {
+    #[serde(rename = "appKey")]
+    app_key: String,
+    #[serde(rename = "appSecret")]
+    app_secret: String,
+    #[serde(rename = "baseUrl")]
+    base_url: String,
+}
 
+#[derive(Serialize, Deserialize)]
+struct YoudaoTranslateRequest {
+    q: String,
+    from: String,
+    to: String,
+    appKey: String,
+    salt: String,
+    sign: String,
+}
+
+#[derive(Serialize, Deserialize)]
+struct YoudaoTranslateResponse {
+    translation: Option<Vec<String>>,
+    errorCode: Option<String>,
+}
+
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+
+// 生成有道翻译签名
+// 修改签名生成函数
+fn generate_youdao_sign(app_key: &str, query: &str, salt: &str, app_secret: &str) -> String {
+    let sign_str = format!("{}{}{}{}", app_key, query, salt, app_secret);
+    format!("{:x}", md5::compute(sign_str.as_bytes()))
+}
+
+// 保存有道翻译配置
+#[tauri::command]
+async fn save_youdao_config(app: tauri::AppHandle, config: YoudaoConfig) -> Result<(), String> {
+    let config_path = get_youdao_config_path(&app).await?;
+
+    let config_json =
+        serde_json::to_string_pretty(&config).map_err(|e| format!("序列化配置失败: {}", e))?;
+
+    tokio::fs::write(&config_path, config_json)
+        .await
+        .map_err(|e| format!("保存配置文件失败: {}", e))?;
+
+    Ok(())
+}
+
+// 加载有道翻译配置
+#[tauri::command]
+async fn load_youdao_config(app: tauri::AppHandle) -> Result<Option<YoudaoConfig>, String> {
+    let config_path = get_youdao_config_path(&app).await?;
+
+    if !tokio::fs::try_exists(&config_path)
+        .await
+        .map_err(|e| format!("检查配置文件是否存在失败: {}", e))?
+    {
+        return Ok(None);
+    }
+
+    let config_content = tokio::fs::read_to_string(&config_path)
+        .await
+        .map_err(|e| format!("读取配置文件失败: {}", e))?;
+
+    let config: YoudaoConfig =
+        serde_json::from_str(&config_content).map_err(|e| format!("解析配置文件失败: {}", e))?;
+
+    Ok(Some(config))
+}
+
+// 获取有道翻译配置路径
+async fn get_youdao_config_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("无法获取应用数据目录: {}", e))?;
+
+    tokio::fs::create_dir_all(&app_data_dir)
+        .await
+        .map_err(|e| format!("创建配置目录失败: {}", e))?;
+
+    Ok(app_data_dir.join("youdao_config.json"))
+}
+
+// 有道翻译
+#[tauri::command]
+async fn youdao_translate(
+    app: tauri::AppHandle,
+    text: String,
+    from: String,
+    to: String,
+) -> Result<String, String> {
+    let config = load_youdao_config(app)
+        .await?
+        .ok_or_else(|| "请先配置有道翻译API密钥".to_string())?;
+
+    if config.app_key.is_empty() || config.app_secret.is_empty() {
+        return Err("API密钥配置无效".to_string());
+    }
+
+    // 处理等号分割的翻译
+    let (prefix, translate_text) = if text.contains('=') {
+        let parts: Vec<&str> = text.splitn(2, '=').collect();
+        if parts.len() == 2 {
+            (format!("{}=", parts[0]), parts[1].to_string())
+        } else {
+            (String::new(), text)
+        }
+    } else {
+        (String::new(), text)
+    };
+
+    let salt = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+        .to_string();
+
+    let sign = generate_youdao_sign(&config.app_key, &translate_text, &salt, &config.app_secret);
+
+    let client = reqwest::Client::new();
+    let mut params = std::collections::HashMap::new();
+    params.insert("q", translate_text.as_str());
+    params.insert("from", from.as_str());
+    params.insert("to", to.as_str());
+    params.insert("appKey", config.app_key.as_str());
+    params.insert("salt", salt.as_str());
+    params.insert("sign", sign.as_str());
+
+    let response = client
+        .post(&config.base_url)
+        .form(&params)
+        .send()
+        .await
+        .map_err(|e| format!("发送请求失败: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let error_text = response.text().await.unwrap_or_default();
+        return Err(format!("API请求失败 ({}): {}", status, error_text));
+    }
+
+    let translate_response: YoudaoTranslateResponse = response
+        .json()
+        .await
+        .map_err(|e| format!("解析响应失败: {}", e))?;
+
+    if let Some(translations) = translate_response.translation {
+        if let Some(translation) = translations.first() {
+            Ok(format!("{}{}", prefix, translation))
+        } else {
+            Err("翻译结果为空".to_string())
+        }
+    } else if let Some(error_code) = translate_response.errorCode {
+        Err(format!("翻译失败，错误代码: {}", error_code))
+    } else {
+        Err("翻译失败，未知错误".to_string())
+    }
+}
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -269,7 +438,10 @@ pub fn run() {
             load_deepseek_config,
             send_chat_message,
             save_deepseek_config,
-            load_local_deepseek_config
+            load_local_deepseek_config,
+            save_youdao_config,
+            load_youdao_config,
+            youdao_translate
         ])
         .setup(|app| {
             // 窗口初始化

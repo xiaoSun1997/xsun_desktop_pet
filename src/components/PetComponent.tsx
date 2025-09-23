@@ -350,6 +350,62 @@ export default function PetComponent() {
             console.error("创建AI对话窗口失败：", err);
         }
     };
+
+    // 创建或显示翻译器窗口 (新增)
+    const createOrShowTranslator = async () => {
+        const windows = await getAllWindows();
+        const existing = windows.find((w) => w.label === "translator");
+
+        if (existing) {
+            try {
+                await existing.show();
+                await existing.setFocus();
+                return;
+            } catch (e) {
+                console.warn("已有翻译器窗口，但 show/setFocus 失败，尝试重新创建：", e);
+            }
+        }
+
+        const url = import.meta.env.DEV ? "http://localhost:1420" : "index.html";
+
+        try {
+            const webview = new WebviewWindow("translator", {
+                url,
+                title: "有道翻译",
+                width: 1000,
+                height: 700,
+                visible: true,
+                transparent: true,
+                decorations: false,
+                resizable: true,
+                minWidth: 800,
+                minHeight: 600,
+            });
+
+            await new Promise<void>((resolve, reject) => {
+                const timeout = setTimeout(() => {
+                    reject(new Error("等待翻译器窗口创建超时"));
+                }, 5000);
+
+                webview.once("tauri://created", () => {
+                    clearTimeout(timeout);
+                    resolve();
+                });
+
+                webview.once("tauri://error", (e) => {
+                    clearTimeout(timeout);
+                    reject(new Error(`创建翻译器窗口时出错: ${JSON.stringify(e)}`));
+                });
+            });
+
+            await webview.show();
+            await webview.setFocus();
+            console.log("翻译器窗口已创建并显示");
+        } catch (err) {
+            console.error("创建翻译器窗口失败：", err);
+        }
+    };
+
     // 处理气泡点击事件
     const handleBubbleClick = async (bubble: Bubble) => {
         switch (bubble.action) {
@@ -359,8 +415,11 @@ export default function PetComponent() {
             case "open-clipboard":
                 await createOrShowClipboard();
                 break;
-            case "open-ai":  // 添加这个
+            case "open-ai":
                 await createOrShowAIChat();
+                break;
+            case "translator":  // 添加这个
+                await createOrShowTranslator();
                 break;
             case "close-pet":
                 await handleClosePet();
@@ -372,6 +431,9 @@ export default function PetComponent() {
         // 关闭气泡
         setShowBubbles(false);
     };
+
+
+
 // 添加关闭桌宠的函数
     const handleClosePet = async () => {
         try {

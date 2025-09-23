@@ -24,9 +24,15 @@
 ### 3. AI对话
 ![img_2.png](public/result_show/ai-chat.png)
 ![img_2.png](public/result_show/ai-chat-config.png)
+### 4. 有道翻译
+![img_3.png](public/result_show/yd_config.png)
+#### 4.1 因为之前做国际化功能时，多种语言打开多个窗口翻译比较痛苦，特地做了兼容
+![img_3.png](public/result_show/yd_res1.png)
+#### 4.2 对于国际化相关功能，若是出现=号，可以直接复制粘贴，翻译时会忽略‘=’前面的内容
+![img_3.png](public/result_show/yd_res2.png)
+
 
 ## 后续功能规划 
 1. 添加json 对比功能
-2. AI 聊天对话等
-3. 支持点击穿透的 每日日程安排（TODO List等）
-4. 有什么想要添加的功能欢迎给出你的idea
+2. 支持点击穿透的 每日日程安排（TODO List等）
+3. 有什么想要添加的功能欢迎给出你的idea
