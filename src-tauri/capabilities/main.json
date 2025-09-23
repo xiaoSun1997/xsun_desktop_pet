@@ -16,6 +16,7 @@
     "core:window:allow-set-focus",
     "core:window:allow-start-dragging",
     "core:window:allow-set-ignore-cursor-events",
+    "core:window:allow-set-fullscreen",
     "core:webview:allow-create-webview-window",
     "core:webview:allow-webview-position",
     "core:webview:allow-webview-size",

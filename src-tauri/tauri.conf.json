@@ -68,8 +68,19 @@
         "visible": false,
         "minWidth": 800,
         "minHeight": 600
+      },
+      {
+        "label": "calendar",
+        "title": "智能日历",
+        "width": 800,
+        "height": 600,
+        "decorations": false,
+        "transparent": true,
+        "resizable": true,
+        "visible": false,
+        "minWidth": 600,
+        "minHeight": 500
       }
-
     ],
     "security": {
       "csp": null,
@@ -101,7 +112,8 @@
   "plugins": {
     "fs": {
       "scope": [
-        "$RESOURCE/**"
+        "$RESOURCE/**",
+        "$APPDATA/**"
       ]
     }
   }

@@ -3,6 +3,7 @@
 
 mod window_utils;
 mod clipboard;
+mod calendar;
 
 fn main() {
     xsun_desktop_pet_lib::run()

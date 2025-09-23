@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 use sysinfo::System;
 use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 use tokio::time::Duration;
+mod calendar;
 mod clipboard;
 mod window_utils;
 
@@ -417,6 +418,230 @@ async fn youdao_translate(
         Err("翻译失败，未知错误".to_string())
     }
 }
+
+// 日历相关结构体
+#[derive(Serialize, Deserialize, Clone)]
+struct TodoItem {
+    id: String,
+    content: String,
+    completed: bool,
+    created_at: i64,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+struct DayTodos {
+    date: String,
+    todos: Vec<TodoItem>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+struct CalendarSettings {
+    #[serde(rename = "backgroundImages")]
+    background_images: Vec<String>,
+    #[serde(rename = "rotationInterval")]
+    rotation_interval: u32, // 分钟
+}
+
+// 日历相关命令
+#[tauri::command]
+async fn get_todos_for_date(app: AppHandle, date: String) -> Result<Vec<TodoItem>, String> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("无法获取应用数据目录: {}", e))?;
+
+    let todos_file = app_data_dir.join("todos.json");
+
+    if !tokio::fs::try_exists(&todos_file).await.unwrap_or(false) {
+        return Ok(vec![]);
+    }
+
+    let content = tokio::fs::read_to_string(&todos_file)
+        .await
+        .map_err(|e| format!("读取todolist失败: {}", e))?;
+
+    let all_todos: HashMap<String, Vec<TodoItem>> =
+        serde_json::from_str(&content).unwrap_or_default();
+
+    Ok(all_todos.get(&date).cloned().unwrap_or_default())
+}
+
+#[tauri::command]
+async fn save_todos_for_date(
+    app: AppHandle,
+    date: String,
+    todos: Vec<TodoItem>,
+) -> Result<(), String> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("无法获取应用数据目录: {}", e))?;
+
+    tokio::fs::create_dir_all(&app_data_dir)
+        .await
+        .map_err(|e| format!("创建数据目录失败: {}", e))?;
+
+    let todos_file = app_data_dir.join("todos.json");
+
+    let mut all_todos: HashMap<String, Vec<TodoItem>> =
+        if tokio::fs::try_exists(&todos_file).await.unwrap_or(false) {
+            let content = tokio::fs::read_to_string(&todos_file)
+                .await
+                .unwrap_or_default();
+            serde_json::from_str(&content).unwrap_or_default()
+        } else {
+            HashMap::new()
+        };
+
+    all_todos.insert(date, todos);
+
+    let content = serde_json::to_string_pretty(&all_todos)
+        .map_err(|e| format!("序列化todolist失败: {}", e))?;
+
+    tokio::fs::write(&todos_file, content)
+        .await
+        .map_err(|e| format!("保存todolist失败: {}", e))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn open_todo_window(date: String, app: AppHandle) -> Result<(), String> {
+    use tauri::{WebviewUrl, WebviewWindowBuilder};
+
+    let window_label = format!("todo_{}", date);
+
+    // 检查窗口是否已存在
+    if let Some(existing_window) = app.get_webview_window(&window_label) {
+        existing_window.show().map_err(|e| e.to_string())?;
+        existing_window.set_focus().map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+
+    let webview_window =
+        WebviewWindowBuilder::new(&app, &window_label, WebviewUrl::App("index.html".into()))
+            .title(&format!("{} - 待办事项", date))
+            .inner_size(500.0, 600.0)
+            .visible(true)
+            .transparent(true)
+            .decorations(false)
+            .resizable(true)
+            .initialization_script(&format!(
+                "window.__TODO_DATE__ = {};",
+                serde_json::to_string(&date).map_err(|e| e.to_string())?
+            ))
+            .build()
+            .map_err(|e| format!("创建待办窗口失败: {}", e))?;
+
+    webview_window
+        .show()
+        .map_err(|e| format!("显示待办窗口失败: {}", e))?;
+    webview_window
+        .set_focus()
+        .map_err(|e| format!("聚焦待办窗口失败: {}", e))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn save_calendar_settings(app: AppHandle, settings: CalendarSettings) -> Result<(), String> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("无法获取应用数据目录: {}", e))?;
+
+    tokio::fs::create_dir_all(&app_data_dir)
+        .await
+        .map_err(|e| format!("创建配置目录失败: {}", e))?;
+
+    let settings_file = app_data_dir.join("calendar_settings.json");
+
+    let settings_json =
+        serde_json::to_string_pretty(&settings).map_err(|e| format!("序列化配置失败: {}", e))?;
+
+    tokio::fs::write(&settings_file, settings_json)
+        .await
+        .map_err(|e| format!("保存配置文件失败: {}", e))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn load_calendar_settings(app: AppHandle) -> Result<CalendarSettings, String> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("无法获取应用数据目录: {}", e))?;
+
+    let settings_file = app_data_dir.join("calendar_settings.json");
+
+    if !tokio::fs::try_exists(&settings_file).await.unwrap_or(false) {
+        return Ok(CalendarSettings {
+            background_images: vec!["data/img.jpeg".to_string()],
+            rotation_interval: 30, // 默认30分钟
+        });
+    }
+
+    let content = tokio::fs::read_to_string(&settings_file)
+        .await
+        .map_err(|e| format!("读取配置文件失败: {}", e))?;
+
+    let settings: CalendarSettings =
+        serde_json::from_str(&content).map_err(|e| format!("解析配置文件失败: {}", e))?;
+
+    Ok(settings)
+}
+
+#[tauri::command]
+async fn upload_background_image(
+    app: AppHandle,
+    image_data: Vec<u8>,
+    filename: String,
+) -> Result<String, String> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("无法获取应用数据目录: {}", e))?;
+
+    let images_dir = app_data_dir.join("background_images");
+    tokio::fs::create_dir_all(&images_dir)
+        .await
+        .map_err(|e| format!("创建图片目录失败: {}", e))?;
+
+    let file_path = images_dir.join(&filename);
+    tokio::fs::write(&file_path, &image_data)
+        .await
+        .map_err(|e| format!("保存图片失败: {}", e))?;
+
+    // 返回相对路径
+    Ok(format!("background_images/{}", filename))
+}
+
+#[tauri::command]
+async fn delete_background_image(app: AppHandle, image_path: String) -> Result<(), String> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("无法获取应用数据目录: {}", e))?;
+
+    let file_path = app_data_dir.join(&image_path);
+
+    if tokio::fs::try_exists(&file_path).await.unwrap_or(false) {
+        tokio::fs::remove_file(&file_path)
+            .await
+            .map_err(|e| format!("删除图片失败: {}", e))?;
+    }
+
+    Ok(())
+}
+#[tauri::command]
+async fn refresh_calendar_data(app: AppHandle) -> Result<(), String> {
+    // 向所有日历窗口发送刷新事件
+    if let Some(window) = app.get_webview_window("calendar") {
+        let _ = window.emit("refresh-calendar", ());
+    }
+    Ok(())
+}
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -441,7 +666,15 @@ pub fn run() {
             load_local_deepseek_config,
             save_youdao_config,
             load_youdao_config,
-            youdao_translate
+            youdao_translate,
+            get_todos_for_date,
+            save_todos_for_date,
+            open_todo_window,
+            save_calendar_settings,
+            load_calendar_settings,
+            upload_background_image,
+            delete_background_image,
+            refresh_calendar_data
         ])
         .setup(|app| {
             // 窗口初始化

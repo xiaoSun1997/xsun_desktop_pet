@@ -24,6 +24,10 @@
     "action": "translator"
   },
   {
+    "label": "日历TODO",
+    "action": "calendar"
+  },
+  {
     "label": "关闭桌宠",
     "action": "close-pet"
   }

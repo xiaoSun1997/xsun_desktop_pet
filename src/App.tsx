@@ -6,7 +6,8 @@ import Clipboard from "./components/ClipboardComponent";
 import ExpandWindow from "./components/ExpandWindow";
 import AIChatComponent from "./components/AIChatComponent";  // 添加这个导入
 import TranslatorComponent from "./components/TranslatorComponent"; // 添加这个导入
-
+import CalendarComponent from "./components/CalendarComponent";
+import TodoWindow from "./components/TodoWindow";
 
 function App() {
     const [label, setLabel] = useState<string>("");
@@ -29,6 +30,10 @@ function App() {
         return <AIChatComponent />;
     } else   if (label === "translator") {  // 添加这个条件
         return <TranslatorComponent />;
+    } else if (label === "calendar"){
+        return <CalendarComponent />;
+    } else if (label.startsWith("todo_")){
+        return <TodoWindow />;
     }
 
     return null;
