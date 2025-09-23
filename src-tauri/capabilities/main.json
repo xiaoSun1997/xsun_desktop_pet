@@ -26,6 +26,10 @@
     "core:app:default",
     "core:event:default",
     "core:tray:default",
-    "core:window:allow-set-always-on-top"
+    "core:window:allow-set-always-on-top",
+    "dialog:allow-open",
+    "dialog:default",
+    "fs:allow-read-file",
+    "fs:default"
   ]
 }

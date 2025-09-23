@@ -1,11 +1,12 @@
-import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow, getAllWindows } from "@tauri-apps/api/window";
-import { open } from "@tauri-apps/plugin-dialog";
-import { readFile } from "@tauri-apps/plugin-fs";
+import {useEffect, useState} from "react";
+import {invoke} from "@tauri-apps/api/core";
+import {getCurrentWindow, getAllWindows} from "@tauri-apps/api/window";
+import {open} from "@tauri-apps/plugin-dialog";
+import {readFile} from "@tauri-apps/plugin-fs";
 import "./CalendarComponent.css";
-import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+import {WebviewWindow} from "@tauri-apps/api/webviewWindow";
 import {listen} from "@tauri-apps/api/event";
+import {LunarCalendar} from "../utils/lunarUtils";
 
 type CalendarSettings = {
     backgroundImages: string[];
@@ -28,11 +29,12 @@ export default function CalendarComponent() {
     const [showSettings, setShowSettings] = useState(false);
     const [currentBgIndex, setCurrentBgIndex] = useState(0);
     const [isFullscreen, setIsFullscreen] = useState(false);
-    const [monthTodos, setMonthTodos] = useState<{[date: string]: TodoItem[]}>({});
+    const [monthTodos, setMonthTodos] = useState<{ [date: string]: TodoItem[] }>({});
     const [tempSettings, setTempSettings] = useState<CalendarSettings>({
         backgroundImages: ["data/img.jpeg"],
         rotationInterval: 30
     });
+
     useEffect(() => {
         const unlisten = listen('refresh-calendar', () => {
             refreshCalendarData();
@@ -42,6 +44,7 @@ export default function CalendarComponent() {
             unlisten.then(fn => fn());
         };
     }, []);
+
     useEffect(() => {
         loadSettings();
         loadMonthTodos();
@@ -69,7 +72,7 @@ export default function CalendarComponent() {
 
     const saveSettings = async () => {
         try {
-            await invoke('save_calendar_settings', { settings: tempSettings });
+            await invoke('save_calendar_settings', {settings: tempSettings});
             setSettings(tempSettings);
             setShowSettings(false);
         } catch (error) {
@@ -82,12 +85,12 @@ export default function CalendarComponent() {
         const month = currentDate.getMonth();
         const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-        const todos: {[date: string]: TodoItem[]} = {};
+        const todos: { [date: string]: TodoItem[] } = {};
 
         for (let day = 1; day <= daysInMonth; day++) {
             const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
             try {
-                const dayTodos = await invoke<TodoItem[]>('get_todos_for_date', { date: dateStr });
+                const dayTodos = await invoke<TodoItem[]>('get_todos_for_date', {date: dateStr});
                 if (dayTodos.length > 0) {
                     todos[dateStr] = dayTodos;
                 }
@@ -99,8 +102,6 @@ export default function CalendarComponent() {
         setMonthTodos(todos);
     };
 
-    // 沿用现有格式创建待办窗口
-    // 修复窗口创建和数据传递
     const createOrShowTodoWindow = async (date: Date) => {
         const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
         const windowLabel = `todo_${dateStr}`;
@@ -118,7 +119,6 @@ export default function CalendarComponent() {
             }
         }
 
-        // 修复URL传参方式
         const baseUrl = import.meta.env.DEV ? "http://localhost:1420" : "index.html";
         const url = `${baseUrl}?date=${dateStr}&type=todo`;
 
@@ -128,7 +128,7 @@ export default function CalendarComponent() {
                 title: `${dateStr} - 待办事项`,
                 width: 500,
                 height: 600,
-                visible: false, // 先隐藏，等数据传递完成后再显示
+                visible: false,
                 transparent: true,
                 decorations: false,
                 resizable: true,
@@ -144,10 +144,9 @@ export default function CalendarComponent() {
                 webview.once("tauri://created", async () => {
                     clearTimeout(timeout);
 
-                    // 等待窗口加载完成后发送数据
                     setTimeout(async () => {
                         try {
-                            await webview.emit('set-todo-date', { date: dateStr });
+                            await webview.emit('set-todo-date', {date: dateStr});
                             await webview.show();
                             await webview.setFocus();
                             resolve();
@@ -169,13 +168,15 @@ export default function CalendarComponent() {
             console.error("创建待办窗口失败：", err);
         }
     };
-// 添加刷新数据的方法
+
     const refreshCalendarData = async () => {
         await loadMonthTodos();
     };
 
     const handleDateDoubleClick = async (date: Date) => {
-        await createOrShowTodoWindow(date);
+        if (!isFullscreen) {
+            await createOrShowTodoWindow(date);
+        }
     };
 
     const uploadImage = async () => {
@@ -183,12 +184,12 @@ export default function CalendarComponent() {
             const selected = await open({
                 multiple: false,
                 filters: [{
-                    name: 'Images',
-                    extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp']
+                    name: '图片',
+                    extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp']
                 }]
             });
 
-            if (selected) {
+            if (selected && typeof selected === 'string') {
                 const imageData = await readFile(selected);
                 const filename = `bg_${Date.now()}.${selected.split('.').pop()}`;
 
@@ -204,6 +205,7 @@ export default function CalendarComponent() {
             }
         } catch (error) {
             console.error('上传图片失败:', error);
+            alert('上传图片失败，请检查文件格式');
         }
     };
 
@@ -214,7 +216,7 @@ export default function CalendarComponent() {
         }
 
         try {
-            await invoke('delete_background_image', { imagePath });
+            await invoke('delete_background_image', {imagePath});
             setTempSettings(prev => ({
                 ...prev,
                 backgroundImages: prev.backgroundImages.filter((_, i) => i !== index)
@@ -228,13 +230,12 @@ export default function CalendarComponent() {
         const window = getCurrentWindow();
         if (!isFullscreen) {
             await window.setFullscreen(true);
-            await window.setAlwaysOnTop(true);
-            // 设置点击穿透
-            await invoke('set_click_through', { enabled: true });
+            await window.setAlwaysOnTop(false);
+            await invoke('set_click_through', {enabled: true});
         } else {
             await window.setFullscreen(false);
             await window.setAlwaysOnTop(false);
-            await invoke('set_click_through', { enabled: false });
+            await invoke('set_click_through', {enabled: false});
         }
         setIsFullscreen(!isFullscreen);
     };
@@ -252,12 +253,22 @@ export default function CalendarComponent() {
 
         const days = [];
 
-        // 空白格子
-        for (let i = 0; i < firstDay; i++) {
-            days.push(<div key={`empty-${i}`} className="calendar-day empty"></div>);
+        // 上个月的日期（透明显示）
+        const prevMonthDays = new Date(year, month, 0).getDate();
+        for (let i = firstDay - 1; i >= 0; i--) {
+            const day = prevMonthDays - i;
+            const date = new Date(year, month - 1, day);
+            days.push(
+                <div key={`prev-${day}`} className="calendar-day prev-month">
+                    <div className="day-number">{day}</div>
+                    <div className="lunar-info">
+                        {getLunarInfo(date)}
+                    </div>
+                </div>
+            );
         }
 
-        // 日期格子
+        // 当月日期
         for (let day = 1; day <= daysInMonth; day++) {
             const date = new Date(year, month, day);
             const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -265,6 +276,7 @@ export default function CalendarComponent() {
             const dayTodos = monthTodos[dateStr] || [];
             const completedCount = dayTodos.filter(t => t.completed).length;
             const pendingCount = dayTodos.filter(t => !t.completed).length;
+            const solarTerm = LunarCalendar.getSolarTerm(date);
 
             days.push(
                 <div
@@ -275,6 +287,7 @@ export default function CalendarComponent() {
                     <div className="day-number">{day}</div>
                     <div className="lunar-info">
                         {getLunarInfo(date)}
+                        {solarTerm && <div className="solar-term">{solarTerm}</div>}
                     </div>
                     {(pendingCount > 0 || completedCount > 0) && (
                         <div className="todo-indicator">
@@ -282,6 +295,21 @@ export default function CalendarComponent() {
                             {completedCount > 0 && <span className="completed">{completedCount}</span>}
                         </div>
                     )}
+                </div>
+            );
+        }
+
+        // 下个月的日期（透明显示）
+        const totalCells = 42; // 6行7列
+        const remainingCells = totalCells - days.length;
+        for (let day = 1; day <= remainingCells; day++) {
+            const date = new Date(year, month + 1, day);
+            days.push(
+                <div key={`next-${day}`} className="calendar-day next-month">
+                    <div className="day-number">{day}</div>
+                    <div className="lunar-info">
+                        {getLunarInfo(date)}
+                    </div>
                 </div>
             );
         }
@@ -301,23 +329,29 @@ export default function CalendarComponent() {
                     const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
                     const dayTodos = monthTodos[dateStr] || [];
                     const isToday = date.toDateString() === today.toDateString();
+                    const solarTerm = LunarCalendar.getSolarTerm(date);
 
                     return (
-                        <div key={index} className={`fullscreen-day ${isToday ? 'today' : ''}`}>
+                        <div key={index} className={`fullscreen-day ${isToday ? 'today-special' : ''}`}>
                             <div className="weekday-header">{weekDay}</div>
-                            <div className="date-number">{date.getDate()}</div>
-                            <div className="lunar-small">{getLunarInfo(date)}</div>
+                            <div className="date-section">
+                                <div className="date-number">{date.getDate()}</div>
+                                <div className="date-info">
+                                    <div className="lunar-small">{getLunarInfo(date)}</div>
+                                    {solarTerm && <div className="solar-term-small">{solarTerm}</div>}
+                                </div>
+                            </div>
                             <div className="fullscreen-todos">
-                                {dayTodos.slice(0, 5).map((todo, todoIndex) => (
+                                {dayTodos.slice(0, 3).map((todo, todoIndex) => (
                                     <div
                                         key={todoIndex}
                                         className={`fullscreen-todo ${todo.completed ? 'completed' : ''}`}
                                     >
-                                        {todo.content.length > 10 ? todo.content.substring(0, 10) + '...' : todo.content}
+                                        {todo.content.length > 12 ? todo.content.substring(0, 12) + '...' : todo.content}
                                     </div>
                                 ))}
-                                {dayTodos.length > 5 && (
-                                    <div className="more-todos">+{dayTodos.length - 5}</div>
+                                {dayTodos.length > 3 && (
+                                    <div className="more-todos">还有{dayTodos.length - 3}项</div>
                                 )}
                             </div>
                         </div>
@@ -330,13 +364,8 @@ export default function CalendarComponent() {
         );
     };
 
-    // 简化的农历信息获取
     const getLunarInfo = (date: Date): string => {
-        // 这里应该使用真正的农历转换库，这里只是示例
-        const day = date.getDate();
-        if (day === 1) return "初一";
-        if (day === 15) return "十五";
-        return "";
+        return LunarCalendar.formatLunarDate(date);
     };
 
     const currentBgImage = settings.backgroundImages[currentBgIndex] || "data/img.jpeg";
@@ -346,7 +375,7 @@ export default function CalendarComponent() {
             <div
                 className="calendar-fullscreen"
                 style={{
-                    backgroundImage: `linear-gradient(to right, rgba(255,255,255,0.9), rgba(255,255,255,0.1)), url(${currentBgImage})`,
+                    backgroundImage: `url(${currentBgImage})`,
                     backgroundSize: 'cover',
                     backgroundPosition: 'center'
                 }}
@@ -365,21 +394,24 @@ export default function CalendarComponent() {
                 backgroundPosition: 'center'
             }}
         >
+            {/* 整个表头都支持拖动 */}
             <div className="calendar-header" data-tauri-drag-region>
-                <div className="header-left">
-                    <h1 className="calendar-title">智能日历</h1>
-                    <div className="current-month">
+                <div className="header-left" data-tauri-drag-region>
+                    <h1 className="calendar-title" data-tauri-drag-region>智能日历</h1>
+                    <div className="current-month" data-tauri-drag-region>
                         {currentDate.getFullYear()}年{currentDate.getMonth() + 1}月
                     </div>
                 </div>
                 <div className="header-actions">
-                    <button className="nav-button" onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() - 1)))}>
+                    <button className="nav-button"
+                            onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() - 1)))}>
                         ←
                     </button>
                     <button className="today-button" onClick={() => setCurrentDate(new Date())}>
                         今天
                     </button>
-                    <button className="nav-button" onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() + 1)))}>
+                    <button className="nav-button"
+                            onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() + 1)))}>
                         →
                     </button>
                     <button className="settings-button" onClick={() => setShowSettings(true)}>
@@ -420,7 +452,7 @@ export default function CalendarComponent() {
                                 <div className="image-list">
                                     {tempSettings.backgroundImages.map((img, index) => (
                                         <div key={index} className="image-item">
-                                            <img src={img} alt={`背景${index + 1}`} />
+                                            <img src={img} alt={`背景${index + 1}`}/>
                                             <button onClick={() => deleteImage(img, index)}>删除</button>
                                         </div>
                                     ))}

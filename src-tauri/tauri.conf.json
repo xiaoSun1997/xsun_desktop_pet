@@ -11,16 +11,7 @@
   },
   "app": {
     "windows": [
-      {
-        "label": "main",
-        "title": "系统信息",
-        "width": 400,
-        "height": 500,
-        "decorations": false,
-        "transparent": true,
-        "resizable": false,
-        "alwaysOnTop": false
-      },
+
       {
         "label": "pet",
         "title": "桌宠",
@@ -34,52 +25,6 @@
         "shadow": false,
         "skipTaskbar": true,
         "focusable": true
-      },
-      {
-        "label": "clipboard",
-        "title": "剪贴板历史",
-        "width": 400,
-        "height": 500,
-        "decorations": false,
-        "transparent": true,
-        "resizable": false,
-        "visible": false
-      },
-      {
-        "label": "ai-chat",
-        "title": "AI对话助手",
-        "width": 800,
-        "height": 600,
-        "decorations": false,
-        "transparent": true,
-        "resizable": true,
-        "visible": false,
-        "minWidth": 600,
-        "minHeight": 500
-      },
-      {
-        "label": "translator",
-        "title": "有道翻译",
-        "width": 1000,
-        "height": 700,
-        "decorations": false,
-        "transparent": true,
-        "resizable": true,
-        "visible": false,
-        "minWidth": 800,
-        "minHeight": 600
-      },
-      {
-        "label": "calendar",
-        "title": "智能日历",
-        "width": 800,
-        "height": 600,
-        "decorations": false,
-        "transparent": true,
-        "resizable": true,
-        "visible": false,
-        "minWidth": 600,
-        "minHeight": 500
       }
     ],
     "security": {
