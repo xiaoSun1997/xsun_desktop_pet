@@ -296,93 +296,381 @@
     border: 1px solid rgba(56, 161, 105, 0.3);
 }
 
-/* === 全屏布局：靠右 + 渐隐 === */
-.calendar-fullscreen {
-    width: 100vw;
-    height: 100vh;
-    display: flex;
-    align-items: stretch;
-    justify-content: flex-end; /* 全部日期靠右 */
-    padding: 0 20px 0 0;
-    overflow: hidden;
-    gap: 10px;
-
-    /* 左右两端淡出效果 */
-    -webkit-mask-image: linear-gradient(to left, transparent 0%, black 10%, black 90%, transparent 100%);
-    -webkit-mask-repeat: no-repeat;
-    -webkit-mask-size: 100% 100%;
-    mask-image: linear-gradient(to left, transparent 0%, black 10%, black 90%, transparent 100%);
-    mask-repeat: no-repeat;
-    mask-size: 100% 100%;
-}
-
-.fullscreen-day {
-    min-width: 12vw;
-    max-width: 12vw;
-    height: 100%;
-    margin: 0;
-    border-radius: 16px;
-    padding: 12px 10px;
-    background: rgba(255, 255, 255, 0.65);
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.25);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-    overflow-y: auto;
+/* 上传图片预览尺寸调整 */
+.background-image-preview {
+    width: 120px;
+    height: 80px;
+    object-fit: cover;
+    border-radius: 8px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    cursor: pointer;
     transition: all 0.3s ease;
 }
 
-.fullscreen-day.today-special {
-    min-width: 18vw; /* 普通的 1.5 倍 */
-    max-width: 18vw;
-    background: linear-gradient(135deg, rgba(102,126,234,0.12), rgba(118,75,162,0.1));
-    backdrop-filter: blur(12px);
-    box-shadow: inset 0 0 18px rgba(102,126,234,0.15);
+.background-image-preview:hover {
+    transform: scale(1.05);
+    border-color: rgba(102, 126, 234, 0.5);
 }
 
-/* 当前日期只显示一条 todo */
-.fullscreen-day.today-special .fullscreen-todo:nth-child(n+2) {
-    display: none;
+/* === 全屏布局：去除透明化，图片置底 === */
+.calendar-fullscreen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: -1;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    display: flex;
+    align-items: stretch;
+    justify-content: flex-end;
+    padding: 0;
+    overflow: hidden;
+}
+
+/* 右侧日期容器 - 修复垂直分布问题 */
+.fullscreen-dates-container {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-evenly; /* 改为space-evenly确保完全均匀分布 */
+    align-items: flex-end;
+    height: 100vh;
+    width: auto;
+    padding: 10px 15px 10px 0; /* 减少上下padding */
+    box-sizing: border-box;
+}
+
+.fullscreen-day {
+    min-width: 250px; /* 稍微减小宽度 */
+    max-width: 250px;
+    height: calc((100vh - 20px) / 7 - 35px); /* 精确计算高度，确保7个卡片能完美分布 */
+    margin: 0;
+    border-radius: 12px;
+    padding: 10px 14px; /* 减少内边距 */
+    background: linear-gradient(135deg, rgba(102,126,234,0.05), rgba(118,75,162,0.12));
+    backdrop-filter: blur(15px);
+    border: 5px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    overflow: hidden; /* 完全禁止滚动 */
+    transition: all 0.3s ease;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.fullscreen-day.today-special {
+    min-width: 250px; /* 今日卡片稍大 */
+    max-width: 250px;
+    background: linear-gradient(135deg, rgba(255, 200, 0, 0.85), rgba(255, 69, 0, 0.12));
+    backdrop-filter: blur(18px);
+    box-shadow: 0 6px 30px rgba(102,126,234,0.2);
+    border: 2px solid rgba(102,126,234,0.3);
+    height: calc((100vh - 20px) / 7 + 30px); /* 精确计算高度，确保7个卡片能完美分布 */
+}
+
+.fullscreen-day .day-number {
+    font-size: 16px; /* 稍微减小字体 */
+    font-weight: 700;
+    color: #2d3748;
+    margin-bottom: 6px;
+    text-align: right;
+    flex-shrink: 0;
 }
 
 .fullscreen-day .weekday-header {
-    font-size: 16px;
-    font-weight: 700;
-    color: rgba(74, 85, 104, 0.85);
-    margin-bottom: 12px;
+    font-size: 13px;
+    font-weight: 600;
+    color: rgba(74, 85, 104, 0.7);
+    margin-bottom: 6px;
     background: none;
     padding: 0;
     border: none;
     box-shadow: none;
+    text-align: right;
+    flex-shrink: 0;
 }
 
-/* todo 容器去背景 */
+.fullscreen-day .lunar-info {
+    font-size: 11px;
+    color: #718096;
+    margin-bottom: 6px;
+    text-align: right;
+    flex-shrink: 0;
+}
+
+.fullscreen-day .solar-term {
+    font-size: 9px;
+    padding: 2px 4px;
+    margin-bottom: 6px;
+    align-self: flex-end;
+    flex-shrink: 0;
+}
+
+/* todo 容器 - 确保不会超出高度 */
 .fullscreen-todos {
     flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    max-height: 220px;
-    padding: 0;
-    background: none;
-    backdrop-filter: none;
+    gap: 3px; /* 减小间距 */
+    overflow: hidden; /* 禁止滚动 */
+    min-height: 0; /* 允许收缩 */
 }
 
-/* todo 项：天蓝透明 */
+/* todo 项样式 - 限制显示数量 */
 .fullscreen-todo {
-    background: rgba(135, 206, 250, 0.35);
-    padding: 12px 14px;
-    border-radius: 12px;
-    font-size: 14px;
-    text-align: left;
-    border-left: 4px solid rgba(70, 130, 180, 0.7);
+    background: rgba(248, 74, 93, 0.4);
+    padding: 6px 10px; /* 减小内边距 */
+    border-radius: 6px;
+    font-size: 12px; /* 减小字体 */
+    text-align: right;
+    border-right: 3px solid rgba(70, 130, 180, 0.7);
+    border-left: none;
     font-weight: 500;
-    color: rgba(25, 45, 65, 0.85);
-    line-height: 1.5;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+    color: rgba(25, 45, 65, 0.9);
+    line-height: 1.3; /* 调整行高 */
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
     word-break: break-word;
-    transition: background 0.2s ease;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+    max-height: 40px; /* 限制每个todo的最大高度 */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2; /* 最多显示2行 */
+    -webkit-box-orient: vertical;
 }
 
 .fullscreen-todo:hover {
-    background: rgba(135, 206, 250, 0.5);
+    background: rgba(135, 206, 250, 0.6);
+    transform: translateX(-3px);
+}
+
+.fullscreen-todo.completed {
+    background: rgba(15, 219, 237, 0.4);
+    border-right-color: rgba(34, 139, 34, 0.7);
+    color: rgba(25, 65, 25, 0.9);
+}
+
+.fullscreen-todo.completed:hover {
+    background: rgba(144, 238, 144, 0.6);
+}
+
+/* 确保今日特殊样式下只显示有限的todo */
+.fullscreen-day.today-special .fullscreen-todo:nth-child(n+4) {
+    display: none; /* 今日最多显示3条 */
+}
+
+/* 其他日期最多显示5条todo */
+.fullscreen-day:not(.today-special) .fullscreen-todo:nth-child(n+6) {
+    display: none;
+}
+.lunar-small { font-size: 9px; color: #2F8B6BFF; margin-bottom: 8px; }
+
+.solar-term-small {
+    font-size: 10px;
+    color: #e53e3e;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 6px;
+}
+
+.fullscreen-day.today-special .solar-term-small {
+    font-size: 12px;
+}
+
+
+/*ADD*/
+/* 展开按钮样式 */
+.expand-button {
+    background: linear-gradient(135deg, #e2e8f0, #cbd5e0);
+    font-size: 18px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.6);
+}
+
+.expand-button:hover {
+    background: linear-gradient(135deg, #cbd5e0, #a0aec0);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+}
+
+/* 卡片模式全屏容器 - 保持原全屏样式但无背景 */
+.card-mode-fullscreen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: -1;
+    display: flex;
+    align-items: stretch;
+    justify-content: flex-end;
+    padding: 0;
+    overflow: hidden;
+    background: transparent;
+    pointer-events: none;
+}
+
+/* 右侧日期容器 - 使用原全屏时期的样式 */
+.card-mode-calendar {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-evenly;
+    align-items: flex-end;
+    height: 100vh;
+    width: auto;
+    padding: 10px 15px 10px 0;
+    box-sizing: border-box;
+    pointer-events: auto;
+}
+
+.card-mode-day {
+    min-width: 250px;
+    max-width: 250px;
+    height: calc((100vh - 20px) / 7 - 35px);
+    margin: 0;
+    border-radius: 12px;
+    padding: 10px 14px;
+    background: linear-gradient(135deg, rgba(102,126,234,0.05), rgba(118,75,162,0.12));
+    backdrop-filter: blur(15px);
+    border: 5px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+    transition: all 0.3s ease;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    cursor: pointer;
+    pointer-events: auto;
+}
+
+.card-mode-day:hover {
+    background: linear-gradient(135deg, rgba(102,126,234,0.15), rgba(118,75,162,0.2));
+    transform: scale(1.02);
+    box-shadow: 0 6px 25px rgba(102, 126, 234, 0.2);
+}
+
+.card-mode-day.today-special {
+    min-width: 250px;
+    max-width: 250px;
+    background: linear-gradient(135deg, rgba(255, 200, 0, 0.85), rgba(255, 69, 0, 0.12));
+    backdrop-filter: blur(18px);
+    box-shadow: 0 6px 30px rgba(102,126,234,0.2);
+    border: 2px solid rgba(102,126,234,0.3);
+    height: calc((100vh - 20px) / 7 + 30px);
+}
+
+.card-mode-day .weekday-header {
+    font-size: 13px;
+    font-weight: 600;
+    color: rgba(74, 85, 104, 0.7);
+    margin-bottom: 6px;
+    background: none;
+    padding: 0;
+    border: none;
+    box-shadow: none;
+    text-align: right;
+    flex-shrink: 0;
+}
+
+.card-mode-day .date-section {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.card-mode-day .date-number {
+    font-size: 16px;
+    font-weight: 700;
+    color: #2d3748;
+}
+
+.card-mode-day .date-info {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+}
+
+.card-mode-day .lunar-small {
+    font-size: 9px;
+    color: #2F8B6BFF;
+    margin-bottom: 8px;
+}
+
+.card-mode-day .solar-term-small {
+    font-size: 10px;
+    color: #e53e3e;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 6px;
+}
+
+.card-mode-day.today-special .solar-term-small {
+    font-size: 12px;
+}
+
+.card-mode-todos {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    overflow: hidden;
+    min-height: 0;
+}
+
+.card-mode-todo {
+    background: rgba(248, 74, 93, 0.4);
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    text-align: right;
+    border-right: 3px solid rgba(70, 130, 180, 0.7);
+    border-left: none;
+    font-weight: 500;
+    color: rgba(25, 45, 65, 0.9);
+    line-height: 1.3;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    word-break: break-word;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+    max-height: 40px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+.card-mode-todo:hover {
+    background: rgba(135, 206, 250, 0.6);
+    transform: translateX(-3px);
+}
+
+.card-mode-todo.completed {
+    background: rgba(15, 219, 237, 0.4);
+    border-right-color: rgba(34, 139, 34, 0.7);
+    color: rgba(25, 65, 25, 0.9);
+}
+
+.card-mode-todo.completed:hover {
+    background: rgba(144, 238, 144, 0.6);
+}
+
+.card-mode-day.today-special .card-mode-todo:nth-child(n+4) {
+    display: none;
+}
+
+.card-mode-day:not(.today-special) .card-mode-todo:nth-child(n+6) {
+    display: none;
+}
+
+.card-mode-day .more-todos {
+    font-size: 10px;
+    color: #718096;
+    text-align: right;
+    font-style: italic;
+    margin-top: 3px;
 }

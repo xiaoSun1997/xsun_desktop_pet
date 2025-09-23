@@ -56,10 +56,7 @@
   },
   "plugins": {
     "fs": {
-      "scope": [
-        "$RESOURCE/**",
-        "$APPDATA/**"
-      ]
+      "requireLiteralLeadingDot": false
     }
   }
 }

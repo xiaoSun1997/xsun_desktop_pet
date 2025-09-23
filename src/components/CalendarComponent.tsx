@@ -7,6 +7,8 @@ import "./CalendarComponent.css";
 import {WebviewWindow} from "@tauri-apps/api/webviewWindow";
 import {listen} from "@tauri-apps/api/event";
 import {LunarCalendar} from "../utils/lunarUtils";
+import {currentMonitor} from "@tauri-apps/api/window";
+import {PhysicalSize, PhysicalPosition} from "@tauri-apps/api/window";
 
 type CalendarSettings = {
     backgroundImages: string[];
@@ -28,7 +30,7 @@ export default function CalendarComponent() {
     });
     const [showSettings, setShowSettings] = useState(false);
     const [currentBgIndex, setCurrentBgIndex] = useState(0);
-    const [isFullscreen, setIsFullscreen] = useState(false);
+    const [isCardMode, setIsCardMode] = useState(false);
     const [monthTodos, setMonthTodos] = useState<{ [date: string]: TodoItem[] }>({});
     const [tempSettings, setTempSettings] = useState<CalendarSettings>({
         backgroundImages: ["data/img.jpeg"],
@@ -82,11 +84,10 @@ export default function CalendarComponent() {
         const year = currentDate.getFullYear();
         const month = currentDate.getMonth();
 
-        // 加载当前月份所有日期的待办
         const todos: { [date: string]: TodoItem[] } = {};
         const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-        // 加载一周的待办（用于全屏显示）
+        // 加载一周的待办（用于卡片模式显示）
         const today = new Date();
         for (let i = 0; i < 7; i++) {
             const date = new Date(today);
@@ -189,9 +190,7 @@ export default function CalendarComponent() {
     };
 
     const handleDateDoubleClick = async (date: Date) => {
-        if (!isFullscreen) {
-            await createOrShowTodoWindow(date);
-        }
+        await createOrShowTodoWindow(date);
     };
 
     const uploadImage = async () => {
@@ -241,19 +240,76 @@ export default function CalendarComponent() {
         }
     };
 
-    const toggleFullscreen = async () => {
+    const toggleCardMode = async () => {
         const window = getCurrentWindow();
-        if (!isFullscreen) {
-            await window.setFullscreen(true);
-            await window.setAlwaysOnTop(false);
-            await invoke('set_click_through', {enabled: true});
+
+        if (!isCardMode) {
+            // 进入卡片模式 - 获取屏幕尺寸并定位窗口到右侧
+            try {
+                // 获取当前显示器信息
+                const monitor = await currentMonitor();
+                if (!monitor) {
+                    throw new Error('无法获取显示器信息');
+                }
+
+                const screenSize = monitor.size;
+                const cardWidth = 300; // 卡片宽度
+
+                // 设置窗口大小 - 使用 PhysicalSize
+                await window.setSize(new PhysicalSize(cardWidth, screenSize.height+10));
+
+                // 定位到屏幕最右侧 - 使用 PhysicalPosition
+                await window.setPosition(new PhysicalPosition(
+                    screenSize.width - cardWidth,
+                    0
+                ));
+
+                await window.setAlwaysOnTop(false);
+                await invoke('set_click_through', {enabled: false});
+
+            } catch (error) {
+                console.error('设置卡片模式失败:', error);
+                // 如果无法获取显示器信息，使用默认值
+                try {
+                    const cardWidth = 250;
+                    await window.setSize(new PhysicalSize(cardWidth, 1080));
+                    await window.setPosition(new PhysicalPosition(1920 - cardWidth, 0));
+                    await window.setAlwaysOnTop(true);
+                    await invoke('set_click_through', {enabled: true});
+                } catch (fallbackError) {
+                    console.error('使用默认值设置卡片模式也失败:', fallbackError);
+                }
+            }
         } else {
-            await window.setFullscreen(false);
-            await window.setAlwaysOnTop(false);
-            await invoke('set_click_through', {enabled: false});
+            // 退出卡片模式 - 恢复原始窗口大小和位置
+            try {
+                const monitor = await currentMonitor();
+                const originalWidth = 900;
+                const originalHeight = 700;
+
+                await window.setSize(new PhysicalSize(originalWidth, originalHeight));
+
+                if (monitor) {
+                    // 居中显示
+                    const centerX = (monitor.size.width - originalWidth) / 2;
+                    const centerY = (monitor.size.height - originalHeight) / 2;
+                    await window.setPosition(new PhysicalPosition(centerX, centerY));
+                } else {
+                    // 默认居中位置
+                    await window.setPosition(new PhysicalPosition(510, 190));
+                }
+
+                await window.setAlwaysOnTop(false);
+                await invoke('set_click_through', {enabled: false});
+
+            } catch (error) {
+                console.error('退出卡片模式失败:', error);
+            }
         }
-        setIsFullscreen(!isFullscreen);
+
+        setIsCardMode(!isCardMode);
     };
+
 
     const handleClose = async () => {
         const window = getCurrentWindow();
@@ -332,13 +388,13 @@ export default function CalendarComponent() {
         return days;
     };
 
-    const renderFullscreenCalendar = () => {
+    const renderCardModeCalendar = () => {
         const today = new Date();
         const weekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
 
         return (
-            <div className="fullscreen-calendar-container">
-                <div className="fullscreen-calendar">
+            <div className="card-mode-fullscreen">
+                <div className="card-mode-calendar">
                     {weekDays.map((weekDay, index) => {
                         const date = new Date(today);
                         date.setDate(today.getDate() - today.getDay() + index);
@@ -348,7 +404,11 @@ export default function CalendarComponent() {
                         const solarTerm = LunarCalendar.getSolarTerm(date);
 
                         return (
-                            <div key={index} className={`fullscreen-day ${isToday ? 'today-special' : ''}`}>
+                            <div
+                                key={index}
+                                className={`card-mode-day ${isToday ? 'today-special' : ''}`}
+                                onDoubleClick={() => handleDateDoubleClick(date)}
+                            >
                                 <div className="weekday-header">{weekDay}</div>
                                 <div className="date-section">
                                     <div className="date-number">{date.getDate()}</div>
@@ -357,11 +417,11 @@ export default function CalendarComponent() {
                                         {solarTerm && <div className="solar-term-small">{solarTerm}</div>}
                                     </div>
                                 </div>
-                                <div className="fullscreen-todos">
+                                <div className="card-mode-todos">
                                     {dayTodos.slice(0, 3).map((todo, todoIndex) => (
                                         <div
                                             key={todoIndex}
-                                            className={`fullscreen-todo ${todo.completed ? 'completed' : ''}`}
+                                            className={`card-mode-todo ${todo.completed ? 'completed' : ''}`}
                                             title={todo.content}
                                         >
                                             {todo.content.length > 15 ? todo.content.substring(0, 15) + '...' : todo.content}
@@ -385,19 +445,9 @@ export default function CalendarComponent() {
 
     const currentBgImage = settings.backgroundImages[currentBgIndex] || "data/img.jpeg";
 
-    if (isFullscreen) {
-        return (
-            <div
-                className="calendar-fullscreen"
-                style={{
-                    backgroundImage: `url(${currentBgImage})`,
-                    backgroundSize: 'cover',
-                    backgroundPosition: 'center'
-                }}
-            >
-                {renderFullscreenCalendar()}
-            </div>
-        );
+    // 如果是卡片模式，只显示右侧卡片
+    if (isCardMode) {
+        return renderCardModeCalendar();
     }
 
     return (
@@ -419,20 +469,20 @@ export default function CalendarComponent() {
                 <div className="header-actions">
                     <button className="nav-button"
                             onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() - 1)))}>
-                        ←
+                        &lt;
                     </button>
                     <button className="today-button" onClick={() => setCurrentDate(new Date())}>
                         今天
                     </button>
                     <button className="nav-button"
                             onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() + 1)))}>
-                        →
+                        &gt;
                     </button>
                     <button className="settings-button" onClick={() => setShowSettings(true)}>
                         ⚙️
                     </button>
-                    <button className="fullscreen-button" onClick={toggleFullscreen}>
-                        ⛶
+                    <button className="expand-button" onClick={toggleCardMode}>
+                        &gt;&gt;
                     </button>
                     <button className="close-button" onClick={handleClose}>
                         <div className="close-icon"></div>
@@ -502,4 +552,3 @@ export default function CalendarComponent() {
         </div>
     );
 }
-
