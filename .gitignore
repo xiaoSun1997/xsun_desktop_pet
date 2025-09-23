@@ -31,7 +31,7 @@ dist/
 build/
 
 # 缓存目录
-.npm
+.npmx
 .yarn
 .eslintcache
 .nyc_output
