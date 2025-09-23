@@ -39,7 +39,6 @@ export default function CalendarComponent() {
         const unlisten = listen('refresh-calendar', () => {
             refreshCalendarData();
         });
-
         return () => {
             unlisten.then(fn => fn());
         };
@@ -55,7 +54,6 @@ export default function CalendarComponent() {
             const interval = setInterval(() => {
                 setCurrentBgIndex(prev => (prev + 1) % settings.backgroundImages.length);
             }, settings.rotationInterval * 60 * 1000);
-
             return () => clearInterval(interval);
         }
     }, [settings]);
@@ -83,12 +81,17 @@ export default function CalendarComponent() {
     const loadMonthTodos = async () => {
         const year = currentDate.getFullYear();
         const month = currentDate.getMonth();
+
+        // 加载当前月份所有日期的待办
+        const todos: { [date: string]: TodoItem[] } = {};
         const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-        const todos: { [date: string]: TodoItem[] } = {};
-
-        for (let day = 1; day <= daysInMonth; day++) {
-            const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        // 加载一周的待办（用于全屏显示）
+        const today = new Date();
+        for (let i = 0; i < 7; i++) {
+            const date = new Date(today);
+            date.setDate(today.getDate() - today.getDay() + i);
+            const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
             try {
                 const dayTodos = await invoke<TodoItem[]>('get_todos_for_date', {date: dateStr});
                 if (dayTodos.length > 0) {
@@ -96,6 +99,21 @@ export default function CalendarComponent() {
                 }
             } catch (error) {
                 console.error(`加载${dateStr}的待办失败:`, error);
+            }
+        }
+
+        // 加载当前月份的待办
+        for (let day = 1; day <= daysInMonth; day++) {
+            const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            if (!todos[dateStr]) {
+                try {
+                    const dayTodos = await invoke<TodoItem[]>('get_todos_for_date', {date: dateStr});
+                    if (dayTodos.length > 0) {
+                        todos[dateStr] = dayTodos;
+                    }
+                } catch (error) {
+                    console.error(`加载${dateStr}的待办失败:`, error);
+                }
             }
         }
 
@@ -143,7 +161,6 @@ export default function CalendarComponent() {
 
                 webview.once("tauri://created", async () => {
                     clearTimeout(timeout);
-
                     setTimeout(async () => {
                         try {
                             await webview.emit('set-todo-date', {date: dateStr});
@@ -162,8 +179,6 @@ export default function CalendarComponent() {
                     reject(new Error(`创建待办窗口时出错: ${JSON.stringify(e)}`));
                 });
             });
-
-            console.log("待办窗口已创建并显示");
         } catch (err) {
             console.error("创建待办窗口失败：", err);
         }
@@ -184,7 +199,7 @@ export default function CalendarComponent() {
             const selected = await open({
                 multiple: false,
                 filters: [{
-                    name: '图片',
+                    name: '图片文件',
                     extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp']
                 }]
             });
@@ -205,7 +220,7 @@ export default function CalendarComponent() {
             }
         } catch (error) {
             console.error('上传图片失败:', error);
-            alert('上传图片失败，请检查文件格式');
+            alert(`上传图片失败: ${error}`);
         }
     };
 
@@ -300,7 +315,7 @@ export default function CalendarComponent() {
         }
 
         // 下个月的日期（透明显示）
-        const totalCells = 42; // 6行7列
+        const totalCells = 42;
         const remainingCells = totalCells - days.length;
         for (let day = 1; day <= remainingCells; day++) {
             const date = new Date(year, month + 1, day);
@@ -322,44 +337,44 @@ export default function CalendarComponent() {
         const weekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
 
         return (
-            <div className="fullscreen-calendar">
-                {weekDays.map((weekDay, index) => {
-                    const date = new Date(today);
-                    date.setDate(today.getDate() - today.getDay() + index);
-                    const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-                    const dayTodos = monthTodos[dateStr] || [];
-                    const isToday = date.toDateString() === today.toDateString();
-                    const solarTerm = LunarCalendar.getSolarTerm(date);
+            <div className="fullscreen-calendar-container">
+                <div className="fullscreen-calendar">
+                    {weekDays.map((weekDay, index) => {
+                        const date = new Date(today);
+                        date.setDate(today.getDate() - today.getDay() + index);
+                        const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+                        const dayTodos = monthTodos[dateStr] || [];
+                        const isToday = date.toDateString() === today.toDateString();
+                        const solarTerm = LunarCalendar.getSolarTerm(date);
 
-                    return (
-                        <div key={index} className={`fullscreen-day ${isToday ? 'today-special' : ''}`}>
-                            <div className="weekday-header">{weekDay}</div>
-                            <div className="date-section">
-                                <div className="date-number">{date.getDate()}</div>
-                                <div className="date-info">
-                                    <div className="lunar-small">{getLunarInfo(date)}</div>
-                                    {solarTerm && <div className="solar-term-small">{solarTerm}</div>}
+                        return (
+                            <div key={index} className={`fullscreen-day ${isToday ? 'today-special' : ''}`}>
+                                <div className="weekday-header">{weekDay}</div>
+                                <div className="date-section">
+                                    <div className="date-number">{date.getDate()}</div>
+                                    <div className="date-info">
+                                        <div className="lunar-small">{getLunarInfo(date)}</div>
+                                        {solarTerm && <div className="solar-term-small">{solarTerm}</div>}
+                                    </div>
+                                </div>
+                                <div className="fullscreen-todos">
+                                    {dayTodos.slice(0, 3).map((todo, todoIndex) => (
+                                        <div
+                                            key={todoIndex}
+                                            className={`fullscreen-todo ${todo.completed ? 'completed' : ''}`}
+                                            title={todo.content}
+                                        >
+                                            {todo.content.length > 15 ? todo.content.substring(0, 15) + '...' : todo.content}
+                                        </div>
+                                    ))}
+                                    {dayTodos.length > 3 && (
+                                        <div className="more-todos">还有{dayTodos.length - 3}项</div>
+                                    )}
                                 </div>
                             </div>
-                            <div className="fullscreen-todos">
-                                {dayTodos.slice(0, 3).map((todo, todoIndex) => (
-                                    <div
-                                        key={todoIndex}
-                                        className={`fullscreen-todo ${todo.completed ? 'completed' : ''}`}
-                                    >
-                                        {todo.content.length > 12 ? todo.content.substring(0, 12) + '...' : todo.content}
-                                    </div>
-                                ))}
-                                {dayTodos.length > 3 && (
-                                    <div className="more-todos">还有{dayTodos.length - 3}项</div>
-                                )}
-                            </div>
-                        </div>
-                    );
-                })}
-                <button className="fullscreen-close" onClick={toggleFullscreen}>
-                    <div className="close-icon"></div>
-                </button>
+                        );
+                    })}
+                </div>
             </div>
         );
     };
@@ -394,7 +409,6 @@ export default function CalendarComponent() {
                 backgroundPosition: 'center'
             }}
         >
-            {/* 整个表头都支持拖动 */}
             <div className="calendar-header" data-tauri-drag-region>
                 <div className="header-left" data-tauri-drag-region>
                     <h1 className="calendar-title" data-tauri-drag-region>智能日历</h1>
@@ -488,3 +502,4 @@ export default function CalendarComponent() {
         </div>
     );
 }
+

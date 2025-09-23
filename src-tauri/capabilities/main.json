@@ -30,6 +30,10 @@
     "dialog:allow-open",
     "dialog:default",
     "fs:allow-read-file",
-    "fs:default"
+    "fs:default",
+    "fs:allow-read-file",
+    "fs:allow-write-file",
+    "fs:allow-create",
+    "fs:allow-remove"
   ]
 }

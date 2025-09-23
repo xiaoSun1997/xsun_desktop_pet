@@ -1,3 +1,4 @@
+/* CalendarComponent.css */
 .calendar-container {
     width: 100%;
     height: 100vh;
@@ -23,694 +24,365 @@
     z-index: 0;
 }
 
-/* 增强拖动区域 */
+/* 表头 */
 .calendar-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 20px 24px;
     background: rgba(255, 255, 255, 0.95);
-    backdrop-filter: blur(15px);
+    backdrop-filter: blur(20px);
     border-bottom: 1px solid rgba(225, 232, 237, 0.8);
     cursor: move;
     flex-shrink: 0;
     position: relative;
     z-index: 1;
-    border-radius: 16px 16px 0 0;
-    box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
+    border-radius: 20px 20px 0 0;
+    box-shadow: 0 4px 25px rgba(0, 0, 0, 0.1);
+    user-select: none;
 }
 
 .header-left {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 8px;
     cursor: move;
     flex: 1;
+    user-select: none;
 }
 
 .calendar-title {
-    font-size: 20px;
+    font-size: 22px;
     font-weight: 700;
     color: #1a202c;
     margin: 0;
     cursor: move;
+    user-select: none;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
 }
 
 .current-month {
-    font-size: 14px;
+    font-size: 15px;
     color: #718096;
     cursor: move;
+    user-select: none;
+    font-weight: 500;
 }
 
 .header-actions {
     display: flex;
-    gap: 10px;
+    gap: 12px;
     align-items: center;
 }
 
-.nav-button, .today-button, .settings-button, .fullscreen-button, .close-button {
-    padding: 10px 14px;
+.nav-button, .today-button, .settings-button, .fullscreen-button {
+    padding: 12px 16px;
     border: none;
-    border-radius: 12px;
+    border-radius: 16px;
     cursor: pointer;
     font-size: 14px;
-    transition: all 0.3s ease;
-    font-weight: 500;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    font-weight: 600;
+    position: relative;
+    overflow: hidden;
 }
 
 .nav-button {
-    background: linear-gradient(135deg, #f7fafc, #edf2f7);
+    background: linear-gradient(135deg, #f8fafc, #e2e8f0);
     color: #4a5568;
-    font-size: 16px;
+    font-size: 18px;
     font-weight: bold;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.6);
 }
 
 .nav-button:hover {
-    background: linear-gradient(135deg, #edf2f7, #e2e8f0);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+    background: linear-gradient(135deg, #e2e8f0, #cbd5e0);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
 }
 
 .today-button {
-    background: linear-gradient(135deg, #3182ce, #2c5aa0);
+    background: linear-gradient(135deg, #667eea, #764ba2);
     color: white;
     font-weight: 600;
-    box-shadow: 0 2px 12px rgba(49, 130, 206, 0.3);
+    box-shadow: 0 4px 16px rgba(102, 126, 234, 0.3);
 }
 
 .today-button:hover {
-    background: linear-gradient(135deg, #2c5aa0, #2a69ac);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 20px rgba(49, 130, 206, 0.4);
+    background: linear-gradient(135deg, #764ba2, #667eea);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 24px rgba(102, 126, 234, 0.4);
 }
 
 .settings-button, .fullscreen-button {
     background: linear-gradient(135deg, #e2e8f0, #cbd5e0);
-    font-size: 16px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    font-size: 18px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.6);
 }
 
 .settings-button:hover, .fullscreen-button:hover {
     background: linear-gradient(135deg, #cbd5e0, #a0aec0);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
 }
 
-.close-button {
-    background: linear-gradient(135deg, #e53e3e, #c53030);
-    color: white;
-    width: 40px;
-    height: 40px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-shadow: 0 2px 12px rgba(229, 62, 62, 0.3);
-}
-
-.close-button:hover {
-    background: linear-gradient(135deg, #c53030, #9c2a2a);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 20px rgba(229, 62, 62, 0.4);
-}
-
-.close-icon {
-    width: 16px;
-    height: 16px;
-    position: relative;
-}
-
-.close-icon::before, .close-icon::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 14px;
-    height: 2px;
-    background: white;
-    border-radius: 1px;
-}
-
-.close-icon::before {
-    transform: translate(-50%, -50%) rotate(45deg);
-}
-
-.close-icon::after {
-    transform: translate(-50%, -50%) rotate(-45deg);
-}
-
+/* 月历模式 */
 .calendar-grid {
     flex: 1;
     display: flex;
     flex-direction: column;
     position: relative;
     z-index: 1;
-    padding: 20px;
-    gap: 2px;
+    padding: 24px;
+    gap: 3px;
 }
 
 .weekday-headers {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
-    gap: 2px;
-    margin-bottom: 2px;
+    gap: 3px;
+    margin-bottom: 3px;
 }
 
 .weekday-header {
-    background: rgba(255, 255, 255, 0.92);
-    backdrop-filter: blur(8px);
-    padding: 16px 12px;
+    background: rgba(255, 255, 255, 0.94);
+    backdrop-filter: blur(12px);
+    padding: 18px 12px;
     text-align: center;
-    font-weight: 600;
+    font-weight: 700;
     color: #4a5568;
-    border-radius: 12px;
-    font-size: 14px;
-    border: 1px solid rgba(255, 255, 255, 0.4);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    border-radius: 16px;
+    font-size: 15px;
+    border: 2px solid rgba(255, 255, 255, 0.5);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(247, 250, 252, 0.9));
 }
 
 .calendar-days {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
-    grid-auto-rows: minmax(120px, 1fr);
-    gap: 2px;
+    grid-auto-rows: minmax(130px, 1fr);
+    gap: 3px;
     flex: 1;
 }
 
 .calendar-day {
-    background: rgba(255, 255, 255, 0.88);
-    backdrop-filter: blur(10px);
-    border-radius: 12px;
-    padding: 12px 8px;
+    background: rgba(255, 255, 255, 0.82);
+    backdrop-filter: blur(15px);
+    border-radius: 16px;
+    padding: 14px 10px;
     display: flex;
     flex-direction: column;
     cursor: pointer;
-    transition: all 0.3s ease;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     position: relative;
-    border: 2px solid rgba(255, 255, 255, 0.3);
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+    border: 2px solid rgba(255, 255, 255, 0.4);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
 }
 
 .calendar-day:hover {
     background: rgba(255, 255, 255, 0.95);
-    transform: scale(1.02);
-    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
-    border-color: rgba(49, 130, 206, 0.3);
+    transform: scale(1.03);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
+    border-color: rgba(102, 126, 234, 0.4);
+    z-index: 10;
 }
 
 .calendar-day.today {
-    border-color: #3182ce;
-    background: rgba(49, 130, 206, 0.15);
-    box-shadow: 0 4px 20px rgba(49, 130, 206, 0.2);
+    border-color: #667eea;
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.15), rgba(118, 75, 162, 0.1));
+    box-shadow: 0 6px 24px rgba(102, 126, 234, 0.2);
 }
 
 .calendar-day.today .day-number {
-    background: linear-gradient(135deg, #3182ce, #2c5aa0);
+    background: linear-gradient(135deg, #667eea, #764ba2);
     color: white;
     border-radius: 50%;
-    width: 32px;
-    height: 32px;
+    width: 36px;
+    height: 36px;
     display: flex;
     align-items: center;
     justify-content: center;
     font-weight: 700;
-    box-shadow: 0 2px 8px rgba(49, 130, 206, 0.3);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
 }
 
-/* 上个月和下个月的日期透明显示 */
 .calendar-day.prev-month,
 .calendar-day.next-month {
-    background: rgba(255, 255, 255, 0.4);
-    opacity: 0.6;
+    background: rgba(255, 255, 255, 0.3);
+    opacity: 0.5;
     cursor: default;
+    border-color: rgba(255, 255, 255, 0.2);
 }
 
 .calendar-day.prev-month:hover,
 .calendar-day.next-month:hover {
     transform: none;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-    border-color: rgba(255, 255, 255, 0.3);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+    border-color: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.35);
 }
 
 .calendar-day.prev-month .day-number,
 .calendar-day.next-month .day-number {
-    color: #a0aec0;
+    color: #cbd5e0;
+}
+
+.calendar-day.prev-month .lunar-info,
+.calendar-day.next-month .lunar-info {
+    color: #e2e8f0;
 }
 
 .day-number {
-    font-size: 18px;
-    font-weight: 600;
+    font-size: 20px;
+    font-weight: 700;
     color: #2d3748;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
+    text-align: center;
 }
 
 .lunar-info {
-    font-size: 11px;
+    font-size: 12px;
     color: #718096;
-    margin-bottom: 6px;
-    line-height: 1.2;
+    margin-bottom: 8px;
+    line-height: 1.3;
+    text-align: center;
+    font-weight: 500;
 }
 
 .solar-term {
     color: #e53e3e;
-    font-weight: 600;
+    font-weight: 700;
     font-size: 10px;
-    background: rgba(229, 62, 62, 0.1);
-    padding: 2px 4px;
-    border-radius: 4px;
-    margin-top: 2px;
+    background: linear-gradient(135deg, rgba(229, 62, 62, 0.15), rgba(229, 62, 62, 0.1));
+    padding: 3px 6px;
+    border-radius: 8px;
+    margin-top: 3px;
+    border: 1px solid rgba(229, 62, 62, 0.2);
 }
 
 .todo-indicator {
     margin-top: auto;
     display: flex;
-    gap: 4px;
+    gap: 6px;
     flex-wrap: wrap;
+    justify-content: center;
 }
 
 .todo-indicator .pending {
     background: linear-gradient(135deg, #fed7d7, #feb2b2);
     color: #c53030;
-    font-size: 10px;
-    padding: 3px 7px;
+    font-size: 11px;
+    padding: 4px 8px;
     border-radius: 12px;
-    font-weight: 600;
-    box-shadow: 0 1px 4px rgba(197, 48, 48, 0.2);
+    font-weight: 700;
+    box-shadow: 0 2px 6px rgba(197, 48, 48, 0.2);
+    border: 1px solid rgba(197, 48, 48, 0.3);
 }
 
 .todo-indicator .completed {
     background: linear-gradient(135deg, #c6f6d5, #9ae6b4);
     color: #38a169;
-    font-size: 10px;
-    padding: 3px 7px;
+    font-size: 11px;
+    padding: 4px 8px;
     border-radius: 12px;
-    font-weight: 600;
-    box-shadow: 0 1px 4px rgba(56, 161, 105, 0.2);
+    font-weight: 700;
+    box-shadow: 0 2px 6px rgba(56, 161, 105, 0.2);
+    border: 1px solid rgba(56, 161, 105, 0.3);
 }
 
-/* 全屏模式样式 */
+/* === 全屏布局：靠右 + 渐隐 === */
 .calendar-fullscreen {
     width: 100vw;
     height: 100vh;
-    background-size: cover;
-    background-position: center;
     display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    padding-right: 3%;
-    position: relative;
-    z-index: -1; /* 置于最下层 */
-}
-
-.fullscreen-calendar {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    width: 14.28%;
-    height: 90vh;
     align-items: stretch;
+    justify-content: flex-end; /* 全部日期靠右 */
+    padding: 0 20px 0 0;
+    overflow: hidden;
+    gap: 10px;
+
+    /* 左右两端淡出效果 */
+    -webkit-mask-image: linear-gradient(to left, transparent 0%, black 10%, black 90%, transparent 100%);
+    -webkit-mask-repeat: no-repeat;
+    -webkit-mask-size: 100% 100%;
+    mask-image: linear-gradient(to left, transparent 0%, black 10%, black 90%, transparent 100%);
+    mask-repeat: no-repeat;
+    mask-size: 100% 100%;
 }
 
 .fullscreen-day {
-    background: rgba(255, 255, 255, 0.92);
-    backdrop-filter: blur(15px);
+    min-width: 12vw;
+    max-width: 12vw;
+    height: 100%;
+    margin: 0;
     border-radius: 16px;
-    padding: 16px 12px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    border: 2px solid rgba(255, 255, 255, 0.4);
-    transition: all 0.4s ease;
-    flex: 1;
-    min-height: 0;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    padding: 12px 10px;
+    background: rgba(255, 255, 255, 0.65);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    overflow-y: auto;
+    transition: all 0.3s ease;
 }
 
-/* 当日特殊样式 - 2倍大小 */
 .fullscreen-day.today-special {
-    flex: 2;
-    border-color: #3182ce;
-    background: rgba(49, 130, 206, 0.15);
-    box-shadow: 0 8px 30px rgba(49, 130, 206, 0.2);
+    min-width: 18vw; /* 普通的 1.5 倍 */
+    max-width: 18vw;
+    background: linear-gradient(135deg, rgba(102,126,234,0.12), rgba(118,75,162,0.1));
+    backdrop-filter: blur(12px);
+    box-shadow: inset 0 0 18px rgba(102,126,234,0.15);
+}
+
+/* 当前日期只显示一条 todo */
+.fullscreen-day.today-special .fullscreen-todo:nth-child(n+2) {
+    display: none;
 }
 
 .fullscreen-day .weekday-header {
-    font-size: 14px;
-    font-weight: 600;
-    color: #4a5568;
-    margin-bottom: 8px;
+    font-size: 16px;
+    font-weight: 700;
+    color: rgba(74, 85, 104, 0.85);
+    margin-bottom: 12px;
     background: none;
     padding: 0;
+    border: none;
+    box-shadow: none;
 }
 
-.date-section {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    margin-bottom: 12px;
-}
-
-.fullscreen-day.today-special .date-section {
-    margin-bottom: 20px;
-}
-
-.date-number {
-    font-size: 24px;
-    font-weight: bold;
-    color: #2d3748;
-    margin-bottom: 4px;
-}
-
-.fullscreen-day.today-special .date-number {
-    font-size: 36px;
-    background: linear-gradient(135deg, #3182ce, #2c5aa0);
-    color: white;
-    width: 60px;
-    height: 60px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-shadow: 0 4px 16px rgba(49, 130, 206, 0.3);
-}
-
-.date-info {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 2px;
-}
-
-.lunar-small {
-    font-size: 11px;
-    color: #718096;
-    text-align: center;
-}
-
-.fullscreen-day.today-special .lunar-small {
-    font-size: 14px;
-    font-weight: 500;
-}
-
-.solar-term-small {
-    font-size: 10px;
-    color: #e53e3e;
-    font-weight: 600;
-    background: rgba(229, 62, 62, 0.1);
-    padding: 2px 6px;
-    border-radius: 6px;
-}
-
-.fullscreen-day.today-special .solar-term-small {
-    font-size: 12px;
-    padding: 3px 8px;
-}
-
+/* todo 容器去背景 */
 .fullscreen-todos {
     flex: 1;
-    overflow-y: auto;
-    width: 100%;
     display: flex;
     flex-direction: column;
-    gap: 4px;
-}
-
-.fullscreen-day.today-special .fullscreen-todos {
     gap: 8px;
-}
-
-.fullscreen-todo {
-    background: rgba(237, 242, 247, 0.9);
-    padding: 6px 8px;
-    border-radius: 8px;
-    font-size: 11px;
-    text-align: center;
-    border-left: 3px solid #fed7d7;
-    transition: all 0.2s ease;
-    word-break: break-word;
-}
-
-.fullscreen-day.today-special .fullscreen-todo {
-    padding: 8px 12px;
-    font-size: 12px;
-    border-radius: 10px;
-}
-
-.fullscreen-todo.completed {
-    text-decoration: line-through;
-    opacity: 0.6;
-    border-left-color: #c6f6d5;
-    background: rgba(198, 246, 213, 0.6);
-}
-
-.more-todos {
-    font-size: 10px;
-    color: #718096;
-    text-align: center;
-    font-style: italic;
-    font-weight: 500;
-}
-
-.fullscreen-day.today-special .more-todos {
-    font-size: 12px;
-}
-
-.fullscreen-close {
-    position: fixed;
-    bottom: 30px;
-    right: 30px;
-    width: 56px;
-    height: 56px;
-    border: none;
-    background: linear-gradient(135deg, #e53e3e, #c53030);
-    border-radius: 50%;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.3s ease;
-    backdrop-filter: blur(10px);
-    box-shadow: 0 4px 20px rgba(229, 62, 62, 0.3);
-    z-index: 1000;
-}
-
-.fullscreen-close:hover {
-    background: linear-gradient(135deg, #c53030, #9c2a2a);
-    transform: scale(1.1);
-    box-shadow: 0 6px 30px rgba(229, 62, 62, 0.4);
-}
-
-/* 设置弹窗样式 */
-.settings-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(4px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-}
-
-.settings-modal {
-    background: rgba(255, 255, 255, 0.95);
-    backdrop-filter: blur(20px);
-    border-radius: 16px;
+    max-height: 220px;
     padding: 0;
-    min-width: 500px;
-    max-width: 90vw;
-    max-height: 80vh;
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
-    border: 1px solid rgba(255, 255, 255, 0.6);
-    overflow: hidden;
+    background: none;
+    backdrop-filter: none;
 }
 
-.settings-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 20px 24px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.3);
-}
-
-.settings-header h3 {
-    margin: 0;
-    color: #1a202c;
-    font-size: 18px;
-    font-weight: 600;
-}
-
-.settings-close {
-    width: 28px;
-    height: 28px;
-    border: none;
-    background: #e2e8f0;
-    border-radius: 14px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.2s ease;
-}
-
-.settings-close:hover {
-    background: #cbd5e0;
-}
-
-.settings-content {
-    padding: 24px;
-    display: flex;
-    flex-direction: column;
-    gap: 24px;
-    max-height: 60vh;
-    overflow-y: auto;
-}
-
-.setting-item {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-}
-
-.setting-item label {
+/* todo 项：天蓝透明 */
+.fullscreen-todo {
+    background: rgba(135, 206, 250, 0.35);
+    padding: 12px 14px;
+    border-radius: 12px;
     font-size: 14px;
-    font-weight: 600;
-    color: #4a5568;
-}
-
-.image-list {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-    gap: 12px;
-    margin-bottom: 12px;
-}
-
-.image-item {
-    position: relative;
-    border-radius: 8px;
-    overflow: hidden;
-    background: #f7fafc;
-}
-
-.image-item img {
-    width: 100%;
-    height: 80px;
-    object-fit: cover;
-    display: block;
-}
-
-.image-item button {
-    position: absolute;
-    top: 4px;
-    right: 4px;
-    background: rgba(231, 76, 60, 0.9);
-    color: white;
-    border: none;
-    border-radius: 4px;
-    padding: 4px 8px;
-    font-size: 10px;
-    cursor: pointer;
-    transition: background 0.2s ease;
-}
-
-.image-item button:hover {
-    background: rgba(192, 57, 43, 0.9);
-}
-
-.setting-item > button {
-    background: #3182ce;
-    color: white;
-    border: none;
-    padding: 12px 16px;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: background 0.2s ease;
-}
-
-.setting-item > button:hover {
-    background: #2c5aa0;
-}
-
-.setting-item input[type="range"] {
-    width: 100%;
-    height: 6px;
-    border-radius: 3px;
-    background: #e2e8f0;
-    outline: none;
-    -webkit-appearance: none;
-}
-
-.setting-item input[type="range"]::-webkit-slider-thumb {
-    appearance: none;
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    background: #3182ce;
-    cursor: pointer;
-}
-
-.interval-labels {
-    display: flex;
-    justify-content: space-between;
-    font-size: 12px;
-    color: #718096;
-}
-
-.settings-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 12px;
-    padding: 20px 24px;
-    border-top: 1px solid rgba(255, 255, 255, 0.3);
-}
-
-.cancel-button, .save-button {
-    padding: 12px 24px;
-    border: none;
-    border-radius: 8px;
-    font-size: 14px;
+    text-align: left;
+    border-left: 4px solid rgba(70, 130, 180, 0.7);
     font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s ease;
+    color: rgba(25, 45, 65, 0.85);
+    line-height: 1.5;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+    word-break: break-word;
+    transition: background 0.2s ease;
 }
 
-.cancel-button {
-    background: #f7fafc;
-    color: #4a5568;
-    border: 1px solid #e2e8f0;
-}
-
-.cancel-button:hover {
-    background: #edf2f7;
-}
-
-.save-button {
-    background: #3182ce;
-    color: white;
-}
-
-.save-button:hover {
-    background: #2c5aa0;
-}
-
-/* 滚动条样式 */
-.settings-content::-webkit-scrollbar {
-    width: 6px;
-}
-
-.settings-content::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 3px;
-}
-
-.settings-content::-webkit-scrollbar-thumb {
-    background: rgba(0, 0, 0, 0.2);
-    border-radius: 3px;
-}
-
-.settings-content::-webkit-scrollbar-thumb:hover {
-    background: rgba(0, 0, 0, 0.3);
+.fullscreen-todo:hover {
+    background: rgba(135, 206, 250, 0.5);
 }

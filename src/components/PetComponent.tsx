@@ -433,8 +433,8 @@ export default function PetComponent() {
                 transparent: true,
                 decorations: false,
                 resizable: true,
-                minWidth: 600,
-                minHeight: 500,
+                minWidth: 900,
+                minHeight: 950,
             });
 
             await new Promise<void>((resolve, reject) => {
