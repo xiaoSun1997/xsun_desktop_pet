@@ -114,7 +114,11 @@
     background: #c53030;
 }
 
-
+.close-icon {
+    width: 14px;
+    height: 14px;
+    position: relative;
+}
 
 .close-icon::before, .close-icon::after {
     content: '';
@@ -252,6 +256,42 @@
     font-weight: 500;
 }
 
+/* 全屏模式 */
+.calendar-fullscreen {
+    width: 100vw;
+    height: 100vh;
+    background-size: cover;
+    background-position: center;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding-right: 2%;
+    position: relative;
+}
+
+.fullscreen-calendar {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 14.28%;
+    height: 90vh;
+    align-items: stretch;
+}
+
+.fullscreen-day {
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(10px);
+    border-radius: 12px;
+    padding: 12px 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    border: 2px solid transparent;
+    transition: all 0.3s ease;
+    flex: 1;
+    min-height: 0;
+}
+
 .fullscreen-day.today {
     border-color: #3182ce;
     background: rgba(49, 130, 206, 0.2);
@@ -308,6 +348,27 @@
     font-style: italic;
 }
 
+.fullscreen-close {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 48px;
+    height: 48px;
+    border: none;
+    background: rgba(231, 76, 60, 0.9);
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(5px);
+}
+
+.fullscreen-close:hover {
+    background: rgba(192, 57, 43, 0.9);
+    transform: scale(1.1);
+}
 
 /* 设置弹窗样式 */
 .settings-overlay {
@@ -504,5 +565,3 @@
 .save-button:hover {
     background: #2c5aa0;
 }
-
-
