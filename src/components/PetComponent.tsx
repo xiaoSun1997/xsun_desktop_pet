@@ -28,8 +28,9 @@ export default function PetComponent() {
     const doubleClickTimer = useRef<number | null>(null);
     const clickCount = useRef(0);
 
-    const bubbles: Bubble[] = bubblesConfig as Bubble[];
-
+    const bubbles: Bubble[] = [
+        ...bubblesConfig as Bubble[],
+    ];
     // 设置点击穿透状态
     const setClickThrough = async (enabled: boolean) => {
         if (enabled === isClickThrough) return;
@@ -152,8 +153,34 @@ export default function PetComponent() {
             wakeUpPet();
         });
 
+        // 监听托盘事件
+        const unlistenTrayClipboard = listen("tray://open-clipboard", () => {
+            createOrShowClipboard();
+        });
+
+        const unlistenTraySystem = listen("tray://open-system", () => {
+            createOrShowMain();
+        });
+
+        const unlistenTrayAI = listen("tray://open-ai", () => {
+            createOrShowAIChat();
+        });
+
+        const unlistenTrayTranslator = listen("tray://open-translator", () => {
+            createOrShowTranslator();
+        });
+
+        const unlistenTrayCalendar = listen("tray://open-calendar", () => {
+            createOrShowCalendar();
+        });
+
         return () => {
             unlistenWakeUp.then(fn => fn());
+            unlistenTrayClipboard.then(fn => fn());
+            unlistenTraySystem.then(fn => fn());
+            unlistenTrayAI.then(fn => fn());
+            unlistenTrayTranslator.then(fn => fn());
+            unlistenTrayCalendar.then(fn => fn());
             if (doubleClickTimer.current) clearTimeout(doubleClickTimer.current);
         };
     }, []);
@@ -460,7 +487,15 @@ export default function PetComponent() {
             console.error("创建日历窗口失败：", err);
         }
     };
-
+    // 添加最小化到托盘的函数
+    const minimizeToTray = async () => {
+        try {
+            await invoke("hide_to_tray");
+            console.log("已最小化到托盘");
+        } catch (error) {
+            console.error("最小化到托盘失败:", error);
+        }
+    };
     // 处理气泡点击事件
     const handleBubbleClick = async (bubble: Bubble) => {
         switch (bubble.action) {
@@ -481,6 +516,9 @@ export default function PetComponent() {
                 break;
             case "calendar":  // 新增
                 await createOrShowCalendar();
+                break;
+            case "minimize-to-tray":  // 添加这个处理
+                await minimizeToTray();
                 break;
             default:
                 console.warn(`未知的气泡动作: ${bubble.action}`);

@@ -538,7 +538,7 @@
     border-radius: 10px;
     padding: 10px 14px;
     background: linear-gradient(135deg, rgba(102,126,234,0.05), rgba(118,75,162,0.12));
-    background-image: url("/public/data/img0.jpeg");
+    background-image: url("../../public/data/img0.jpeg");
     background-size: cover;
     backdrop-filter: blur(15px);
     /*border: 5px solid rgba(255, 255, 255, 0.3);*/

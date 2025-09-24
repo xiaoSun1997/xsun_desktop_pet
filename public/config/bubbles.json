@@ -25,7 +25,7 @@
     "action": "close-pet"
   },
   {
-    "label": "隐藏",
-    "action": "close-pet"
+    "label": "最小化托盘",
+    "action": "minimize-to-tray"
   }
 ]

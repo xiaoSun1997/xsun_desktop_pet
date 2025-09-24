@@ -3,7 +3,9 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use sysinfo::System;
-use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
+use tauri::{AppHandle, Emitter, Manager, WebviewWindow,
+            menu::{Menu, MenuItemBuilder, PredefinedMenuItem},
+            tray::{TrayIcon, TrayIconBuilder, TrayIconEvent, MouseButton}};
 use tokio::time::Duration;
 mod calendar;
 mod clipboard;
@@ -284,6 +286,7 @@ struct YoudaoTranslateResponse {
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use tauri::menu::MenuItem;
 
 // 生成有道翻译签名
 // 修改签名生成函数
@@ -643,6 +646,123 @@ async fn refresh_calendar_data(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+// 添加创建托盘菜单的函数
+// 修正后的创建托盘菜单函数
+fn create_tray_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
+    let show_pet = MenuItemBuilder::with_id("show_pet", "显示桌宠").build(app)?;
+    let separator1 = PredefinedMenuItem::separator(app)?;
+    let open_clipboard = MenuItemBuilder::with_id("open_clipboard", "剪贴板").build(app)?;
+    let open_system = MenuItemBuilder::with_id("open_system", "系统信息").build(app)?;
+    let open_ai = MenuItemBuilder::with_id("open_ai", "AI对话").build(app)?;
+    let open_translator = MenuItemBuilder::with_id("open_translator", "有道翻译").build(app)?;
+    let open_calendar = MenuItemBuilder::with_id("open_calendar", "日历TODO").build(app)?;
+    let separator2 = PredefinedMenuItem::separator(app)?;
+    let quit = MenuItemBuilder::with_id("quit", "退出").build(app)?;
+
+    let menu = Menu::with_items(app, &[
+        &show_pet,
+        &separator1,
+        &open_clipboard,
+        &open_system,
+        &open_ai,
+        &open_translator,
+        &open_calendar,
+        &separator2,
+        &quit,
+    ])?;
+
+    Ok(menu)
+}
+
+
+// 添加处理托盘事件的函数
+// 修正后的处理托盘事件的函数
+fn handle_tray_event(app: &AppHandle, event: TrayIconEvent) {
+    match event {
+        TrayIconEvent::Click { button, .. } => {
+            match button {
+                MouseButton::Left => {
+                    // 左键点击显示/隐藏桌宠
+                    if let Some(pet_window) = app.get_webview_window("pet") {
+                        match pet_window.is_visible() {
+                            Ok(true) => {
+                                let _ = pet_window.hide();
+                            }
+                            Ok(false) => {
+                                let _ = pet_window.show();
+                                let _ = pet_window.set_focus();
+                            }
+                            Err(_) => {}
+                        }
+                    }
+                }
+                MouseButton::Right => {
+                    // 右键点击会自动显示菜单（这个事件可能不会触发，因为右键通常由系统处理菜单显示）
+                    println!("右键点击托盘图标");
+                }
+                _ => {}
+            }
+        }
+        TrayIconEvent::DoubleClick { .. } => {
+            // 双击显示桌宠
+            if let Some(pet_window) = app.get_webview_window("pet") {
+                let _ = pet_window.show();
+                let _ = pet_window.set_focus();
+            }
+        }
+        _ => {}
+    }
+}
+
+// 添加处理托盘菜单事件的函数
+fn handle_tray_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
+    match event.id.as_ref() {
+        "show_pet" => {
+            if let Some(pet_window) = app.get_webview_window("pet") {
+                let _ = pet_window.show();
+                let _ = pet_window.set_focus();
+            }
+        }
+        "open_clipboard" => {
+            // 发送事件到前端创建剪贴板窗口
+            let _ = app.emit("tray://open-clipboard", ());
+        }
+        "open_system" => {
+            let _ = app.emit("tray://open-system", ());
+        }
+        "open_ai" => {
+            let _ = app.emit("tray://open-ai", ());
+        }
+        "open_translator" => {
+            let _ = app.emit("tray://open-translator", ());
+        }
+        "open_calendar" => {
+            let _ = app.emit("tray://open-calendar", ());
+        }
+        "quit" => {
+            app.exit(0);
+        }
+        _ => {}
+    }
+}
+
+// 添加托盘相关的 invoke 函数
+#[tauri::command]
+async fn show_from_tray(app_handle: AppHandle) -> Result<(), String> {
+    if let Some(pet_window) = app_handle.get_webview_window("pet") {
+        pet_window.show().map_err(|e| e.to_string())?;
+        pet_window.set_focus().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn hide_to_tray(app_handle: AppHandle) -> Result<(), String> {
+    if let Some(pet_window) = app_handle.get_webview_window("pet") {
+        pet_window.hide().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -678,8 +798,25 @@ pub fn run() {
             upload_background_image,
             delete_background_image,
             refresh_calendar_data,
+            show_from_tray,
+            hide_to_tray,
         ])
         .setup(|app| {
+            // 创建托盘菜单
+            let tray_menu = create_tray_menu(app.handle())?;
+
+            // 创建托盘图标
+            let _tray = TrayIconBuilder::with_id("main_tray")
+                .menu(&tray_menu)
+                .icon(app.default_window_icon().unwrap().clone())
+                .tooltip("XSun桌宠")
+                .on_tray_icon_event(|tray, event| {
+                    handle_tray_event(tray.app_handle(), event);
+                })
+                .on_menu_event(|tray, event| {
+                    handle_tray_menu_event(tray.app_handle(), event);
+                })
+                .build(app)?;
             // 窗口初始化
             if let Some(main_window) = app.get_webview_window("main") {
                 if let Err(e) = main_window.hide() {
