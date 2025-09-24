@@ -60,7 +60,7 @@ pub enum CalendarView {
 impl Default for CalendarSettings {
     fn default() -> Self {
         Self {
-            background_images: vec!["data/img.jpeg".to_string()],
+            background_images: vec!["data/img0.jpeg".to_string()],
             rotation_interval: 30,
             theme: Some("default".to_string()),
             show_lunar: true,

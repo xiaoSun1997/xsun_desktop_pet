@@ -23,5 +23,9 @@
   {
     "label": "关闭桌宠",
     "action": "close-pet"
+  },
+  {
+    "label": "隐藏",
+    "action": "close-pet"
   }
 ]

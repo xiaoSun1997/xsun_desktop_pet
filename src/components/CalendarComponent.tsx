@@ -25,7 +25,7 @@ type TodoItem = {
 export default function CalendarComponent() {
     const [currentDate, setCurrentDate] = useState(new Date());
     const [settings, setSettings] = useState<CalendarSettings>({
-        backgroundImages: ["data/img.jpeg"],
+        backgroundImages: ["data/img0.jpeg"],
         rotationInterval: 30
     });
     const [showSettings, setShowSettings] = useState(false);
@@ -33,7 +33,7 @@ export default function CalendarComponent() {
     const [isCardMode, setIsCardMode] = useState(false);
     const [monthTodos, setMonthTodos] = useState<{ [date: string]: TodoItem[] }>({});
     const [tempSettings, setTempSettings] = useState<CalendarSettings>({
-        backgroundImages: ["data/img.jpeg"],
+        backgroundImages: ["data/img0.jpeg"],
         rotationInterval: 30
     });
 
@@ -402,11 +402,17 @@ export default function CalendarComponent() {
                         const dayTodos = monthTodos[dateStr] || [];
                         const isToday = date.toDateString() === today.toDateString();
                         const solarTerm = LunarCalendar.getSolarTerm(date);
-
+                        const bgIndex = index % 7; // 循环使用 0~5
+                        const backgroundStyle = {
+                            backgroundImage: `url("/public/data/img${bgIndex}.jpeg")`,
+                            backgroundSize: "cover",
+                            backgroundPosition: "center"
+                        };
                         return (
                             <div
                                 key={index}
                                 className={`card-mode-day ${isToday ? 'today-special' : ''}`}
+                                style={backgroundStyle}
                                 onDoubleClick={() => handleDateDoubleClick(date)}
                             >
                                 <div className="weekday-header">{weekDay}</div>
@@ -443,7 +449,7 @@ export default function CalendarComponent() {
         return LunarCalendar.formatLunarDate(date);
     };
 
-    const currentBgImage = settings.backgroundImages[currentBgIndex] || "data/img.jpeg";
+    const currentBgImage = settings.backgroundImages[currentBgIndex] || "data/img0.jpeg";
 
     // 如果是卡片模式，只显示右侧卡片
     if (isCardMode) {

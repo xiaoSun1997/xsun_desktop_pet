@@ -577,7 +577,7 @@ async fn load_calendar_settings(app: AppHandle) -> Result<CalendarSettings, Stri
 
     if !tokio::fs::try_exists(&settings_file).await.unwrap_or(false) {
         return Ok(CalendarSettings {
-            background_images: vec!["data/img.jpeg".to_string()],
+            background_images: vec!["data/img0.jpeg".to_string()],
             rotation_interval: 30, // 默认30分钟
         });
     }
@@ -642,6 +642,7 @@ async fn refresh_calendar_data(app: AppHandle) -> Result<(), String> {
     }
     Ok(())
 }
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
