@@ -30,9 +30,14 @@
 ![img_3.png](public/result_show/yd_res1.png)
 #### 4.2 对于国际化相关功能，若是出现=号，可以直接复制粘贴，翻译时会忽略‘=’前面的内容
 ![img_3.png](public/result_show/yd_res2.png)
-
+### 5.日历TODO
+![img_4.png](public/result_show/img_3.png)
+#### 双击每个日期，会打开TODO List
+![img_1.png](public/result_show/todo.png)
+#### 固定到窗口右边
+![img_1.png](public/result_show/img_4.png)
+![img_1.png](public/result_show/img_5.png)
 
 ## 后续功能规划 
 1. 添加json 对比功能
-2. 支持点击穿透的 每日日程安排（TODO List等）
-3. 有什么想要添加的功能欢迎给出你的idea
+2. 有什么想要添加的功能欢迎给出你的idea
