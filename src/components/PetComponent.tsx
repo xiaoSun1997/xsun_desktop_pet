@@ -7,7 +7,8 @@ import "./PetComponent.css";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 
 const actions = [
-    { name: "move", src: "/pet/linglan/wave.gif" }
+    // { name: "move", src: "/pet/linglan/wave.gif" }
+    { name: "move", src: "/pet/cat.gif" }
 ];
 
 type Bubble = {
@@ -20,7 +21,7 @@ export default function PetComponent() {
     const [showBubbles, setShowBubbles] = useState(false);
     const [isClickThrough, setIsClickThrough] = useState(true);
     const [isSleeping, setIsSleeping] = useState(false);
-    const downPos = useRef<{ x: number; y: number } | null>(null);
+    const downPos = useRef<{ x: number; y: number } | null>( null);
     const dragged = useRef(false);
     const DRAG_THRESHOLD = 6;
     const hideTimer = useRef<number | null>(null);
@@ -122,12 +123,13 @@ export default function PetComponent() {
         }
     };
 
+    // 修改 onPointerUp，点击桌宠时打开菜单面板
     const onPointerUp: React.PointerEventHandler<HTMLImageElement> = () => {
         if (isSleeping) return;
 
         if (!dragged.current) {
             setIndex((prev) => (prev + 1) % actions.length);
-            setShowBubbles((prev) => !prev);
+            openMenuPanel(); // 替换原来的 setShowBubbles
         }
         downPos.current = null;
         dragged.current = false;
@@ -232,11 +234,13 @@ export default function PetComponent() {
             const webview = new WebviewWindow("main", {
                 url,
                 title: "系统信息",
-                width: 200,
+                width: 400,
                 height: 600,
                 visible: true,
                 transparent: true,
                 decorations: false,
+                center: true,
+
             });
 
             await new Promise<void>((resolve, reject) => {
@@ -295,6 +299,8 @@ export default function PetComponent() {
                 visible: true,
                 transparent: true,
                 decorations: false,
+                center: true,
+
             });
 
             await new Promise<void>((resolve, reject) => {
@@ -352,6 +358,8 @@ export default function PetComponent() {
                 resizable: true,
                 minWidth: 600,
                 minHeight: 500,
+                center: true,
+
             });
 
             await new Promise<void>((resolve, reject) => {
@@ -407,6 +415,8 @@ export default function PetComponent() {
                 resizable: true,
                 minWidth: 800,
                 minHeight: 600,
+                center: true,
+
             });
 
             await new Promise<void>((resolve, reject) => {
@@ -462,6 +472,10 @@ export default function PetComponent() {
                 resizable: true,
                 minWidth: 900,
                 minHeight: 950,
+                shadow: false,
+                center: true,
+                skipTaskbar: true, // 不在任务栏显示
+
             });
 
             await new Promise<void>((resolve, reject) => {
@@ -496,6 +510,70 @@ export default function PetComponent() {
             console.error("最小化到托盘失败:", error);
         }
     };
+
+    // 添加打开菜单面板的函数
+    const openMenuPanel = async () => {
+        const windows = await getAllWindows();
+        const existing = windows.find((w) => w.label === "menu-panel");
+
+        if (existing) {
+            try {
+                await existing.show();
+                await existing.setFocus();
+                return;
+            } catch (e) {
+                console.warn("关闭旧窗口失败：", e);
+            }
+        }
+
+        const url = import.meta.env.DEV
+            ? "http://localhost:1420/menu"
+            : "menu.html";
+
+        try {
+            const webview = new WebviewWindow("menu-panel", {
+                url,
+                title: "功能菜单",
+                width: 600,
+                height: 600,
+                visible: false, // 先隐藏，等加载完再显示
+                transparent: true, // ⚠️ 改为不透明
+                decorations: false,
+                resizable: false,
+                alwaysOnTop: false,
+                center: true,
+                skipTaskbar: true, // 不在任务栏显示
+                focus: true,
+                shadow: false,
+            });
+
+            await new Promise<void>((resolve, reject) => {
+                const timeout = setTimeout(() => {
+                    reject(new Error("等待菜单面板创建超时"));
+                }, 5000);
+
+                webview.once("tauri://created", () => {
+                    clearTimeout(timeout);
+                    resolve();
+                });
+
+                webview.once("tauri://error", (e) => {
+                    clearTimeout(timeout);
+                    reject(new Error(`创建菜单面板时出错: ${JSON.stringify(e)}`));
+                });
+            });
+
+            // 等待内容加载
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+            await webview.show();
+            await webview.setFocus();
+            console.log("菜单面板已创建并显示");
+        } catch (err) {
+            console.error("创建菜单面板失败：", err);
+        }
+    };
+
     // 处理气泡点击事件
     const handleBubbleClick = async (bubble: Bubble) => {
         switch (bubble.action) {

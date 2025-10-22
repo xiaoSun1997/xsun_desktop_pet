@@ -8,6 +8,7 @@ import AIChatComponent from "./components/AIChatComponent";  // 添加这个导�
 import TranslatorComponent from "./components/TranslatorComponent"; // 添加这个导入
 import CalendarComponent from "./components/CalendarComponent";
 import TodoWindow from "./components/TodoWindow";
+import MenuPanel from "./components/MenuPanel.tsx";
 
 function App() {
     const [label, setLabel] = useState<string>("");
@@ -34,6 +35,8 @@ function App() {
         return <CalendarComponent />;
     } else if (label.startsWith("todo_")){
         return <TodoWindow />;
+    }else if (label ==="menu-panel"){
+        return <MenuPanel />;
     }
 
     return null;

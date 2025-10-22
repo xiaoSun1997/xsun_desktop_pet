@@ -1,31 +1,37 @@
 [
-
   {
     "label": "剪贴板",
-    "action": "open-clipboard"
+    "action": "open-clipboard",
+    "icon": "/menu/clipboard_512.png"
   },
   {
     "label": "系统信息",
-    "action": "open-main"
+    "action": "open-main",
+    "icon": "/menu/system_512.png"
   },
   {
     "label": "AI对话",
-    "action": "open-ai"
+    "action": "open-ai",
+    "icon": "/menu/ai_512.png"
   },
   {
     "label": "有道翻译",
-    "action": "translator"
+    "action": "translator",
+    "icon": "/menu/translator_512.png"
   },
   {
     "label": "日历TODO",
-    "action": "calendar"
+    "action": "calendar",
+    "icon": "/menu/calendar_512.png"
   },
   {
     "label": "关闭桌宠",
-    "action": "close-pet"
+    "action": "close-pet",
+    "icon": "/menu/close_512.png"
   },
   {
     "label": "最小化托盘",
-    "action": "minimize-to-tray"
+    "action": "minimize-to-tray",
+    "icon": "/menu/minimize_512.png"
   }
 ]

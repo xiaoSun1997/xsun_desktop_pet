@@ -15,8 +15,8 @@
       {
         "label": "pet",
         "title": "桌宠",
-        "width": 500,
-        "height": 300,
+        "width": 100,
+        "height": 100,
         "transparent": true,
         "decorations": false,
         "resizable": false,
@@ -47,9 +47,9 @@
       "dmg"
     ],
     "icon": [
-      "icons/favicon-16x16.png",
-      "icons/favicon-32x32.png",
-      "icons/favicon.ico"
+      "icons/cat32.png",
+      "icons/cat48.png",
+      "icons/cat72.ico"
     ]
   },
   "plugins": {
