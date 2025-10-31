@@ -23,7 +23,7 @@ export default function PetComponent() {
     const [isSleeping, setIsSleeping] = useState(false);
     const downPos = useRef<{ x: number; y: number } | null>( null);
     const dragged = useRef(false);
-    const DRAG_THRESHOLD = 6;
+    const DRAG_THRESHOLD = 3; // 降低阈值，提升响应速度
     const hideTimer = useRef<number | null>(null);
     const sleepTimer = useRef<number | null>(null);
     const doubleClickTimer = useRef<number | null>(null);
@@ -86,20 +86,23 @@ export default function PetComponent() {
         }
     };
 
-    const onPointerDown: React.PointerEventHandler<HTMLImageElement> = (e) => {
+    // 修改为支持整个容器的拖拽
+    const onPointerDown: React.PointerEventHandler<HTMLDivElement> = (e) => {
         if (isSleeping) {
-            // 休眠时检测双击
-            clickCount.current++;
-            if (clickCount.current === 1) {
-                doubleClickTimer.current = window.setTimeout(() => {
+            // 休眠时检测双击 - 只在图片上响应
+            if ((e.target as HTMLElement).classList.contains('pet-image')) {
+                clickCount.current++;
+                if (clickCount.current === 1) {
+                    doubleClickTimer.current = window.setTimeout(() => {
+                        clickCount.current = 0;
+                    }, 300);
+                } else if (clickCount.current === 2) {
+                    if (doubleClickTimer.current) {
+                        clearTimeout(doubleClickTimer.current);
+                    }
                     clickCount.current = 0;
-                }, 300);
-            } else if (clickCount.current === 2) {
-                if (doubleClickTimer.current) {
-                    clearTimeout(doubleClickTimer.current);
+                    handleDoubleClick();
                 }
-                clickCount.current = 0;
-                handleDoubleClick();
             }
             // 阻止事件穿透
             e.preventDefault();

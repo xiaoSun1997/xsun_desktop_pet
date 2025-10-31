@@ -95,11 +95,15 @@ export default function MenuPanel() {
                     prodUrl: "index.html",
                     options: {
                         title: "系统信息",
-                        width: 200,
+                        width: 600,
                         height: 600,
-                        visible: true,
+                        visible: false,
                         transparent: true,
                         decorations: false,
+                        center: true,
+                        skipTaskbar: true, // 不在任务栏显示
+                        focus: true,
+                        shadow: false,
                     }
                 });
                 break;
