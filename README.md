@@ -159,14 +159,14 @@ src-tauri/
 ### 数据流
 
 1. 用户与前端组件交互
-2. 前端通过 Tauri 的 [invoke](file:///E:/code/xsun_desktop_pet/src-tauri/src/lib.rs#L365-L365) 调用后端命令
+2. 前端通过 Tauri 的 [invoke]( xsun_desktop_pet/src-tauri/src/lib.rs#L365-L365) 调用后端命令
 3. 后端处理业务逻辑并返回结果
 4. 前端接收结果并更新 UI
 
 ### 配置文件
 
-- [bubbles.json](file:///E:/code/xsun_desktop_pet/public/config/bubbles.json) - 功能菜单配置
-- [deepseek.json](file:///E:/code/xsun_desktop_pet/src-tauri/config/deepseek.json) - AI 配置示例
+- [bubbles.json]( xsun_desktop_pet/public/config/bubbles.json) - 功能菜单配置
+- [deepseek.json]( xsun_desktop_pet/src-tauri/config/deepseek.json) - AI 配置示例
 
 ## 核心功能详解
 
@@ -197,7 +197,7 @@ src-tauri/
 应用使用以下方式实现数据持久化：
 
 1. 剪贴板历史 - 存储在内存中，应用重启后丢失
-2. AI 配置 - 保存在用户应用数据目录的 [deepseek_config.json](file:///E:/code/xsun_desktop_pet/src-tauri/src/lib.rs#L252-L252)
+2. AI 配置 - 保存在用户应用数据目录的 [deepseek_config.json]( xsun_desktop_pet/src-tauri/src/lib.rs#L252-L252)
 3. 翻译配置 - 保存在用户应用数据目录的 youdao_config.json
 4. 日历待办事项 - 保存在用户应用数据目录的 todos.json
 5. 日历设置 - 保存在用户应用数据目录的 calendar_settings.json
@@ -249,11 +249,11 @@ cargo tauri build
 
 ### 添加新功能
 
-1. 在 [bubbles.json](file:///E:/code/xsun_desktop_pet/public/config/bubbles.json) 中添加菜单项
+1. 在 [bubbles.json]( xsun_desktop_pet/public/config/bubbles.json) 中添加菜单项
 2. 创建对应的前端组件
-3. 如需后端支持，在 [lib.rs](file:///E:/code/xsun_desktop_pet/src-tauri/src/lib.rs) 中添加相应的命令函数
-4. 在 [MenuPanel.tsx](file:///E:/code/xsun_desktop_pet/src/components/MenuPanel.tsx) 中添加窗口创建逻辑
-5. 在 [PetComponent.tsx](file:///E:/code/xsun_desktop_pet/src/components/PetComponent.tsx) 中添加托盘菜单事件处理
+3. 如需后端支持，在 [lib.rs]( xsun_desktop_pet/src-tauri/src/lib.rs) 中添加相应的命令函数
+4. 在 [MenuPanel.tsx]( xsun_desktop_pet/src/components/MenuPanel.tsx) 中添加窗口创建逻辑
+5. 在 [PetComponent.tsx]( xsun_desktop_pet/src/components/PetComponent.tsx) 中添加托盘菜单事件处理
 
 ## 总结
 
