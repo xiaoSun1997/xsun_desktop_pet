@@ -8,7 +8,7 @@ import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 
 const actions = [
     // { name: "move", src: "/pet/linglan/wave.gif" }
-    { name: "move", src: "/pet/cat.gif" }
+    { name: "move", src: "/pet/rich_cat.gif" }
 ];
 
 type Bubble = {

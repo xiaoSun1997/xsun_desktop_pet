@@ -9,6 +9,7 @@ import TranslatorComponent from "./components/TranslatorComponent"; // 添加这
 import CalendarComponent from "./components/CalendarComponent";
 import TodoWindow from "./components/TodoWindow";
 import MenuPanel from "./components/MenuPanel.tsx";
+import JsonCompareComponent from "./components/JsonCompareComponent"; // 添加JSON比较组件导入
 
 function App() {
     const [label, setLabel] = useState<string>("");
@@ -37,6 +38,8 @@ function App() {
         return <TodoWindow />;
     }else if (label ==="menu-panel"){
         return <MenuPanel />;
+    }else if (label === "json-compare"){  // 添加JSON比较组件条件
+        return <JsonCompareComponent />;
     }
 
     return null;

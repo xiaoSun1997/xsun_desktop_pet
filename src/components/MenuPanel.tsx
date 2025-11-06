@@ -177,6 +177,25 @@ export default function MenuPanel() {
                 });
                 break;
 
+            case "json-compare":
+                await createOrShowWindow("json-compare", {
+                    devUrl: "http://localhost:1420",
+                    prodUrl: "index.html",
+                    options: {
+                        title: "JSON对比工具",
+                        width: 1200,
+                        height: 800,
+                        visible: true,
+                        transparent: true,
+                        decorations: false,
+                        resizable: true,
+                        minWidth: 800,
+                        minHeight: 600,
+                        center: true,
+                    }
+                });
+                break;
+
             case "minimize-to-tray":
                 await invoke("hide_to_tray");
                 break;

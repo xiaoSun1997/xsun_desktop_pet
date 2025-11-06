@@ -25,6 +25,11 @@
     "icon": "/menu/calendar_512.png"
   },
   {
+    "label": "JSON对比",
+    "action": "json-compare",
+    "icon": "/menu/json_512.png"
+  },
+  {
     "label": "关闭桌宠",
     "action": "close-pet",
     "icon": "/menu/close_512.png"

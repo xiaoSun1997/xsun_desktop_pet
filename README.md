@@ -9,7 +9,6 @@
  <img src="https://img.shields.io/badge/node-22.18.0-da282a" alt="Downloads">
 </p>
 
-![wave.gif](public/pet/linglan/wave.gif)
 ## 目前大致功能支持
 ![img.png](public/result_show/img.png)
 ## 功能支持
@@ -40,4 +39,6 @@
 
 ## 后续功能规划 
 1. 添加json 对比功能
+2. 增加一个番茄钟，自定义连续学习/工作时间 ，时间到会弹出窗口，提醒你去走走休息一下，点击继续工作会重新计时
+3. 增加一个
 2. 有什么想要添加的功能欢迎给出你的idea
