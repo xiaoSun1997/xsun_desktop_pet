@@ -199,6 +199,25 @@ export default function MenuPanel() {
                 });
                 break;
 
+            case "pomodoro-timer":
+                await createOrShowWindow("pomodoro-timer", {
+                    devUrl: "http://localhost:1420",
+                    prodUrl: "index.html",
+                    options: {
+                        title: "番茄钟",
+                        width: 800,
+                        height: 600,
+                        visible: true,
+                        transparent: true,
+                        decorations: false,
+                        resizable: true,
+                        minWidth: 600,
+                        minHeight: 500,
+                        center: true,
+                    }
+                });
+                break;
+
             case "minimize-to-tray":
                 await invoke("hide_to_tray");
                 break;

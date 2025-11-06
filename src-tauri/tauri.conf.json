@@ -25,6 +25,20 @@
         "shadow": false,
         "skipTaskbar": true,
         "focusable": true
+      },
+      {
+        "label": "pomodoro-notification",
+        "title": "番茄钟提醒",
+        "width": 250,
+        "height": 250,
+        "transparent": true,
+        "decorations": false,
+        "resizable": false,
+        "alwaysOnTop": true,
+        "center": true,
+        "visible": false,
+        "skipTaskbar": true,
+        "focusable": true
       }
     ],
     "security": {

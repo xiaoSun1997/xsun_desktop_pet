@@ -3,10 +3,12 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use sysinfo::System;
-use tauri::{AppHandle, Emitter, Manager, WebviewWindow,
+use tauri::{AppHandle, Emitter, Manager, WebviewWindow,WebviewWindowBuilder,
             menu::{Menu, MenuItemBuilder, PredefinedMenuItem},
             tray::{TrayIcon, TrayIconBuilder, TrayIconEvent, MouseButton}};
 use tokio::time::Duration;
+use urlencoding::encode as urlencode;
+
 mod calendar;
 mod clipboard;
 mod window_utils;
@@ -763,6 +765,58 @@ async fn hide_to_tray(app_handle: AppHandle) -> Result<(), String> {
     }
     Ok(())
 }
+
+// 番茄钟通知命令
+#[tauri::command]
+async fn show_pomodoro_notification(
+    app: AppHandle,
+    message: String,
+    is_work_time: bool,
+) -> Result<(), String> {
+    // 检查通知窗口是否已存在
+    if let Some(notification_window) = app.get_webview_window("pomodoro-notification") {
+        // 窗口存在，更新内容并显示
+        notification_window
+            .emit("pomodoro-update", serde_json::json!({
+                "message": message,
+                "isWorkTime": is_work_time
+            }))
+            .map_err(|e| e.to_string())?;
+
+        notification_window.show().map_err(|e| e.to_string())?;
+        notification_window.set_focus().map_err(|e| e.to_string())?;
+    } else {
+        // 窗口不存在，创建新窗口
+        let notification_url = format!(
+            "/#/pomodoro-notification?message={}&isWorkTime={}",
+            urlencode(&message),
+            is_work_time
+        );
+
+        WebviewWindowBuilder::new(&app, "pomodoro-notification", tauri::WebviewUrl::App(notification_url.into()))
+            .title("番茄钟提醒")
+            .inner_size(400.0, 250.0)
+            .resizable(false)
+            .decorations(false)
+            .always_on_top(true)
+            .center()
+            .skip_taskbar(true)
+            .build()
+            .map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn close_pomodoro_notification(app: AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("pomodoro-notification") {
+        window.hide().map_err(|e| e.to_string())?;
+        // 发送继续事件到主番茄钟窗口
+        app.emit("pomodoro-continue", ()).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -800,6 +854,8 @@ pub fn run() {
             refresh_calendar_data,
             show_from_tray,
             hide_to_tray,
+            show_pomodoro_notification,
+            close_pomodoro_notification,
         ])
         .setup(|app| {
             // 创建托盘菜单

@@ -10,6 +10,8 @@ import CalendarComponent from "./components/CalendarComponent";
 import TodoWindow from "./components/TodoWindow";
 import MenuPanel from "./components/MenuPanel.tsx";
 import JsonCompareComponent from "./components/JsonCompareComponent"; // 添加JSON比较组件导入
+import PomodoroTimerComponent from "./components/PomodoroTimerComponent"; // 添加番茄钟组件导入
+import PomodoroNotification from './components/PomodoroNotification';
 
 function App() {
     const [label, setLabel] = useState<string>("");
@@ -40,6 +42,10 @@ function App() {
         return <MenuPanel />;
     }else if (label === "json-compare"){  // 添加JSON比较组件条件
         return <JsonCompareComponent />;
+    }else if (label === "pomodoro-timer"){  // 添加番茄钟组件条件
+        return <PomodoroTimerComponent />;
+    }else if (label === "pomodoro-notification"){
+        return <PomodoroNotification />;
     }
 
     return null;

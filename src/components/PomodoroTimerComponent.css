@@ -1,0 +1,710 @@
+.pomodoro-container {
+    width: 100%;
+    height: 100vh;
+    background-image: url('/public/data/img5.jpeg');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    display: flex;
+    flex-direction: column;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
+    overflow: hidden;
+    position: relative;
+}
+
+.pomodoro-container::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.85);
+    pointer-events: none;
+    z-index: 0;
+}
+
+.pomodoro-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid rgba(225, 232, 237, 0.8);
+    cursor: move;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 1;
+}
+
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.pomodoro-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: #14171a;
+    margin: 0;
+}
+
+.status-indicator {
+    padding: 4px 12px;
+    background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%);
+    color: white;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.7;
+    }
+}
+
+.header-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.close-button {
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    background: #e0245e;
+    color: white;
+}
+
+.close-button:hover {
+    background: #c91e4a;
+    transform: scale(1.05);
+}
+
+.close-icon {
+    width: 16px;
+    height: 16px;
+    position: relative;
+}
+
+.close-icon::before,
+.close-icon::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 12px;
+    height: 2px;
+    background: white;
+    border-radius: 1px;
+}
+
+.close-icon::before {
+    transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.close-icon::after {
+    transform: translate(-50%, -50%) rotate(-45deg);
+}
+
+.pomodoro-content {
+    flex: 1;
+    display: flex;
+    gap: 20px;
+    padding: 20px;
+    overflow: auto;
+    position: relative;
+    z-index: 1;
+}
+
+.pomodoro-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    border: 2px solid rgba(225, 232, 237, 0.8);
+    border-radius: 16px;
+    padding: 20px;
+    transition: all 0.3s ease;
+    position: relative;
+    min-width: 0;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+}
+
+.pomodoro-panel:hover {
+    border-color: #4CAF50;
+    box-shadow: 0 6px 24px rgba(76, 175, 80, 0.15);
+}
+
+.panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid rgba(225, 232, 237, 0.6);
+}
+
+.panel-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #14171a;
+    margin: 0;
+}
+
+.settings-form {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.form-group label {
+    font-size: 14px;
+    font-weight: 600;
+    color: #14171a;
+}
+
+.switch-container {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 56px;
+    height: 28px;
+}
+
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: .4s;
+    border-radius: 28px;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 20px;
+    width: 20px;
+    left: 4px;
+    bottom: 4px;
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+input:checked + .slider {
+    background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%);
+}
+
+input:checked + .slider:before {
+    transform: translateX(28px);
+}
+
+.switch-label {
+    font-size: 13px;
+    color: #657786;
+    font-weight: 500;
+}
+
+.time-range-inputs {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.time-input {
+    flex: 1;
+    padding: 10px 14px;
+    border: 2px solid rgba(225, 232, 237, 0.8);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.9);
+    font-size: 14px;
+    font-family: 'Consolas', 'Monaco', monospace;
+    transition: all 0.3s ease;
+}
+
+.time-separator {
+    color: #657786;
+    font-weight: 500;
+}
+
+.duration-input-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.duration-input {
+    flex: 1;
+    padding: 10px 14px;
+    border: 2px solid rgba(225, 232, 237, 0.8);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.9);
+    font-size: 14px;
+    font-family: 'Consolas', 'Monaco', monospace;
+    transition: all 0.3s ease;
+}
+
+.duration-unit {
+    color: #657786;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.time-input:focus,
+.duration-input:focus {
+    border-color: #4CAF50;
+    box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.1);
+    outline: none;
+}
+
+.time-input:disabled,
+.duration-input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: rgba(245, 245, 245, 0.9);
+}
+
+.form-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 8px;
+}
+
+.save-button {
+    padding: 10px 24px;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
+    color: white;
+    box-shadow: 0 4px 12px rgba(33, 150, 243, 0.3);
+}
+
+.save-button:hover:not(:disabled) {
+    background: linear-gradient(135deg, #1976D2 0%, #1565C0 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(33, 150, 243, 0.4);
+}
+
+.timer-display {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    gap: 24px;
+    padding: 20px 0;
+}
+
+.timer-status {
+    font-size: 20px;
+    font-weight: 600;
+    padding: 10px 20px;
+    border-radius: 24px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.timer-status.work {
+    background: linear-gradient(135deg, rgba(244, 67, 54, 0.2) 0%, rgba(244, 67, 54, 0.3) 100%);
+    color: #f44336;
+}
+
+.timer-status.break {
+    background: linear-gradient(135deg, rgba(76, 175, 80, 0.2) 0%, rgba(76, 175, 80, 0.3) 100%);
+    color: #4CAF50;
+}
+
+.timer-value {
+    font-size: 56px;
+    font-weight: 700;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    color: #14171a;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.timer-progress {
+    width: 100%;
+    height: 8px;
+    background: rgba(225, 232, 237, 0.4);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #4CAF50 0%, #2E7D32 100%);
+    transition: width 1s linear;
+    border-radius: 4px;
+}
+
+.timer-controls {
+    display: flex;
+    gap: 12px;
+}
+
+.control-button {
+    padding: 12px 24px;
+    border: none;
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    white-space: nowrap;
+}
+
+.start-button {
+    background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%);
+    color: white;
+}
+
+.pause-button {
+    background: linear-gradient(135deg, #FF9800 0%, #F57C00 100%);
+    color: white;
+}
+
+.reset-button {
+    background: linear-gradient(135deg, #607D8B 0%, #455A64 100%);
+    color: white;
+}
+
+.control-button:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+}
+
+.control-button:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.control-button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* 响应式设计 */
+@media (max-width: 1024px) {
+    .pomodoro-content {
+        flex-direction: column;
+    }
+
+    .timer-value {
+        font-size: 48px;
+    }
+}
+
+@media (max-width: 480px) {
+    .pomodoro-header {
+        padding: 10px 12px;
+        flex-wrap: wrap;
+    }
+
+    .header-left {
+        gap: 8px;
+    }
+
+    .pomodoro-title {
+        font-size: 14px;
+    }
+
+    .status-indicator {
+        font-size: 10px;
+        padding: 2px 8px;
+    }
+
+    .close-button {
+        width: 28px;
+        height: 28px;
+    }
+
+    .pomodoro-content {
+        padding: 12px;
+        gap: 12px;
+    }
+
+    .pomodoro-panel {
+        padding: 12px;
+        border-radius: 12px;
+    }
+
+    .panel-header {
+        padding-bottom: 10px;
+    }
+
+    .panel-title {
+        font-size: 14px;
+    }
+
+    .settings-form {
+        gap: 16px;
+    }
+
+    .form-group {
+        gap: 8px;
+    }
+
+    .timer-display {
+        gap: 20px;
+        padding: 16px 0;
+    }
+
+    .timer-value {
+        font-size: 36px;
+    }
+
+    .timer-status {
+        font-size: 16px;
+        padding: 6px 14px;
+    }
+
+    .timer-controls {
+        flex-direction: column;
+        width: 100%;
+        gap: 10px;
+    }
+
+    .control-button {
+        width: 100%;
+        padding: 12px 20px;
+        font-size: 14px;
+    }
+
+    .time-range-inputs {
+        flex-direction: column;
+        gap: 10px;
+        align-items: stretch;
+    }
+
+    .time-separator {
+        text-align: center;
+    }
+
+    .duration-input-group {
+        gap: 6px;
+    }
+
+    .save-button {
+        width: 100%;
+        padding: 12px 24px;
+    }
+}
+
+/* 深色模式支持 */
+@media (prefers-color-scheme: dark) {
+    .pomodoro-container::before {
+        background: rgba(20, 23, 26, 0.9);
+    }
+
+    .pomodoro-header,
+    .pomodoro-panel {
+        background: rgba(30, 35, 40, 0.95);
+        border-color: rgba(56, 68, 77, 0.8);
+    }
+
+    .pomodoro-title,
+    .panel-title,
+    .form-group label,
+    .timer-value {
+        color: #e7e9ea;
+    }
+
+    .switch-label,
+    .duration-unit,
+    .time-separator {
+        color: #8b98a5;
+    }
+
+    .time-input,
+    .duration-input {
+        background: rgba(25, 30, 35, 0.9);
+        border-color: rgba(56, 68, 77, 0.8);
+        color: #e7e9ea;
+    }
+
+    .time-input:disabled,
+    .duration-input:disabled {
+        background: rgba(40, 45, 50, 0.9);
+    }
+
+    .slider {
+        background-color: #536471;
+    }
+
+    .timer-progress {
+        background: rgba(56, 68, 77, 0.4);
+    }
+}
+
+/* 打印样式 */
+@media print {
+    .pomodoro-container {
+        background: white;
+    }
+
+    .pomodoro-container::before {
+        display: none;
+    }
+
+    .header-actions,
+    .timer-controls,
+    .form-actions {
+        display: none;
+    }
+
+    .pomodoro-panel {
+        box-shadow: none;
+        border: 1px solid #e1e8ed;
+    }
+}
+
+/* 无障碍增强 */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* 高对比度模式 */
+@media (prefers-contrast: high) {
+    .pomodoro-panel {
+        border-width: 3px;
+    }
+
+    .time-input:focus,
+    .duration-input:focus {
+        border-width: 3px;
+        box-shadow: 0 0 0 4px rgba(76, 175, 80, 0.2);
+    }
+
+    .control-button {
+        border: 2px solid transparent;
+    }
+
+    .control-button:focus {
+        border-color: currentColor;
+    }
+}
+
+/* 滚动条美化 */
+.pomodoro-content::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.pomodoro-content::-webkit-scrollbar-track {
+    background: rgba(225, 232, 237, 0.3);
+    border-radius: 4px;
+}
+
+.pomodoro-content::-webkit-scrollbar-thumb {
+    background: rgba(101, 119, 134, 0.4);
+    border-radius: 4px;
+    transition: background 0.2s;
+}
+
+.pomodoro-content::-webkit-scrollbar-thumb:hover {
+    background: rgba(101, 119, 134, 0.6);
+}
+
+/* 焦点状态增强 */
+.close-button:focus-visible,
+.control-button:focus-visible,
+.save-button:focus-visible {
+    outline: 3px solid #4CAF50;
+    outline-offset: 2px;
+}
+
+.time-input:focus-visible,
+.duration-input:focus-visible {
+    outline: none;
+}
+
+/* 加载动画 */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.pomodoro-panel {
+    animation: fadeIn 0.4s ease-out;
+}
+
+/* 成功提示动画 */
+@keyframes successPulse {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7);
+    }
+    50% {
+        box-shadow: 0 0 0 10px rgba(76, 175, 80, 0);
+    }
+}
+
+.save-button.success {
+    animation: successPulse 0.6s ease-out;
+}
+
+/* 选择文本样式 */
+::selection {
+    background: rgba(76, 175, 80, 0.3);
+    color: inherit;
+}
+
+::-moz-selection {
+    background: rgba(76, 175, 80, 0.3);
+    color: inherit;
+}
