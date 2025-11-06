@@ -258,3 +258,7 @@ cargo tauri build
 ## 总结
 
 XSUN Desktop Pet 是一个功能丰富的桌面应用程序，集成了多种实用工具。其模块化的设计使得添加新功能变得简单，而 Tauri 的跨平台特性保证了良好的兼容性。该应用展示了如何利用现代 Web 技术和系统编程语言构建高效的桌面应用。
+
+## 效果预览
+![image](https://gitee.com/sunlinglei/xsun_desktop_pet/blob/dev/public/pet/rich_cat.gif)
+
