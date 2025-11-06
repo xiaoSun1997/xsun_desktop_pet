@@ -137,6 +137,7 @@ export default function MenuPanel() {
                         resizable: true,
                         minWidth: 600,
                         minHeight: 500,
+                        center: true,
                     }
                 });
                 break;
@@ -155,6 +156,7 @@ export default function MenuPanel() {
                         resizable: true,
                         minWidth: 800,
                         minHeight: 600,
+                        center: true,
                     }
                 });
                 break;
@@ -173,6 +175,7 @@ export default function MenuPanel() {
                         resizable: true,
                         minWidth: 900,
                         minHeight: 950,
+                        center: true,
                     }
                 });
                 break;
