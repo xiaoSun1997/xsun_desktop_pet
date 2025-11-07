@@ -15,7 +15,6 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = ["tray-icon"] } # 添加 tray-icon 功能
 tauri-plugin-opener = "2"
-tauri-plugin-shell = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-dialog = "2"
 sysinfo = "0.30"
@@ -23,15 +22,9 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "fs"] 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
-rusqlite = { version = "0.31", features = ["bundled", "chrono"] }
 chrono = { version = "0.4", features = ["serde"] }
-raw-window-handle = "0.6"
 tauri-plugin-clipboard-manager = "2.0"
 md5 = "0.7"
-image = "0.24"
-uuid = { version = "1.0", features = ["v4"] }
-base64 = "0.21"
-once_cell = "1"
 urlencoding = "2.1.3"
 
 [target.'cfg(windows)'.dependencies]
