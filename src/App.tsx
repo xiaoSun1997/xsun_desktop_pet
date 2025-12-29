@@ -12,6 +12,7 @@ import MenuPanel from "./components/MenuPanel.tsx";
 import JsonCompareComponent from "./components/JsonCompareComponent"; // 添加JSON比较组件导入
 import PomodoroTimerComponent from "./components/PomodoroTimerComponent"; // 添加番茄钟组件导入
 import PomodoroNotification from './components/PomodoroNotification';
+import JiraComponent from './components/JiraComponent'; // 添加JIRA组件导入
 
 function App() {
     const [label, setLabel] = useState<string>("");
@@ -46,6 +47,8 @@ function App() {
         return <PomodoroTimerComponent />;
     }else if (label === "pomodoro-notification"){
         return <PomodoroNotification />;
+    } else if (label === "jira") {
+        return <JiraComponent />;
     }
 
     return null;

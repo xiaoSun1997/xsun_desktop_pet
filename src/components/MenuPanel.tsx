@@ -217,6 +217,25 @@ export default function MenuPanel() {
                     }
                 });
                 break;
+                
+            case "jira":
+                await createOrShowWindow("jira", {
+                    devUrl: "http://localhost:1420",
+                    prodUrl: "index.html",
+                    options: {
+                        title: "JIRA工作流助手",
+                        width: 1000,
+                        height: 1000,
+                        visible: true,
+                        transparent: true,
+                        decorations: false,
+                        resizable: true,
+                        minWidth: 800,
+                        minHeight: 600,
+                        center: true,
+                    }
+                });
+                break;
 
             case "minimize-to-tray":
                 await invoke("hide_to_tray");

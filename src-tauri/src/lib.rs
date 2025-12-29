@@ -11,12 +11,19 @@ use urlencoding::encode as urlencode;
 
 mod calendar;
 mod clipboard;
+mod jira_tools;
 mod window_utils;
 
 use clipboard::{
     add_to_clipboard_history, clear_clipboard_history, copy_to_clipboard, get_clipboard_history,
     get_current_clipboard, manual_clipboard_check, ClipboardHistory,
 };
+
+use jira_tools::{
+    GitCommit, JiraIssue, WorklogEntry, JiraConfig, GitConfig, GitRepository
+};
+
+use uuid::Uuid;
 
 #[derive(Serialize, Clone)]
 struct SystemInfo {
@@ -856,6 +863,17 @@ pub fn run() {
             hide_to_tray,
             show_pomodoro_notification,
             close_pomodoro_notification,
+            jira_tools::save_jira_config,
+            jira_tools::load_jira_config,
+            jira_tools::save_git_config,
+            jira_tools::load_git_config,
+            jira_tools::get_my_unfinished_issues,
+            jira_tools::get_my_today_worklogs,
+            jira_tools::log_work,
+            jira_tools::get_today_commits_by_user,
+            jira_tools::get_current_date,
+            jira_tools::get_required_work_hours,
+            jira_tools::process_worklog_with_ai, // 添加新的AI命令
         ])
         .setup(|app| {
             // 创建托盘菜单

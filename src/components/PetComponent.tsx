@@ -179,6 +179,10 @@ export default function PetComponent() {
             createOrShowCalendar();
         });
 
+        const unlistenTrayJira = listen("tray://open-jira", () => {
+            createOrShowJira();
+        });
+
         return () => {
             unlistenWakeUp.then(fn => fn());
             unlistenTrayClipboard.then(fn => fn());
@@ -186,6 +190,7 @@ export default function PetComponent() {
             unlistenTrayAI.then(fn => fn());
             unlistenTrayTranslator.then(fn => fn());
             unlistenTrayCalendar.then(fn => fn());
+            unlistenTrayJira.then(fn => fn());
             if (doubleClickTimer.current) clearTimeout(doubleClickTimer.current);
         };
     }, []);
@@ -504,6 +509,63 @@ export default function PetComponent() {
             console.error("创建日历窗口失败：", err);
         }
     };
+    
+    // 创建或显示JIRA窗口
+    const createOrShowJira = async () => {
+        const windows = await getAllWindows();
+        const existing = windows.find((w) => w.label === "jira");
+
+        if (existing) {
+            try {
+                await existing.show();
+                await existing.setFocus();
+                return;
+            } catch (e) {
+                console.warn("已有JIRA窗口，但 show/setFocus 失败，尝试重新创建：", e);
+            }
+        }
+
+        const url = import.meta.env.DEV ? "http://localhost:1420" : "index.html";
+
+        try {
+            const webview = new WebviewWindow("jira", {
+                url,
+                title: "JIRA工作流助手",
+                width: 1000,
+                height: 600,
+                visible: false,
+                transparent: true,
+                decorations: false,
+                resizable: true,
+                alwaysOnTop: false,
+                center: true,
+                shadow: false,
+            });
+
+            await new Promise<void>((resolve, reject) => {
+                const timeout = setTimeout(() => {
+                    reject(new Error("等待JIRA窗口创建超时"));
+                }, 5000);
+
+                webview.once("tauri://created", () => {
+                    clearTimeout(timeout);
+                    resolve();
+                });
+
+                webview.once("tauri://error", (e) => {
+                    clearTimeout(timeout);
+                    reject(new Error(`创建JIRA窗口时出错: ${JSON.stringify(e)}`));
+                });
+            });
+
+            await webview.show();
+            await webview.setFocus();
+            console.log("JIRA窗口已创建并显示");
+        } catch (err) {
+            console.error("创建JIRA窗口失败：", err);
+        }
+    };
+    
     // 添加最小化到托盘的函数
     const minimizeToTray = async () => {
         try {
@@ -600,6 +662,9 @@ export default function PetComponent() {
                 break;
             case "minimize-to-tray":  // 添加这个处理
                 await minimizeToTray();
+                break;
+            case "jira":  // 添加JIRA处理
+                await createOrShowJira();
                 break;
             default:
                 console.warn(`未知的气泡动作: ${bubble.action}`);
