@@ -296,6 +296,7 @@ struct YoudaoTranslateResponse {
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use tauri::menu::MenuItem;
+use crate::jira_tools::{get_current_date, get_my_today_worklogs, get_my_unfinished_issues, get_required_work_hours, get_today_commits_by_user, load_ai_config, load_git_config, load_jira_config, log_work, process_worklog_with_ai, save_ai_config, save_git_config, save_jira_config};
 
 // 生成有道翻译签名
 // 修改签名生成函数
@@ -863,17 +864,19 @@ pub fn run() {
             hide_to_tray,
             show_pomodoro_notification,
             close_pomodoro_notification,
-            jira_tools::save_jira_config,
-            jira_tools::load_jira_config,
-            jira_tools::save_git_config,
-            jira_tools::load_git_config,
-            jira_tools::get_my_unfinished_issues,
-            jira_tools::get_my_today_worklogs,
-            jira_tools::log_work,
-            jira_tools::get_today_commits_by_user,
-            jira_tools::get_current_date,
-            jira_tools::get_required_work_hours,
-            jira_tools::process_worklog_with_ai, // 添加新的AI命令
+            save_jira_config,
+            load_jira_config,
+            save_git_config,
+            load_git_config,
+            get_my_unfinished_issues,
+            get_my_today_worklogs,
+            log_work,
+            get_today_commits_by_user,
+            get_current_date,
+            get_required_work_hours,
+            process_worklog_with_ai, // 添加新的AI命令
+            save_ai_config,
+            load_ai_config,
         ])
         .setup(|app| {
             // 创建托盘菜单

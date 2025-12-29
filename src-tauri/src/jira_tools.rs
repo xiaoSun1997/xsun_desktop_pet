@@ -486,9 +486,9 @@ struct ChatResponse {
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct AIConfig {
-    pub api_key: String,
+    pub apiKey: String,
     pub model: String,
-    pub base_url: String,
+    pub baseUrl: String,
 }
 
 // 获取DeepSeek配置路径
