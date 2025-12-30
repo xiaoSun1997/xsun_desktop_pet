@@ -202,6 +202,31 @@ export default function JiraComponent() {
             alert("保存JIRA配置失败：" + error);
         }
     };
+    
+    const testJiraConnection = async () => {
+        try {
+            // 临时保存当前配置
+            await invoke("save_jira_config", {config: jiraConfig});
+            
+            // 尝试获取当前用户未完成的问题列表来测试连接
+            const issues = await invoke("get_my_unfinished_issues");
+            
+            if (Array.isArray(issues)) {
+                alert(`JIRA连接测试成功！当前用户有 ${issues.length} 个未完成的问题。`);
+            } else {
+                alert("JIRA连接测试成功！");
+            }
+        } catch (error) {
+            console.error("JIRA连接测试失败:", error);
+            let errorMessage = "JIRA连接测试失败";
+            if (error instanceof Error) {
+                errorMessage += ": " + error.message;
+            } else {
+                errorMessage += ": " + String(error);
+            }
+            alert(errorMessage);
+        }
+    };
 
     const handleSaveGitConfig = async () => {
         try {
@@ -231,7 +256,14 @@ export default function JiraComponent() {
             }
         } catch (error) {
             console.error("记录工作时间失败:", error);
-            alert("记录工作时间失败：" + error);
+            // 更好地处理错误信息
+            let errorMessage = "记录工作时间失败";
+            if (error instanceof Error) {
+                errorMessage += ": " + error.message;
+            } else {
+                errorMessage += ": " + String(error);
+            }
+            alert(errorMessage);
         }
     };
 
@@ -489,6 +521,7 @@ export default function JiraComponent() {
                                 />
                             </div>
                             <button onClick={handleSaveJiraConfig} className="save-btn">保存JIRA配置</button>
+                            <button onClick={testJiraConnection} className="test-btn">测试JIRA连接</button>
                         </div>
 
                         <div className="config-form">

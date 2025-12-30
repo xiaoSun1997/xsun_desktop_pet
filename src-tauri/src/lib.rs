@@ -20,7 +20,7 @@ use clipboard::{
 };
 
 use jira_tools::{
-    GitCommit, JiraIssue, WorklogEntry, JiraConfig, GitConfig, GitRepository
+    GitCommit, JiraIssue, WorklogEntry, JiraConfig, GitConfig, GitRepository, test_jira_connection
 };
 
 use uuid::Uuid;
@@ -871,6 +871,7 @@ pub fn run() {
             get_my_unfinished_issues,
             get_my_today_worklogs,
             log_work,
+            test_jira_connection,
             get_today_commits_by_user,
             get_current_date,
             get_required_work_hours,

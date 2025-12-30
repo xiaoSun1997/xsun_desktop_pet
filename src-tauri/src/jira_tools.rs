@@ -2,10 +2,11 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 use reqwest;
 use serde_json::Value;
-use git2;
+use git2::{Repository, Sort, Oid};
 use base64;
-use chrono::{self, Datelike};
+use chrono::{self, Datelike,Local,DateTime,NaiveDate,TimeZone};
 use uuid;
+use std::collections::HashSet;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct GitCommit {
@@ -240,15 +241,34 @@ pub async fn get_my_unfinished_issues(app: AppHandle) -> Result<Vec<JiraIssue>, 
 
     Ok(issues)
 }
+// 解析 JIRA worklog started 字符串：常见是 2025-12-30T09:12:34.000+0800
+fn parse_jira_started(started_str: &str) -> Option<DateTime<chrono::FixedOffset>> {
+    // 带毫秒
+    if let Ok(dt) = DateTime::parse_from_str(started_str, "%Y-%m-%dT%H:%M:%S%.3f%z") {
+        return Some(dt);
+    }
+    // 不带毫秒
+    if let Ok(dt) = DateTime::parse_from_str(started_str, "%Y-%m-%dT%H:%M:%S%z") {
+        return Some(dt);
+    }
+    // 兼容少数返回 RFC3339 的情况（+08:00 / Z）
+    if let Ok(dt) = DateTime::parse_from_rfc3339(started_str) {
+        return Some(dt);
+    }
+    None
+}
 
-// 从JIRA获取今天的工作记录
 #[tauri::command]
 pub async fn get_my_today_worklogs(app: AppHandle) -> Result<Vec<WorklogEntry>, String> {
-    let config = load_jira_config(app.clone()).await?
+    let config = load_jira_config(app.clone())
+        .await?
         .ok_or_else(|| "JIRA配置未设置".to_string())?;
 
-    let today = chrono::Local::today().naive_local();
-    let jql = format!("worklogAuthor = currentUser() AND worklogDate = '{}'", today.format("%Y-%m-%d"));
+    let today: NaiveDate = Local::now().date_naive();
+    let jql = format!(
+        "worklogAuthor = currentUser() AND worklogDate = '{}'",
+        today.format("%Y-%m-%d")
+    );
 
     let client = reqwest::Client::builder()
         .user_agent("xsun-desktop-pet/1.0")
@@ -257,11 +277,9 @@ pub async fn get_my_today_worklogs(app: AppHandle) -> Result<Vec<WorklogEntry>, 
 
     let url = format!("{}/rest/api/2/search", config.jira_url.trim_end_matches('/'));
 
-    let auth_value = format!("Basic {}", base64::encode(&format!("{}:{}", config.username, config.api_token)));
-
     let response = client
         .get(&url)
-        .header("Authorization", auth_value.clone())
+        .basic_auth(&config.username, Some(&config.api_token))
         .query(&[("jql", jql.as_str()), ("maxResults", "100")])
         .send()
         .await
@@ -285,39 +303,67 @@ pub async fn get_my_today_worklogs(app: AppHandle) -> Result<Vec<WorklogEntry>, 
             let issue_key = issue_value["key"].as_str().unwrap_or_default().to_string();
 
             // 获取问题的工作日志
-            let worklog_url = format!("{}/rest/api/2/issue/{}/worklog", config.jira_url.trim_end_matches('/'), issue_key);
+            let worklog_url = format!(
+                "{}/rest/api/2/issue/{}/worklog",
+                config.jira_url.trim_end_matches('/'),
+                issue_key
+            );
+
             let worklog_response = client
                 .get(&worklog_url)
-                .header("Authorization", auth_value.clone())
+                .basic_auth(&config.username, Some(&config.api_token))
                 .send()
                 .await
                 .map_err(|e| format!("获取工作日志失败: {}", e))?;
 
-            if worklog_response.status().is_success() {
-                let worklog_json: Value = worklog_response
-                    .json()
-                    .await
-                    .map_err(|e| format!("解析工作日志响应失败: {}", e))?;
+            if !worklog_response.status().is_success() {
+                // 某个 issue 取不到 worklog 直接跳过（也可以 return Err）
+                continue;
+            }
 
-                if let Some(worklogs_array) = worklog_json["worklogs"].as_array() {
-                    for worklog in worklogs_array {
-                        // 检查是否是今天的工作日志
-                        if let Some(started_str) = worklog["started"].as_str() {
-                            if let Ok(started) = chrono::DateTime::parse_from_rfc3339(started_str) {
-                                let worklog_date = started.with_timezone(&chrono::Local).date().naive_local();
-                                if worklog_date == today {
-                                    let worklog_entry = WorklogEntry {
-                                        issue_key: issue_key.clone(),
-                                        time_spent_hours: (worklog["timeSpentSeconds"].as_i64().unwrap_or(0) as f64) / 3600.0,
-                                        comment: worklog["comment"].as_str().unwrap_or_default().to_string(),
-                                        started: started_str.to_string(),
-                                        similarity_score: 0.0,
-                                    };
-                                    worklogs.push(worklog_entry);
-                                }
-                            }
-                        }
+            let worklog_json: Value = worklog_response
+                .json()
+                .await
+                .map_err(|e| format!("解析工作日志响应失败: {}", e))?;
+
+            if let Some(worklogs_array) = worklog_json["worklogs"].as_array() {
+                for wl in worklogs_array {
+                    // 1) 用 started 判断日期（比 updateDate 更准）
+                    let started_str = match wl["started"].as_str() {
+                        Some(s) => s,
+                        None => continue,
+                    };
+
+                    let started = match parse_jira_started(started_str) {
+                        Some(dt) => dt.with_timezone(&Local),
+                        None => continue, // 解析失败就跳过
+                    };
+
+                    if started.date_naive() != today {
+                        continue;
                     }
+
+                    // 2) comment 可能是 null / object（Cloud ADF），做兼容
+                    let comment_str = if wl["comment"].is_string() {
+                        wl["comment"].as_str().unwrap_or_default().to_string()
+                    } else if wl["comment"].is_null() {
+                        "".to_string()
+                    } else {
+                        // ADF 或其它结构，先转成 json 字符串兜底
+                        wl["comment"].to_string()
+                    };
+
+                    let seconds = wl["timeSpentSeconds"].as_i64().unwrap_or(0);
+
+                    let worklog_entry = WorklogEntry {
+                        issue_key: issue_key.clone(),
+                        time_spent_hours: (seconds as f64) / 3600.0,
+                        comment: comment_str,
+                        started: started_str.to_string(),
+                        similarity_score: 0.0,
+                    };
+
+                    worklogs.push(worklog_entry);
                 }
             }
         }
@@ -325,10 +371,91 @@ pub async fn get_my_today_worklogs(app: AppHandle) -> Result<Vec<WorklogEntry>, 
 
     Ok(worklogs)
 }
-
 // 记录JIRA工作时间
 #[tauri::command]
-pub async fn log_work(app: AppHandle, issue_key: String, time_spent_hours: f64, comment: String) -> Result<bool, String> {
+pub async fn log_work(
+    app: AppHandle,
+    issue_key: String,
+    time_spent_hours: f64,
+    comment: String,
+) -> Result<bool, String> {
+    let config = load_jira_config(app.clone())
+        .await?
+        .ok_or_else(|| "JIRA配置未设置".to_string())?;
+
+    let client = reqwest::Client::builder()
+        .user_agent("xsun-desktop-pet/1.0")
+        .build()
+        .map_err(|e| format!("创建HTTP客户端失败: {}", e))?;
+
+    let worklog_url = format!(
+        "{}/rest/api/2/issue/{}/worklog",
+        config.jira_url.trim_end_matches('/'),
+        issue_key
+    );
+
+    // JIRA 更稳的方式：用 seconds
+    let mut seconds_spent = (time_spent_hours * 3600.0).round() as i64;
+    if seconds_spent < 60 {
+        seconds_spent = 60; // 避免 JIRA 最小时间限制（常见 1min）
+    }
+
+    // JIRA worklog started 推荐格式: 2025-12-30T09:12:34.000+0800 / +0000
+    // 用 Local 时间并格式化为 JIRA 常见的 "+0800" 形式（不是 RFC3339 的 "Z"）
+    let started = Local::now().format("%Y-%m-%dT%H:%M:%S.000%z").to_string();
+
+    let worklog_data = serde_json::json!({
+        "timeSpentSeconds": seconds_spent,
+        "comment": comment,
+        "started": started
+    });
+
+    let response = client
+        .post(&worklog_url)
+        .basic_auth(&config.username, Some(&config.api_token))
+        .header("Accept", "application/json")
+        .header("Content-Type", "application/json")
+        .json(&worklog_data)
+        .send()
+        .await
+        .map_err(|e| format!("发送请求失败: {}", e))?;
+
+    let status = response.status();
+    let response_text = response
+        .text()
+        .await
+        .map_err(|e| format!("读取响应失败: {}", e))?;
+
+    if !status.is_success() {
+        // 尝试解析JIRA返回的错误信息
+        let error_msg = if let Ok(error_json) = serde_json::from_str::<Value>(&response_text) {
+            if let Some(errors) = error_json["errors"].as_object() {
+                let msgs: Vec<String> = errors
+                    .iter()
+                    .map(|(k, v)| format!("{}: {}", k, v.as_str().unwrap_or("")))
+                    .collect();
+                format!("JIRA错误: {}", msgs.join(", "))
+            } else if let Some(error_messages) = error_json["errorMessages"].as_array() {
+                let msgs: Vec<String> = error_messages
+                    .iter()
+                    .map(|v| v.as_str().unwrap_or("Unknown error").to_string())
+                    .collect();
+                format!("JIRA错误: {}", msgs.join(", "))
+            } else {
+                format!("JIRA错误: {}", response_text)
+            }
+        } else {
+            format!("HTTP错误 {}: {}", status, response_text)
+        };
+
+        return Err(error_msg);
+    }
+
+    Ok(true)
+}
+// 测试JIRA连接
+#[tauri::command]
+pub async fn test_jira_connection(app: AppHandle) -> Result<bool, String> {
     let config = load_jira_config(app.clone()).await?
         .ok_or_else(|| "JIRA配置未设置".to_string())?;
 
@@ -337,101 +464,192 @@ pub async fn log_work(app: AppHandle, issue_key: String, time_spent_hours: f64, 
         .build()
         .map_err(|e| format!("创建HTTP客户端失败: {}", e))?;
 
-    let worklog_url = format!("{}/rest/api/2/issue/{}/worklog", config.jira_url.trim_end_matches('/'), issue_key);
-
-    let time_spent_seconds = (time_spent_hours * 3600.0) as i64;
-    let worklog_data = serde_json::json!({
-        "timeSpentSeconds": time_spent_seconds,
-        "comment": comment,
-        "started": chrono::Utc::now().to_rfc3339()
-    });
-
+    // 使用基本认证测试连接
     let auth_value = format!("Basic {}", base64::encode(&format!("{}:{}", config.username, config.api_token)));
 
+    // 测试获取当前用户信息
+    let url = format!("{}/rest/api/2/myself", config.jira_url.trim_end_matches('/'));
+
     let response = client
-        .post(&worklog_url)
+        .get(&url)
         .header("Authorization", auth_value)
-        .header("Content-Type", "application/json")
-        .json(&worklog_data)
+        .header("Accept", "application/json")
         .send()
         .await
         .map_err(|e| format!("发送请求失败: {}", e))?;
 
-    if !response.status().is_success() {
-        let status = response.status();
-        let error_text = response.text().await.unwrap_or_default();
-        return Err(format!("记录工作时间失败 ({}): {}", status, error_text));
+    let status = response.status();
+    let response_text = response.text().await.map_err(|e| format!("读取响应失败: {}", e))?;
+    
+    if !status.is_success() {
+        let error_msg = if let Ok(error_json) = serde_json::from_str::<Value>(&response_text) {
+            if let Some(errors) = error_json["errors"].as_object() {
+                let error_messages: Vec<String> = errors.values().map(|v| v.as_str().unwrap_or("").to_string()).collect();
+                format!("JIRA错误: {}", error_messages.join(", "))
+            } else if let Some(error_messages) = error_json["errorMessages"].as_array() {
+                let error_messages: Vec<String> = error_messages.iter().map(|v| v.as_str().unwrap_or("Unknown error").to_string()).collect();
+                format!("JIRA错误: {}", error_messages.join(", "))
+            } else {
+                format!("JIRA错误: {}", response_text)
+            }
+        } else {
+            format!("HTTP错误 {}: {}", status, response_text)
+        };
+        
+        return Err(error_msg);
     }
-
+    
     Ok(true)
 }
+fn author_local_date(commit: &git2::Commit) -> NaiveDate {
+    let sig = commit.author();
+    let when = sig.when(); // git2::Time
+    // when.seconds() 是 epoch seconds，when.offset_minutes() 是偏移
+    // 这里统一转成本地时间进行“今日”判断
+    let dt = chrono::DateTime::<chrono::Local>::from(
+        chrono::DateTime::<chrono::Utc>::from_timestamp(when.seconds(), 0)
+            .unwrap_or_else(|| chrono::Utc::now())
+    );
+    dt.date_naive()
+}
 
-// 从Git仓库获取指定用户今天的提交记录
+// 是否匹配当前用户（建议：name 或 email 任一匹配）
+fn is_me(commit: &git2::Commit, username: &str, email: Option<&str>) -> bool {
+    let author = commit.author();
+    let name_ok = author.name().unwrap_or("") == username;
+    let email_ok = email.map(|e| author.email().unwrap_or("") == e).unwrap_or(false);
+    name_ok || email_ok
+}
+
 #[tauri::command]
 pub async fn get_today_commits_by_user(app: AppHandle) -> Result<Vec<GitCommit>, String> {
     let git_config = load_git_config(app.clone()).await?
         .ok_or_else(|| "Git配置未设置".to_string())?;
 
-    let today = chrono::Local::today().naive_local();
-    let mut all_commits = Vec::new();
+    let today = Local::now().date_naive();
+    let mut all_commits: Vec<GitCommit> = Vec::new();
 
     for repo_config in &git_config.repositories {
-        // 创建临时目录来克隆仓库
-        let temp_dir = std::env::temp_dir().join(format!("jira_git_repo_{}", uuid::Uuid::new_v4()));
-        
-        // 设置认证回调
+        let temp_dir = std::env::temp_dir()
+            .join(format!("jira_git_repo_{}", uuid::Uuid::new_v4()));
+
+        // 1) clone（先 clone 默认分支也行，后面我们会 fetch 全分支）
         let mut callbacks = git2::RemoteCallbacks::new();
         callbacks.credentials(|_url, username_from_url, _allowed_types| {
             git2::Cred::userpass_plaintext(
-                username_from_url.unwrap_or(&git_config.username), 
+                username_from_url.unwrap_or(&git_config.username),
                 &repo_config.token
             )
         });
-        
+
         let mut fetch_options = git2::FetchOptions::new();
         fetch_options.remote_callbacks(callbacks);
-        
+
         let mut builder = git2::build::RepoBuilder::new();
         builder.fetch_options(fetch_options);
+
         let repo = builder.clone(&repo_config.url, &temp_dir)
             .map_err(|e| format!("克隆仓库失败: {}", e))?;
 
-        // 获取提交历史
-        let mut revwalk = repo.revwalk().map_err(|e| format!("创建revwalk失败: {}", e))?;
-        revwalk.push_head().map_err(|e| format!("获取HEAD失败: {}", e))?;
+        // 2) fetch 所有远端分支到 refs/remotes/origin/*
+        {
+            let mut remote = repo.find_remote("origin")
+                .or_else(|_| repo.remote_anonymous(&repo_config.url))
+                .map_err(|e| format!("查找remote失败: {}", e))?;
 
-        for oid in revwalk {
-            let oid = oid.map_err(|e| format!("获取提交OID失败: {}", e))?;
-            let commit = repo.find_commit(oid).map_err(|e| format!("查找提交失败: {}", e))?;
-            
-            // 获取提交时间
-            let commit_time = chrono::DateTime::from_timestamp(commit.time().seconds(), 0)
-                .unwrap_or_else(|| chrono::Utc::now());
-            let commit_date = commit_time.with_timezone(&chrono::Local).date().naive_local();
-            
-            // 检查是否是今天的提交，并且是当前用户
-            if commit_date == today && commit.author().name().unwrap_or("") == git_config.username.as_str() {
-                let git_commit = GitCommit {
-                    commit_id: oid.to_string(),
-                    author: commit.author().name().unwrap_or("").to_string(),
-                    message: commit.message().unwrap_or("").to_string(),
-                    commit_time: commit_time.to_rfc3339(),
-                    repository: repo_config.url.clone(),
-                    files_changed: 0, // 需要额外计算文件变更数
-                    additions: 0,
-                    deletions: 0,
-                };
-                all_commits.push(git_commit);
+            let mut callbacks = git2::RemoteCallbacks::new();
+            callbacks.credentials(|_url, username_from_url, _allowed_types| {
+                git2::Cred::userpass_plaintext(
+                    username_from_url.unwrap_or(&git_config.username),
+                    &repo_config.token
+                )
+            });
+
+            let mut fo = git2::FetchOptions::new();
+            fo.remote_callbacks(callbacks);
+
+            remote.fetch(
+                &["refs/heads/*:refs/remotes/origin/*"],
+                Some(&mut fo),
+                None
+            ).map_err(|e| format!("fetch分支失败: {}", e))?;
+        }
+
+        // 3) revwalk：从所有远端分支 tip 开始走
+        let mut revwalk = repo.revwalk()
+            .map_err(|e| format!("创建revwalk失败: {}", e))?;
+
+        revwalk.set_sorting(Sort::TIME | Sort::REVERSE);
+
+        // 推入所有远端分支引用
+        let refs = repo.references()
+            .map_err(|e| format!("读取refs失败: {}", e))?;
+
+        for r in refs {
+            let r = r.map_err(|e| format!("读取ref失败: {}", e))?;
+            let name = match r.name() {
+                Some(n) => n,
+                None => continue,
+            };
+            // 只扫 origin 远端分支（你也可以加上 tags / 本地分支）
+            if !name.starts_with("refs/remotes/origin/") {
+                continue;
+            }
+            if let Some(oid) = r.target() {
+                // push 起点
+                let _ = revwalk.push(oid);
             }
         }
 
-        // 清理临时目录
-        std::fs::remove_dir_all(&temp_dir).ok();
+        // 4) 去重：同一个 commit 可能被多个分支包含
+        let mut seen: HashSet<Oid> = HashSet::new();
+
+        for oid_res in revwalk {
+            let oid = oid_res.map_err(|e| format!("获取提交OID失败: {}", e))?;
+            if !seen.insert(oid) {
+                continue;
+            }
+
+            let commit = repo.find_commit(oid)
+                .map_err(|e| format!("查找提交失败: {}", e))?;
+
+            // 用 author date 对齐 Java
+            let commit_date = author_local_date(&commit);
+            if commit_date != today {
+                // 因为我们 TIME 排序 + REVERSE(新->旧)，一旦日期小于 today 可考虑 break
+                // 但严格来说不同分支可能有乱序，保守不 break
+                continue;
+            }
+
+            // 匹配作者（可选加 email 匹配）
+            if !is_me(&commit, &git_config.username, None) {
+                continue;
+            }
+
+            let sig = commit.author();
+            let when = sig.when();
+            let utc = chrono::DateTime::<chrono::Utc>::from_timestamp(when.seconds(), 0)
+                .unwrap_or_else(|| chrono::Utc::now());
+            let local = utc.with_timezone(&Local);
+
+            all_commits.push(GitCommit {
+                commit_id: oid.to_string(),
+                author: sig.name().unwrap_or("").to_string(),
+                message: commit.message().unwrap_or("").to_string(),
+                commit_time: local.to_rfc3339(),
+                repository: repo_config.url.clone(),
+                files_changed: 0,
+                additions: 0,
+                deletions: 0,
+            });
+        }
+
+        // 5) 清理
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 
     Ok(all_commits)
 }
-
 // 获取当前日期和星期信息
 #[tauri::command]
 pub async fn get_current_date() -> Result<String, String> {

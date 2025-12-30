@@ -264,6 +264,7 @@ tr:last-child td {
 }
 
 .save-btn,
+.test-btn,
 .add-btn,
 .remove-btn,
 .log-btn,
@@ -280,6 +281,7 @@ tr:last-child td {
 }
 
 .save-btn:hover,
+.test-btn:hover,
 .add-btn:hover,
 .log-btn:hover,
 .ai-btn:hover,
