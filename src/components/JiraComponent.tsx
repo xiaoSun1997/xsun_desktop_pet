@@ -47,6 +47,7 @@ interface GitRepository {
     url: string;
     token: string;
     branch: string;
+    alias: string;  // ✅ 新增：仓库别名
 }
 
 interface AIConfig {
@@ -70,7 +71,7 @@ export default function JiraComponent() {
     });
 
     const [gitConfig, setGitConfig] = useState<GitConfig>({
-        repositories: [{url: "", token: "", branch: "main"}],
+        repositories: [{url: "", token: "", branch: "main", alias: ""}],  // ✅ 添加 alias
         username: "",
     });
 
@@ -267,10 +268,11 @@ export default function JiraComponent() {
         }
     };
 
+// 修改 addGitRepository 函数
     const addGitRepository = () => {
         setGitConfig({
             ...gitConfig,
-            repositories: [...gitConfig.repositories, {url: "", token: "", branch: "main"}],
+            repositories: [...gitConfig.repositories, {url: "", token: "", branch: "main", alias: ""}],  // ✅ 添加 alias
         });
     };
 
@@ -562,6 +564,16 @@ export default function JiraComponent() {
                                             value={repo.branch}
                                             onChange={(e) => updateGitRepository(index, "branch", e.target.value)}
                                             placeholder="例如: main"
+                                        />
+                                    </div>
+                                    {/* ✅ 新增：别名输入框 */}
+                                    <div className="form-group">
+                                        <label>仓库别名:</label>
+                                        <input
+                                            type="text"
+                                            value={repo.alias}
+                                            onChange={(e) => updateGitRepository(index, "alias", e.target.value)}
+                                            placeholder="例如: 主项目"
                                         />
                                     </div>
                                     {gitConfig.repositories.length > 1 && (
