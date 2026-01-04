@@ -672,7 +672,7 @@ pub async fn get_required_work_hours() -> Result<f64, String> {
     let hours = match day_of_week {
         chrono::Weekday::Mon | chrono::Weekday::Wed | chrono::Weekday::Fri => 8.0,
         chrono::Weekday::Tue | chrono::Weekday::Thu => 10.0,
-        _ => 0.0, // 周末不需要工作
+        _ => 0.0, // 周末按照0小时计算（如果被触发）
     };
 
     Ok(hours)
@@ -1013,7 +1013,7 @@ fn find_matching_issue(commit_message: &str, issues: &[JiraIssue]) -> Option<Jir
 }
 
 // 辅助函数：从提交信息生成工作说明
-fn generate_work_comment(commit_message: &str) -> String {
+pub fn generate_work_comment(commit_message: &str) -> String {
     // 简单地截取提交信息的前几个词作为工作说明
     let words: Vec<&str> = commit_message.split_whitespace().take(10).collect();
     let comment = words.join(" ");

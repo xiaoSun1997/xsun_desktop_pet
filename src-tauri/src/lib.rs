@@ -12,6 +12,7 @@ use urlencoding::encode as urlencode;
 mod calendar;
 mod clipboard;
 mod jira_tools;
+mod task_scheduler;
 mod window_utils;
 
 use clipboard::{
@@ -22,6 +23,8 @@ use clipboard::{
 use jira_tools::{
     GitCommit, JiraIssue, WorklogEntry, JiraConfig, GitConfig, GitRepository, test_jira_connection
 };
+
+use task_scheduler::init_scheduler;
 
 use uuid::Uuid;
 
@@ -983,6 +986,8 @@ pub fn run() {
                     }
                 }
             });
+            // 初始化定时任务调度器
+            init_scheduler(app.app_handle().clone());
 
             println!("应用初始化完成，剪贴板监控已启动");
             Ok(())
