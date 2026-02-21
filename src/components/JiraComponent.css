@@ -27,7 +27,7 @@
     content: "";
     position: absolute;
     inset: 0;
-    background: rgba(0, 0, 0, 0.25);
+    background: rgba(0, 0, 0, 0.1);
     backdrop-filter: blur(10px);
     z-index: 0;
 }
@@ -36,8 +36,8 @@
 
     background: rgba(255, 255, 255, 0.1);
     padding: 15px 20px;
-    display: flex;
-    align-items: flex-start;
+    /*display: flex;*/
+    align-items: center;
     justify-content: space-between;
     gap: 12px;
 
@@ -56,17 +56,75 @@
 .jira-header h1 {
     flex-shrink: 0;
 
-    background: rgba(255, 255, 255, 0.1);
-    padding: 15px 20px;
+    background: rgba(255, 255, 255, 0);
+    padding: 15px 15px;
     display: flex;
-    justify-content: space-between;
+    justify-content: center;
     align-items: center;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
 
     -webkit-app-region: drag;
 
     position: relative;
     z-index: 1;
+}
+
+.date-buttons {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin: 10px 0;
+    padding: 5px 0;
+    -webkit-app-region: no-drag;
+    max-height: none;
+    overflow-y: hidden;
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE 10+ */
+}
+
+/* 隐藏WebKit浏览器的滚动条 */
+.date-buttons::-webkit-scrollbar {
+    display: none;
+}
+
+.date-btn {
+    background: rgba(255, 255, 255, 0.3);
+    border: none;
+    color: white;
+    padding: 6px 12px;
+    border-radius: 20px; /* 椭圆形 */
+    cursor: pointer;
+    transition: all 0.3s;
+    font-size: 12px;
+    min-width: 80px;
+    text-align: center;
+    -webkit-app-region: no-drag;
+    flex-shrink: 0;
+}
+
+.date-btn:hover {
+    background: rgba(255, 255, 255, 0.5);
+    transform: translateY(-1px);
+}
+
+.date-btn.today {
+    background: rgba(100, 255, 100, 0.5); /* 当天绿色背景 */
+    font-weight: bold;
+}
+
+.date-btn.today:hover {
+    background: rgba(100, 255, 100, 0.7);
+}
+
+.date-btn.selected {
+    background: rgba(255, 255, 0, 0.7); /* 黄色选中状态 */
+    color: black;
+    font-weight: bold;
+    transform: scale(1.05);
+}
+
+.date-btn.selected:hover {
+    background: rgba(255, 255, 0, 0.9);
 }
 
 .tabs {
@@ -224,7 +282,7 @@ tr:last-child td {
     border: none;
     border-radius: 5px;
     background: rgba(255, 255, 255, 0.2);
-    color: white;
+    color: black;
     box-sizing: border-box;
 }
 /* ✅ 修复 select 下拉选项白底白字看不清的问题 */
