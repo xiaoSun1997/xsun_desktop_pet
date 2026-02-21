@@ -78,7 +78,7 @@ export default function JiraComponent() {
     const [unfinishedIssues, setUnfinishedIssues] = useState<JiraIssue[]>([]);
     const [todayWorklogs, setTodayWorklogs] = useState<WorklogEntry[]>([]);
     const [todayCommits, setTodayCommits] = useState<GitCommit[]>([]);
-    const [currentDate, setCurrentDate] = useState<string>("");
+    // const [currentDate, setCurrentDate] = useState<string>("");
     const [requiredWorkHours, setRequiredWorkHours] = useState<number>(0);
     const [loading, setLoading] = useState<boolean>(false);
     const [activeTab, setActiveTab] = useState<string>("dashboard");
@@ -89,6 +89,13 @@ export default function JiraComponent() {
         timeSpent: 1.0,
         comment: "",
     });
+    
+    const [selectedDate, setSelectedDate] = useState<Date>(() => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        return today;
+    });
+    const [selectedDateString, setSelectedDateString] = useState<string>('');
 
     const [aiConfig, setAiConfig] = useState<AIConfig>({
         apiKey: "",
@@ -97,6 +104,35 @@ export default function JiraComponent() {
     });
 
     const headerRef = useRef<HTMLDivElement>(null);
+    
+    // 生成日期数组的函数
+    const generateDateButtons = (): {date: Date, isToday: boolean, formatted: string}[] => {
+        const dates = [];
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        // 生成前后7天的日期
+        for (let i = -7; i <= 7; i++) {
+            const date = new Date(today);
+            date.setDate(today.getDate() + i);
+            
+            const isToday = date.toDateString() === today.toDateString();
+            
+            // 格式化日期：MM-DD (周几)
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+            const weekday = weekdays[date.getDay()];
+            
+            dates.push({
+                date,
+                isToday,
+                formatted: `${month}-${day} (${weekday})`
+            });
+        }
+        
+        return dates;
+    };
 
     // 关闭窗口函数
     const closeWindow = async () => {
@@ -135,6 +171,18 @@ export default function JiraComponent() {
         };
     }, []);
 
+    // 初始化选中的日期字符串
+    useEffect(() => {
+        const formatDate = (date: Date): string => {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        };
+        
+        setSelectedDateString(formatDate(selectedDate));
+    }, [selectedDate]);
+
     // 加载配置
     useEffect(() => {
         loadConfigs();
@@ -171,8 +219,8 @@ export default function JiraComponent() {
         setLoading(true);
         try {
             // 获取当前日期和应工作时间
-            const dateInfo = await invoke("get_current_date");
-            setCurrentDate(dateInfo as string);
+            // const dateInfo = await invoke("get_current_date");
+            // setCurrentDate(dateInfo as string);
 
             const workHours = await invoke("get_required_work_hours");
             setRequiredWorkHours(workHours as number);
@@ -380,6 +428,22 @@ export default function JiraComponent() {
             <div className="jira-header" ref={headerRef} data-tauri-drag-region>
                 <div>
                     <h1>JIRA工作流助手</h1>
+                    <div className="date-buttons">
+                        {generateDateButtons().map((dateInfo, index) => {
+                            // 判断是否为选中状态
+                            const isSelected = dateInfo.date.toDateString() === selectedDate.toDateString();
+                            
+                            return (
+                                <button
+                                    key={index}
+                                    className={`date-btn ${dateInfo.isToday ? 'today' : ''} ${isSelected ? 'selected' : ''}`}
+                                    onClick={() => setSelectedDate(dateInfo.date)}
+                                >
+                                    {dateInfo.formatted}
+                                </button>
+                            );
+                        })}
+                    </div>
                     <div className="tabs">
                         <button
                             className={activeTab === "dashboard" ? "active" : ""}
@@ -417,8 +481,8 @@ export default function JiraComponent() {
                     <div className="dashboard">
                         <div className="summary-cards">
                             <div className="card">
-                                <h3>今日信息</h3>
-                                <p>{currentDate}</p>
+                                <h3>选中日期信息</h3>
+                                <p>选中日期: {selectedDateString}</p>
                                 <p>应工作: {requiredWorkHours} 小时</p>
                                 <p>已工作: {totalWorkedHours.toFixed(1)} 小时</p>
                                 <p>剩余: {remainingHours.toFixed(1)} 小时</p>
