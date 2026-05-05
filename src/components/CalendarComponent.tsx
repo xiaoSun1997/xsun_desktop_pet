@@ -1,5 +1,6 @@
 import {useEffect, useState} from "react";
 import {invoke} from "@tauri-apps/api/core";
+import {convertFileSrc} from "@tauri-apps/api/core";
 import {getCurrentWindow, getAllWindows} from "@tauri-apps/api/window";
 import {open} from "@tauri-apps/plugin-dialog";
 import {readFile} from "@tauri-apps/plugin-fs";
@@ -449,7 +450,18 @@ export default function CalendarComponent() {
         return LunarCalendar.formatLunarDate(date);
     };
 
-    const currentBgImage = settings.backgroundImages[currentBgIndex] || "data/img0.jpeg";
+    const toImageUrl = (path: string): string => {
+        if (!path) return path;
+        // Windows 绝对路径 C:\... 或 Unix 绝对路径 /...
+        if (/^[a-zA-Z]:[\\\/]/.test(path) || path.startsWith('/')) {
+            return convertFileSrc(path);
+        }
+        // 相对路径（公共资源）直接返回
+        return path;
+    };
+
+    const currentBgImage = settings.backgroundImages[currentBgIndex] || "../data/img0.jpeg";
+    const currentBgUrl = toImageUrl(currentBgImage);
 
     // 如果是卡片模式，只显示右侧卡片
     if (isCardMode) {
@@ -460,7 +472,7 @@ export default function CalendarComponent() {
         <div
             className="calendar-container"
             style={{
-                backgroundImage: `url(${currentBgImage})`,
+                backgroundImage: `url(${currentBgUrl})`,
                 backgroundSize: 'cover',
                 backgroundPosition: 'center'
             }}
@@ -522,7 +534,7 @@ export default function CalendarComponent() {
                                 <div className="image-list">
                                     {tempSettings.backgroundImages.map((img, index) => (
                                         <div key={index} className="image-item">
-                                            <img src={img} alt={`背景${index + 1}`}/>
+                                            <img src={toImageUrl(img)} alt={`背景${index + 1}`}/>
                                             <button onClick={() => deleteImage(img, index)}>删除</button>
                                         </div>
                                     ))}

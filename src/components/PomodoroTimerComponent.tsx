@@ -64,52 +64,61 @@ export default function PomodoroTimerComponent() {
         }
     };
 
-    // 初始化：只加载设置，不自动恢复计时器
+    // 初始化：从后端加载设置
     useEffect(() => {
-        const savedSettings = localStorage.getItem("pomodoro-settings");
-
-        if (savedSettings) {
+        const loadSettings = async () => {
             try {
-                const parsedSettings = JSON.parse(savedSettings);
-                setSettings({ ...defaultSettings, ...parsedSettings });
+                const savedSettings = await invoke<PomodoroSettings | null>('load_pomodoro_settings');
 
-                // 如果启用了番茄钟，加载保存的计时器状态
-                if (parsedSettings.enabled) {
-                    const savedTimer = localStorage.getItem("pomodoro-timer");
-                    if (savedTimer) {
-                        const parsedTimer = JSON.parse(savedTimer);
-                        const now = Date.now();
+                if (savedSettings) {
+                    setSettings({ ...defaultSettings, ...savedSettings });
 
-                        if (parsedTimer.cycleStartTime && parsedTimer.isRunning) {
-                            const elapsed = Math.floor((now - parsedTimer.cycleStartTime) / 1000);
-                            const maxDuration = parsedTimer.isWorkTime
-                                ? parsedSettings.workDuration * 60
-                                : parsedSettings.breakDuration * 60;
+                    // 如果启用了番茄钟，尝试恢复计时器状态
+                    if (savedSettings.enabled) {
+                        try {
+                            const savedTimer = await invoke<{ isWorkTime: boolean; cycleStartTime: number | null; isRunning: boolean } | null>('load_pomodoro_timer');
+                            if (savedTimer && savedTimer.cycleStartTime && savedTimer.isRunning) {
+                                const now = Date.now();
+                                const elapsed = Math.floor((now - savedTimer.cycleStartTime) / 1000);
+                                const maxDuration = savedTimer.isWorkTime
+                                    ? savedSettings.workDuration * 60
+                                    : savedSettings.breakDuration * 60;
 
-                            const remainingTime = Math.max(0, maxDuration - elapsed);
+                                const remainingTime = Math.max(0, maxDuration - elapsed);
 
-                            setTimer({
-                                isRunning: remainingTime > 0 && parsedSettings.enabled,
-                                isWorkTime: parsedTimer.isWorkTime,
-                                timeLeft: remainingTime > 0 ? remainingTime : maxDuration,
-                                cycleStartTime: remainingTime > 0 ? parsedTimer.cycleStartTime : null
-                            });
+                                setTimer({
+                                    isRunning: remainingTime > 0 && savedSettings.enabled,
+                                    isWorkTime: savedTimer.isWorkTime,
+                                    timeLeft: remainingTime > 0 ? remainingTime : maxDuration,
+                                    cycleStartTime: remainingTime > 0 ? savedTimer.cycleStartTime : null
+                                });
+                            }
+                        } catch (e) {
+                            console.error("Failed to load saved timer", e);
                         }
                     }
                 }
             } catch (e) {
-                console.error("Failed to parse saved settings", e);
+                console.error("Failed to load saved settings", e);
             }
-        }
+        };
+
+        loadSettings();
     }, []);
 
+    // 设置变化时保存到后端
     useEffect(() => {
-        localStorage.setItem("pomodoro-settings", JSON.stringify(settings));
+        invoke('save_pomodoro_settings', { settings }).catch(e =>
+            console.error('保存番茄钟设置失败:', e)
+        );
     }, [settings]);
 
+    // 计时器状态变化时保存到后端
     useEffect(() => {
         if (timer.isRunning && timer.cycleStartTime) {
-            localStorage.setItem("pomodoro-timer", JSON.stringify(timer));
+            invoke('save_pomodoro_timer', {
+                timerState: { isWorkTime: timer.isWorkTime, cycleStartTime: timer.cycleStartTime, isRunning: timer.isRunning }
+            }).catch(e => console.error('保存计时器状态失败:', e));
         }
     }, [timer]);
 
@@ -211,6 +220,7 @@ export default function PomodoroTimerComponent() {
                 cycleStartTime: null
             }));
             localStorage.removeItem("pomodoro-timer");
+            invoke('save_pomodoro_timer', { timerState: null }).catch(() => {});
             alert('番茄钟已停止！');
         }
     };

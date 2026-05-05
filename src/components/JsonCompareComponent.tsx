@@ -1,298 +1,208 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import "./JsonCompareComponent.css";
 
-type JsonPanel = {
-    id: string;
-    rawText: string;
-    formattedText: string;
-    timestamp: string;
-    isValid: boolean;
-};
-
-type DiffLine = {
-    lineNumber: number;
-    isDifferent: boolean;
-    content: string;
-};
-
 export default function JsonCompareComponent() {
-    const [leftPanel, setLeftPanel] = useState<JsonPanel>({
-        id: 'left',
-        rawText: '',
-        formattedText: '',
-        timestamp: '',
-        isValid: false
-    });
+    const [text, setText] = useState("");
+    const [isValidJson, setIsValidJson] = useState(false);
+    const [lineCount, setLineCount] = useState(0);
+    const [charCount, setCharCount] = useState(0);
 
-    const [rightPanel, setRightPanel] = useState<JsonPanel>({
-        id: 'right',
-        rawText: '',
-        formattedText: '',
-        timestamp: '',
-        isValid: false
-    });
+    const [showSearch, setShowSearch] = useState(false);
+    const [searchQuery, setSearchQuery] = useState("");
+    const [searchMatches, setSearchMatches] = useState<number[]>([]);
+    const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
 
-    const [leftDiff, setLeftDiff] = useState<DiffLine[]>([]);
-    const [rightDiff, setRightDiff] = useState<DiffLine[]>([]);
-    const [isComparing, setIsComparing] = useState(false);
+    const [showReplace, setShowReplace] = useState(false);
+    const [replaceQuery, setReplaceQuery] = useState("");
 
-    const leftTextareaRef = useRef<HTMLTextAreaElement>(null);
-    const rightTextareaRef = useRef<HTMLTextAreaElement>(null);
-    const leftDiffRef = useRef<HTMLDivElement>(null);
-    const rightDiffRef = useRef<HTMLDivElement>(null);
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const searchInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
-        leftTextareaRef.current?.focus();
-    
-        // 检查是否为通过初始化脚本注入的文本（从快捷菜单创建新窗口时）
         const globalText = (window as any).__JSON_TEXT__;
         if (globalText) {
-            const { formatted, isValid } = formatJson(globalText);
-            const timestamp = globalText.trim() ? updateTimestamp() : '';
-            setLeftPanel({
-                id: 'left',
-                rawText: globalText,
-                formattedText: formatted,
-                timestamp,
-                isValid
-            });
+            setText(globalText);
             delete (window as any).__JSON_TEXT__;
         }
-    
-        // 监听外部填充文本事件（从快捷菜单注入到已有窗口）
+
         const unlisten = listen<string>("json://fill-text", (event) => {
-            const text = event.payload;
-            const { formatted, isValid } = formatJson(text);
-            const timestamp = text.trim() ? updateTimestamp() : '';
-            setLeftPanel({
-                id: 'left',
-                rawText: text,
-                formattedText: formatted,
-                timestamp,
-                isValid
-            });
+            setText(event.payload);
         });
-    
+
         return () => {
             unlisten.then(fn => fn());
         };
     }, []);
 
-    // 自动对比效果
     useEffect(() => {
-        if (leftPanel.isValid && rightPanel.isValid && leftPanel.formattedText && rightPanel.formattedText) {
-            compareJson();
+        setLineCount(text.length > 0 ? text.split("\n").length : 0);
+        setCharCount(text.length);
+        try {
+            if (text.trim()) {
+                JSON.parse(text);
+                setIsValidJson(true);
+            } else {
+                setIsValidJson(false);
+            }
+        } catch {
+            setIsValidJson(false);
         }
-    }, [leftPanel.formattedText, rightPanel.formattedText]);
+    }, [text]);
 
     const handleClose = async () => {
         try {
-            const appWindow = getCurrentWindow();
-            await appWindow.close();
+            await getCurrentWindow().close();
         } catch (error) {
-            console.error('关闭窗口失败:', error);
+            console.error("关闭窗口失败:", error);
         }
     };
 
-    const formatJson = (text: string): { formatted: string; isValid: boolean } => {
+    const handleFormat = () => {
         try {
-            if (!text.trim()) return { formatted: '', isValid: false };
+            if (!text.trim()) return;
             const parsed = JSON.parse(text);
-            return {
-                formatted: JSON.stringify(parsed, null, 2),
-                isValid: true
-            };
-        } catch (error) {
-            return { formatted: text, isValid: false };
+            setText(JSON.stringify(parsed, null, 2));
+        } catch {
+            alert("JSON 格式错误，无法格式化");
         }
     };
 
-    const updateTimestamp = (): string => {
-        const now = new Date();
-        return `${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
-    };
-
-    const handleFormat = (panelId: string) => {
-        if (panelId === 'left') {
-            const { formatted, isValid } = formatJson(leftPanel.rawText);
-            setLeftPanel({
-                ...leftPanel,
-                rawText: formatted,
-                formattedText: formatted,
-                timestamp: updateTimestamp(),
-                isValid
-            });
-        } else {
-            const { formatted, isValid } = formatJson(rightPanel.rawText);
-            setRightPanel({
-                ...rightPanel,
-                rawText: formatted,
-                formattedText: formatted,
-                timestamp: updateTimestamp(),
-                isValid
-            });
-        }
-    };
-
-    const handleTextChange = (panelId: string, text: string) => {
-        const timestamp = text.trim() ? updateTimestamp() : '';
-
-        if (panelId === 'left') {
-            const { formatted, isValid } = formatJson(text);
-            setLeftPanel({
-                ...leftPanel,
-                rawText: text,
-                formattedText: formatted,
-                timestamp,
-                isValid
-            });
-        } else {
-            const { formatted, isValid } = formatJson(text);
-            setRightPanel({
-                ...rightPanel,
-                rawText: text,
-                formattedText: formatted,
-                timestamp,
-                isValid
-            });
-        }
-    };
-
-    // 按照左侧JSON的key顺序重排序右侧JSON
-    const sortRightByLeft = () => {
+    const handleCompact = () => {
         try {
-            if (!leftPanel.isValid || !rightPanel.isValid) {
-                alert('请确保两侧都是有效的JSON格式');
-                return;
-            }
-
-            const leftObj = JSON.parse(leftPanel.formattedText);
-            const rightObj = JSON.parse(rightPanel.formattedText);
-
-            // 递归排序函数
-            const sortObjectByReference = (reference: any, target: any): any => {
-                if (typeof reference !== 'object' || reference === null ||
-                    typeof target !== 'object' || target === null) {
-                    return target;
-                }
-
-                if (Array.isArray(reference) && Array.isArray(target)) {
-                    return target;
-                }
-
-                const sortedObj: Record<string, any> = {};
-
-                // 首先按照参考对象的键顺序添加
-                Object.keys(reference).forEach(key => {
-                    if (key in target) {
-                        // 如果值是对象，递归排序
-                        if (typeof reference[key] === 'object' && reference[key] !== null &&
-                            typeof target[key] === 'object' && target[key] !== null) {
-                            sortedObj[key] = sortObjectByReference(reference[key], target[key]);
-                        } else {
-                            sortedObj[key] = target[key];
-                        }
-                    }
-                });
-
-                // 然后添加目标对象中独有的键
-                Object.keys(target).forEach(key => {
-                    if (!(key in sortedObj)) {
-                        sortedObj[key] = target[key];
-                    }
-                });
-
-                return sortedObj;
-            };
-
-            const sortedObj = sortObjectByReference(leftObj, rightObj);
-            const sortedJson = JSON.stringify(sortedObj, null, 2);
-
-            setRightPanel({
-                ...rightPanel,
-                rawText: sortedJson,
-                formattedText: sortedJson,
-                timestamp: updateTimestamp(),
-                isValid: true
-            });
-        } catch (error) {
-            console.error('排序时出错:', error);
-            alert('排序失败，请检查JSON格式');
+            if (!text.trim()) return;
+            const parsed = JSON.parse(text);
+            setText(JSON.stringify(parsed));
+        } catch {
+            alert("JSON 格式错误，无法压缩");
         }
     };
 
-    // JSON对比函数 - 逐行比较并标记差异
-    const compareJson = () => {
-        setIsComparing(true);
-
-        try {
-            if (!leftPanel.isValid || !rightPanel.isValid) {
-                setLeftDiff([]);
-                setRightDiff([]);
-                setIsComparing(false);
-                return;
-            }
-
-            const leftLines = leftPanel.formattedText.split('\n');
-            const rightLines = rightPanel.formattedText.split('\n');
-
-            const maxLines = Math.max(leftLines.length, rightLines.length);
-
-            const leftDiffResult: DiffLine[] = [];
-            const rightDiffResult: DiffLine[] = [];
-
-            // 逐行比较
-            for (let i = 0; i < maxLines; i++) {
-                const leftLine = leftLines[i] || '';
-                const rightLine = rightLines[i] || '';
-
-                // 去除空白字符后比较
-                const leftTrimmed = leftLine.trim();
-                const rightTrimmed = rightLine.trim();
-                const isDifferent = leftTrimmed !== rightTrimmed;
-
-                leftDiffResult.push({
-                    lineNumber: i + 1,
-                    isDifferent,
-                    content: leftLine
-                });
-
-                rightDiffResult.push({
-                    lineNumber: i + 1,
-                    isDifferent,
-                    content: rightLine
-                });
-            }
-
-            setLeftDiff(leftDiffResult);
-            setRightDiff(rightDiffResult);
-
-        } catch (error) {
-            console.error('对比JSON时出错:', error);
+    const handleClear = () => {
+        if (!text) return;
+        if (confirm("确定要清空所有内容吗？")) {
+            setText("");
+            setSearchMatches([]);
         }
+    };
 
+    const handleCopy = async () => {
+        if (!text) return;
+        try {
+            await invoke("copy_to_clipboard", { content: text });
+            alert("已复制到剪贴板");
+        } catch (e) {
+            console.error("复制失败:", e);
+        }
+    };
+
+    const handleEscape = useCallback((e: KeyboardEvent) => {
+        if (e.key === "Escape") {
+            setShowSearch(false);
+            setShowReplace(false);
+            textareaRef.current?.focus();
+        }
+    }, []);
+
+    useEffect(() => {
+        window.addEventListener("keydown", handleEscape);
+        return () => window.removeEventListener("keydown", handleEscape);
+    }, [handleEscape]);
+
+    const findMatches = useCallback((query: string, content: string): number[] => {
+        if (!query) return [];
+        const indices: number[] = [];
+        let idx = content.indexOf(query);
+        while (idx !== -1) {
+            indices.push(idx);
+            idx = content.indexOf(query, idx + 1);
+        }
+        return indices;
+    }, []);
+
+    useEffect(() => {
+        if (showSearch && searchQuery) {
+            const matches = findMatches(searchQuery, text);
+            setSearchMatches(matches);
+            setCurrentMatchIndex(matches.length > 0 ? 0 : -1);
+        } else {
+            setSearchMatches([]);
+            setCurrentMatchIndex(-1);
+        }
+    }, [searchQuery, text, showSearch, findMatches]);
+
+    const goToMatch = (index: number) => {
+        if (!textareaRef.current || searchMatches.length === 0) return;
+        const matchIndex = searchMatches[index];
+        const beforeMatch = text.substring(0, matchIndex);
+        const lineNum = beforeMatch.split("\n").length - 1;
+        textareaRef.current.focus();
+        textareaRef.current.setSelectionRange(matchIndex, matchIndex + searchQuery.length);
+        // Scroll to position roughly
+        const lineHeight = 20;
+        textareaRef.current.scrollTop = Math.max(0, lineNum * lineHeight - textareaRef.current.clientHeight / 2);
+    };
+
+    const handleFindNext = () => {
+        if (searchMatches.length === 0) return;
+        const next = (currentMatchIndex + 1) % searchMatches.length;
+        setCurrentMatchIndex(next);
+        goToMatch(next);
+    };
+
+    const handleFindPrev = () => {
+        if (searchMatches.length === 0) return;
+        const prev = (currentMatchIndex - 1 + searchMatches.length) % searchMatches.length;
+        setCurrentMatchIndex(prev);
+        goToMatch(prev);
+    };
+
+    const handleReplaceOne = () => {
+        if (!searchQuery || currentMatchIndex < 0 || currentMatchIndex >= searchMatches.length) return;
+        const pos = searchMatches[currentMatchIndex];
+        const newText = text.substring(0, pos) + replaceQuery + text.substring(pos + searchQuery.length);
+        setText(newText);
+        // Update matches for new text
         setTimeout(() => {
-            setIsComparing(false);
-        }, 300);
+            const newMatches = findMatches(searchQuery, newText);
+            setSearchMatches(newMatches);
+            setCurrentMatchIndex(Math.min(currentMatchIndex, newMatches.length - 1));
+        }, 0);
     };
 
-    // 同步滚动
-    const handleScroll = (source: 'left' | 'right', e: React.UIEvent<HTMLDivElement>) => {
-        const scrollTop = e.currentTarget.scrollTop;
-        if (source === 'left' && rightDiffRef.current) {
-            rightDiffRef.current.scrollTop = scrollTop;
-        } else if (source === 'right' && leftDiffRef.current) {
-            leftDiffRef.current.scrollTop = scrollTop;
+    const handleReplaceAll = () => {
+        if (!searchQuery) return;
+        const newText = text.split(searchQuery).join(replaceQuery);
+        const replacedCount = text.split(searchQuery).length - 1;
+        setText(newText);
+        setSearchMatches([]);
+        setCurrentMatchIndex(-1);
+        alert(`已替换 ${replacedCount} 处`);
+    };
+
+    const handleSearchToggle = () => {
+        setShowSearch(prev => !prev);
+        setShowReplace(false);
+        if (!showSearch) {
+            setTimeout(() => searchInputRef.current?.focus(), 100);
+        }
+    };
+
+    const handleReplaceToggle = () => {
+        setShowReplace(prev => !prev);
+        setShowSearch(false);
+        if (!showReplace) {
+            setTimeout(() => searchInputRef.current?.focus(), 100);
         }
     };
 
     return (
-        <div className="json-compare-container">
-            <div className="json-compare-header" data-tauri-drag-region>
+        <div className="json-formatter-container">
+            <div className="json-formatter-header" data-tauri-drag-region>
                 <div className="header-left">
-                    <h1 className="json-compare-title">JSON对比工具</h1>
+                    <h1 className="json-formatter-title">JSON 格式化工具</h1>
                 </div>
                 <div className="header-actions">
                     <button className="close-button" onClick={handleClose}>
@@ -301,130 +211,86 @@ export default function JsonCompareComponent() {
                 </div>
             </div>
 
-            <div className="json-compare-content">
-                {/* 左侧面板 */}
-                <div className="json-panel">
-                    <div className="panel-header">
-                        <h3 className="panel-title">源JSON</h3>
-                        {leftPanel.timestamp && (
-                            <div className="timestamp">{leftPanel.timestamp}</div>
-                        )}
-                        {!leftPanel.isValid && leftPanel.rawText && (
-                            <span className="error-badge">格式错误</span>
-                        )}
-                        <div className="panel-actions">
-                            <button
-                                className="format-button"
-                                onClick={() => handleFormat('left')}
-                                disabled={!leftPanel.rawText.trim()}
-                            >
-                                格式化
-                            </button>
-                        </div>
-                    </div>
+            <div className="json-toolbar">
+                <button className="toolbar-btn" onClick={handleFormat} title="格式化 (Ctrl+Shift+F)">
+                    <span>✨</span> 格式化
+                </button>
+                <button className="toolbar-btn" onClick={handleCompact} title="压缩">
+                    <span>🗜️</span> 压缩
+                </button>
+                <button className="toolbar-btn" onClick={handleClear} title="清空">
+                    <span>🗑️</span> 清空
+                </button>
+                <button className="toolbar-btn" onClick={handleSearchToggle} title="查找">
+                    <span>🔍</span> 查找
+                </button>
+                <button className="toolbar-btn" onClick={handleReplaceToggle} title="替换">
+                    <span>🔄</span> 替换
+                </button>
+                <button className="toolbar-btn" onClick={handleCopy} title="复制全部">
+                    <span>📋</span> 复制
+                </button>
+            </div>
 
-                    {leftDiff.length === 0 ? (
-                        <textarea
-                            ref={leftTextareaRef}
-                            className="json-textarea"
-                            value={leftPanel.rawText}
-                            onChange={(e) => handleTextChange('left', e.target.value)}
-                            placeholder="在此粘贴JSON数据..."
-                        />
-                    ) : (
-                        <div
-                            ref={leftDiffRef}
-                            className="json-diff-view"
-                            onScroll={(e) => handleScroll('left', e)}
-                        >
-                            {leftDiff.map((line, idx) => (
-                                <div
-                                    key={idx}
-                                    className={`diff-line ${line.isDifferent ? 'diff-highlight' : ''}`}
-                                >
-                                    <span className="line-number">{line.lineNumber}</span>
-                                    <span className="line-content">{line.content || ' '}</span>
-                                </div>
-                            ))}
-                        </div>
-                    )}
+            {showSearch && (
+                <div className="search-bar">
+                    <input
+                        ref={searchInputRef}
+                        type="text"
+                        placeholder="查找内容..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") handleFindNext(); }}
+                    />
+                    <span className="search-count">
+                        {searchMatches.length > 0 ? `${currentMatchIndex + 1} / ${searchMatches.length}` : "无匹配"}
+                    </span>
+                    <button onClick={handleFindPrev} disabled={searchMatches.length === 0}>上一个</button>
+                    <button onClick={handleFindNext} disabled={searchMatches.length === 0}>下一个</button>
+                    <button onClick={() => setShowSearch(false)}>关闭</button>
                 </div>
+            )}
 
-                {/* 对比按钮 */}
-                <div className="compare-button-container">
-                    <button
-                        className="compare-button"
-                        onClick={compareJson}
-                        disabled={!leftPanel.isValid || !rightPanel.isValid || isComparing}
-                    >
-                        {isComparing ? '对比中...' : leftDiff.length > 0 ? '重新对比' : '开始对比'}
-                    </button>
-                    {leftDiff.length > 0 && (
-                        <button
-                            className="reset-button"
-                            onClick={() => {
-                                setLeftDiff([]);
-                                setRightDiff([]);
-                            }}
-                        >
-                            返回编辑
-                        </button>
-                    )}
+            {showReplace && (
+                <div className="replace-bar">
+                    <input
+                        type="text"
+                        placeholder="查找内容..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                    <input
+                        type="text"
+                        placeholder="替换为..."
+                        value={replaceQuery}
+                        onChange={(e) => setReplaceQuery(e.target.value)}
+                    />
+                    <button onClick={handleReplaceOne} disabled={searchMatches.length === 0}>替换</button>
+                    <button onClick={handleReplaceAll} disabled={!searchQuery}>全部替换</button>
+                    <button onClick={() => setShowReplace(false)}>关闭</button>
                 </div>
+            )}
 
-                {/* 右侧面板 */}
-                <div className="json-panel">
-                    <div className="panel-header">
-                        <h3 className="panel-title">目标JSON</h3>
-                        {rightPanel.timestamp && (
-                            <div className="timestamp">{rightPanel.timestamp}</div>
-                        )}
-                        {!rightPanel.isValid && rightPanel.rawText && (
-                            <span className="error-badge">格式错误</span>
-                        )}
-                        <div className="panel-actions">
-                            <button
-                                className="sort-button"
-                                onClick={sortRightByLeft}
-                                disabled={!leftPanel.isValid || !rightPanel.isValid}
-                            >
-                                重排序
-                            </button>
-                            <button
-                                className="format-button"
-                                onClick={() => handleFormat('right')}
-                                disabled={!rightPanel.rawText.trim()}
-                            >
-                                格式化
-                            </button>
-                        </div>
-                    </div>
+            <div className="json-editor-area">
+                <textarea
+                    ref={textareaRef}
+                    className="json-textarea"
+                    value={text}
+                    onChange={(e) => setText(e.target.value)}
+                    placeholder="在此粘贴或输入 JSON / 文本数据..."
+                    spellCheck={false}
+                />
+            </div>
 
-                    {rightDiff.length === 0 ? (
-                        <textarea
-                            ref={rightTextareaRef}
-                            className="json-textarea"
-                            value={rightPanel.rawText}
-                            onChange={(e) => handleTextChange('right', e.target.value)}
-                            placeholder="在此粘贴JSON数据..."
-                        />
-                    ) : (
-                        <div
-                            ref={rightDiffRef}
-                            className="json-diff-view"
-                            onScroll={(e) => handleScroll('right', e)}
-                        >
-                            {rightDiff.map((line, idx) => (
-                                <div
-                                    key={idx}
-                                    className={`diff-line ${line.isDifferent ? 'diff-highlight' : ''}`}
-                                >
-                                    <span className="line-number">{line.lineNumber}</span>
-                                    <span className="line-content">{line.content || ' '}</span>
-                                </div>
-                            ))}
-                        </div>
-                    )}
+            <div className="json-status-bar">
+                <div className="status-left">
+                    <span className={`json-valid-badge ${isValidJson ? "valid" : text.trim() ? "invalid" : ""}`}>
+                        {text.trim() ? (isValidJson ? "✅ 有效 JSON" : "❌ JSON 格式错误") : "等待输入..."}
+                    </span>
+                </div>
+                <div className="status-right">
+                    <span>{lineCount} 行</span>
+                    <span>{charCount} 字符</span>
                 </div>
             </div>
         </div>

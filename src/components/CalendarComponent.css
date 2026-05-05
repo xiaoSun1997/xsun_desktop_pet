@@ -297,6 +297,263 @@
     border: 1px solid rgba(56, 161, 105, 0.3);
 }
 
+/* ===== 设置弹窗样式 ===== */
+.settings-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.settings-modal {
+    background: white;
+    border-radius: 20px;
+    width: 520px;
+    max-width: 90vw;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.3);
+    overflow: hidden;
+}
+
+.settings-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 24px;
+    border-bottom: 1px solid #e2e8f0;
+    flex-shrink: 0;
+}
+
+.settings-header h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 700;
+    color: #1a202c;
+}
+
+.settings-close {
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: rgba(231, 76, 60, 0.9);
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.settings-close:hover {
+    background: rgba(192, 57, 43, 0.95);
+    transform: scale(1.1);
+}
+
+.settings-close .close-icon {
+    width: 16px;
+    height: 16px;
+    position: relative;
+}
+
+.settings-close .close-icon::before,
+.settings-close .close-icon::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 12px;
+    height: 2px;
+    background: white;
+    border-radius: 1px;
+}
+
+.settings-close .close-icon::before {
+    transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.settings-close .close-icon::after {
+    transform: translate(-50%, -50%) rotate(-45deg);
+}
+
+.settings-content {
+    padding: 20px 24px;
+    overflow-y: auto;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.setting-item {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.setting-item label {
+    font-size: 15px;
+    font-weight: 600;
+    color: #2d3748;
+}
+
+.image-list {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    max-height: 280px;
+    overflow-y: auto;
+    padding: 4px;
+}
+
+.image-item {
+    position: relative;
+    border-radius: 12px;
+    overflow: hidden;
+    aspect-ratio: 16 / 10;
+    border: 2px solid #e2e8f0;
+    transition: all 0.2s ease;
+    background: #f7fafc;
+}
+
+.image-item:hover {
+    border-color: #667eea;
+    box-shadow: 0 4px 16px rgba(102, 126, 234, 0.2);
+}
+
+.image-item img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.image-item button {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    padding: 4px 10px;
+    border: none;
+    border-radius: 6px;
+    background: rgba(231, 76, 60, 0.9);
+    color: white;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    opacity: 0;
+}
+
+.image-item:hover button {
+    opacity: 1;
+}
+
+.image-item button:hover {
+    background: rgba(192, 57, 43, 1);
+    transform: scale(1.05);
+}
+
+.setting-item > button {
+    align-self: flex-start;
+    padding: 8px 20px;
+    border: none;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.setting-item > button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+}
+
+.settings-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 16px 24px;
+    border-top: 1px solid #e2e8f0;
+    flex-shrink: 0;
+}
+
+.settings-actions .cancel-button {
+    padding: 8px 20px;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: white;
+    color: #4a5568;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.settings-actions .cancel-button:hover {
+    background: #f7fafc;
+    border-color: #cbd5e0;
+}
+
+.settings-actions .save-button {
+    padding: 8px 20px;
+    border: none;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.settings-actions .save-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+}
+
+.interval-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: #a0aec0;
+    padding: 0 4px;
+}
+
+.setting-item input[type="range"] {
+    width: 100%;
+    height: 6px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: linear-gradient(90deg, #667eea, #764ba2);
+    border-radius: 3px;
+    outline: none;
+}
+
+.setting-item input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: white;
+    border: 3px solid #667eea;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+}
+
 /* 上传图片预览尺寸调整 */
 .background-image-preview {
     width: 120px;
@@ -483,6 +740,54 @@
 
 
 /*ADD*/
+/* 关闭按钮样式 */
+.close-button {
+    width: 36px;
+    height: 36px;
+    border: none;
+    background: rgba(231, 76, 60, 0.85);
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+    flex-shrink: 0;
+}
+
+.close-button:hover {
+    background: rgba(192, 57, 43, 1);
+    transform: scale(1.1) rotate(90deg);
+    box-shadow: 0 6px 16px rgba(192, 57, 43, 0.4);
+}
+
+.close-button .close-icon {
+    width: 16px;
+    height: 16px;
+    position: relative;
+}
+
+.close-button .close-icon::before,
+.close-button .close-icon::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 14px;
+    height: 2px;
+    background: white;
+    border-radius: 1px;
+}
+
+.close-button .close-icon::before {
+    transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.close-button .close-icon::after {
+    transform: translate(-50%, -50%) rotate(-45deg);
+}
+
 /* 展开按钮样式 */
 .expand-button {
     background: linear-gradient(135deg, #e2e8f0, #cbd5e0);

@@ -63,106 +63,50 @@ pub struct GitRepository {
     pub branch: String,
 }
 
-// 获取JIRA配置路径
-async fn get_jira_config_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
-    let app_data_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("无法获取应用数据目录: {}", e))?;
-
-    tokio::fs::create_dir_all(&app_data_dir)
-        .await
-        .map_err(|e| format!("创建配置目录失败: {}", e))?;
-
-    Ok(app_data_dir.join("jira_config.json"))
-}
-
-// 保存JIRA配置
+// 保存JIRA配置到数据库
 #[tauri::command]
 pub async fn save_jira_config(app: AppHandle, config: JiraConfig) -> Result<(), String> {
-    let config_path = get_jira_config_path(&app).await?;
-
+    let db = app.state::<crate::database::Database>();
     let config_json =
-        serde_json::to_string_pretty(&config).map_err(|e| format!("序列化配置失败: {}", e))?;
-
-    tokio::fs::write(&config_path, config_json)
-        .await
-        .map_err(|e| format!("保存配置文件失败: {}", e))?;
-
-    Ok(())
+        serde_json::to_string(&config).map_err(|e| format!("序列化配置失败: {}", e))?;
+    db.set_config("jira_config", &config_json)
 }
 
-// 加载JIRA配置
+// 从数据库加载JIRA配置
 #[tauri::command]
 pub async fn load_jira_config(app: AppHandle) -> Result<Option<JiraConfig>, String> {
-    let config_path = get_jira_config_path(&app).await?;
-
-    if !tokio::fs::try_exists(&config_path)
-        .await
-        .map_err(|e| format!("检查配置文件是否存在失败: {}", e))?
-    {
-        return Ok(None);
+    let db = app.state::<crate::database::Database>();
+    match db.get_config("jira_config")? {
+        Some(json) => {
+            let config: JiraConfig = serde_json::from_str(&json)
+                .map_err(|e| format!("解析配置失败: {}", e))?;
+            Ok(Some(config))
+        }
+        None => Ok(None),
     }
-
-    let config_content = tokio::fs::read_to_string(&config_path)
-        .await
-        .map_err(|e| format!("读取配置文件失败: {}", e))?;
-
-    let config: JiraConfig =
-        serde_json::from_str(&config_content).map_err(|e| format!("解析配置文件失败: {}", e))?;
-
-    Ok(Some(config))
 }
 
-// 获取Git配置路径
-async fn get_git_config_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
-    let app_data_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("无法获取应用数据目录: {}", e))?;
-
-    tokio::fs::create_dir_all(&app_data_dir)
-        .await
-        .map_err(|e| format!("创建配置目录失败: {}", e))?;
-
-    Ok(app_data_dir.join("git_config.json"))
-}
-
-// 保存Git配置
+// 保存Git配置到数据库
 #[tauri::command]
 pub async fn save_git_config(app: AppHandle, config: GitConfig) -> Result<(), String> {
-    let config_path = get_git_config_path(&app).await?;
-
+    let db = app.state::<crate::database::Database>();
     let config_json =
-        serde_json::to_string_pretty(&config).map_err(|e| format!("序列化配置失败: {}", e))?;
-
-    tokio::fs::write(&config_path, config_json)
-        .await
-        .map_err(|e| format!("保存配置文件失败: {}", e))?;
-
-    Ok(())
+        serde_json::to_string(&config).map_err(|e| format!("序列化配置失败: {}", e))?;
+    db.set_config("git_config", &config_json)
 }
 
-// 加载Git配置
+// 从数据库加载Git配置
 #[tauri::command]
 pub async fn load_git_config(app: AppHandle) -> Result<Option<GitConfig>, String> {
-    let config_path = get_git_config_path(&app).await?;
-
-    if !tokio::fs::try_exists(&config_path)
-        .await
-        .map_err(|e| format!("检查配置文件是否存在失败: {}", e))?
-    {
-        return Ok(None);
+    let db = app.state::<crate::database::Database>();
+    match db.get_config("git_config")? {
+        Some(json) => {
+            let config: GitConfig = serde_json::from_str(&json)
+                .map_err(|e| format!("解析配置失败: {}", e))?;
+            Ok(Some(config))
+        }
+        None => Ok(None),
     }
-
-    let config_content = tokio::fs::read_to_string(&config_path)
-        .await
-        .map_err(|e| format!("读取配置文件失败: {}", e))?;
-
-    let config: GitConfig =
-        serde_json::from_str(&config_content).map_err(|e| format!("解析配置文件失败: {}", e))?;
-
-    Ok(Some(config))
 }
 
 // 创建JIRA客户端
@@ -711,42 +655,19 @@ pub struct AIConfig {
     pub baseUrl: String,
 }
 
-// 获取DeepSeek配置路径
-async fn get_deepseek_config_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
-    let app_data_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("无法获取应用数据目录: {}", e))?;
-
-    tokio::fs::create_dir_all(&app_data_dir)
-        .await
-        .map_err(|e| format!("创建配置目录失败: {}", e))?;
-
-    Ok(app_data_dir.join("deepseek_config.json"))
-}
-
-// 加载DeepSeek配置
+// 加载DeepSeek配置（优先数据库，回退到资源文件）
 async fn load_deepseek_config(app: &AppHandle) -> Result<Value, String> {
-    // 先尝试加载本地配置
-    let local_config_path = get_deepseek_config_path(app).await?;
-    
-    if tokio::fs::try_exists(&local_config_path)
-        .await
-        .map_err(|e| format!("检查配置文件是否存在失败: {}", e))?
-    {
-        let config_content = tokio::fs::read_to_string(&local_config_path)
-            .await
-            .map_err(|e| format!("读取本地配置文件失败: {}", e))?;
-        
-        let config: Value = serde_json::from_str(&config_content)
-            .map_err(|e| format!("解析本地配置文件失败: {}", e))?;
-        
-        if !config["apiKey"].is_null() && config["apiKey"] != "your_deepseek_api_key_here" {
-            return Ok(config);
+    // 先尝试从数据库加载
+    let db = app.state::<crate::database::Database>();
+    if let Ok(Some(json)) = db.get_config("ai_config") {
+        if let Ok(config) = serde_json::from_str::<Value>(&json) {
+            if !config["apiKey"].is_null() && config["apiKey"] != "your_deepseek_api_key_here" {
+                return Ok(config);
+            }
         }
     }
 
-    // 如果本地配置不存在或无效，尝试加载资源文件配置
+    // 如果数据库配置不存在或无效，尝试加载资源文件配置
     let resource_path = app
         .path()
         .resolve("config/deepseek.json", tauri::path::BaseDirectory::Resource)
@@ -954,55 +875,27 @@ JIRA问题：[(PROJ-789, "订单分页Bug修复", "计算总数有误…")， (P
     Ok(ai_response)
 }
 
-// 获取AI配置路径
-async fn get_ai_config_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
-    let app_data_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("无法获取应用数据目录: {}", e))?;
-
-    tokio::fs::create_dir_all(&app_data_dir)
-        .await
-        .map_err(|e| format!("创建配置目录失败: {}", e))?;
-
-    Ok(app_data_dir.join("ai_config.json"))
-}
-
-// 保存AI配置
+// 保存AI配置到数据库
 #[tauri::command]
 pub async fn save_ai_config(app: AppHandle, config: AIConfig) -> Result<(), String> {
-    let config_path = get_ai_config_path(&app).await?;
-
+    let db = app.state::<crate::database::Database>();
     let config_json =
-        serde_json::to_string_pretty(&config).map_err(|e| format!("序列化配置失败: {}", e))?;
-
-    tokio::fs::write(&config_path, config_json)
-        .await
-        .map_err(|e| format!("保存配置文件失败: {}", e))?;
-
-    Ok(())
+        serde_json::to_string(&config).map_err(|e| format!("序列化配置失败: {}", e))?;
+    db.set_config("ai_config", &config_json)
 }
 
-// 加载AI配置
+// 从数据库加载AI配置
 #[tauri::command]
 pub async fn load_ai_config(app: AppHandle) -> Result<Option<AIConfig>, String> {
-    let config_path = get_ai_config_path(&app).await?;
-
-    if !tokio::fs::try_exists(&config_path)
-        .await
-        .map_err(|e| format!("检查配置文件是否存在失败: {}", e))?
-    {
-        return Ok(None);
+    let db = app.state::<crate::database::Database>();
+    match db.get_config("ai_config")? {
+        Some(json) => {
+            let config: AIConfig = serde_json::from_str(&json)
+                .map_err(|e| format!("解析配置失败: {}", e))?;
+            Ok(Some(config))
+        }
+        None => Ok(None),
     }
-
-    let config_content = tokio::fs::read_to_string(&config_path)
-        .await
-        .map_err(|e| format!("读取配置文件失败: {}", e))?;
-
-    let config: AIConfig =
-        serde_json::from_str(&config_content).map_err(|e| format!("解析配置文件失败: {}", e))?;
-
-    Ok(Some(config))
 }
 
 // 辅助函数：从提交信息中查找匹配的JIRA问题

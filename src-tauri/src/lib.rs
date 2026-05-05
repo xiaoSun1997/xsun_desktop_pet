@@ -1,6 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use sysinfo::System;
 use tauri::{AppHandle, Emitter, Manager, WebviewWindow,WebviewWindowBuilder,
@@ -15,6 +13,8 @@ mod global_mouse;
 mod jira_tools;
 mod task_scheduler;
 mod window_utils;
+mod database;
+use database::Database;
 
 use clipboard::{
     add_to_clipboard_history, clear_clipboard_history, copy_to_clipboard, get_clipboard_history,
@@ -159,31 +159,21 @@ async fn open_translator_with_text(text: String, app: AppHandle) -> Result<(), S
     Ok(())
 }
 
-// 打开JSON比较窗口并填充选中文本
+// 打开JSON格式化窗口并填充选中文本
 #[tauri::command]
 async fn open_json_compare_with_text(text: String, app: AppHandle) -> Result<(), String> {
-    // 检查窗口是否已存在
-    if let Some(existing_window) = app.get_webview_window("json-compare") {
-        // 窗口已存在，发送填充事件
-        existing_window
-            .emit("json://fill-text", &text)
-            .map_err(|e| format!("发送填充事件失败: {}", e))?;
-        existing_window
-            .show()
-            .map_err(|e| format!("显示窗口失败: {}", e))?;
-        existing_window
-            .set_focus()
-            .map_err(|e| format!("聚焦窗口失败: {}", e))?;
-        return Ok(());
-    }
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let window_label = format!("json-format-{}", timestamp);
 
-    // 创建新窗口并注入文本
     let webview_window = WebviewWindowBuilder::new(
         &app,
-        "json-compare",
+        &window_label,
         WebviewUrl::App("index.html".into()),
     )
-    .title("JSON对比工具")
+    .title("JSON格式化工具")
     .inner_size(900.0, 600.0)
     .visible(true)
     .transparent(true)
@@ -196,7 +186,7 @@ async fn open_json_compare_with_text(text: String, app: AppHandle) -> Result<(),
         serde_json::to_string(&text).map_err(|e| e.to_string())?
     ))
     .build()
-    .map_err(|e| format!("创建JSON比较窗口失败: {}", e))?;
+    .map_err(|e| format!("创建JSON格式化窗口失败: {}", e))?;
 
     webview_window
         .show()
@@ -299,73 +289,45 @@ async fn send_chat_message(
         .map(|choice| choice.message.content.clone())
         .ok_or_else(|| "AI响应为空".to_string())
 }
-// 获取配置存储路径
-async fn get_config_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
-    let app_data_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("无法获取应用数据目录: {}", e))?;
-
-    // 先await异步操作，再处理错误
-    tokio::fs::create_dir_all(&app_data_dir)
-        .await
-        .map_err(|e| format!("创建配置目录失败: {}", e))?;
-
-    Ok(app_data_dir.join("deepseek_config.json"))
-}
-
-// 保存配置到本地
+// 保存配置到数据库
 #[tauri::command]
 async fn save_deepseek_config(app: tauri::AppHandle, config: DeepSeekConfig) -> Result<(), String> {
-    let config_path = get_config_path(&app).await?;
-
+    let db = app.state::<Database>();
     let config_json =
-        serde_json::to_string_pretty(&config).map_err(|e| format!("序列化配置失败: {}", e))?;
-
-    tokio::fs::write(&config_path, config_json)
-        .await
-        .map_err(|e| format!("保存配置文件失败: {}", e))?;
-
-    Ok(())
+        serde_json::to_string(&config).map_err(|e| format!("序列化配置失败: {}", e))?;
+    db.set_config("ai_config", &config_json)
 }
 
-// 从本地加载配置
+// 从数据库加载配置
 #[tauri::command]
 async fn load_local_deepseek_config(
     app: tauri::AppHandle,
 ) -> Result<Option<DeepSeekConfig>, String> {
-    let config_path = get_config_path(&app).await?;
-
-    // 使用tokio的异步方法检查文件是否存在
-    if !tokio::fs::try_exists(&config_path)
-        .await
-        .map_err(|e| format!("检查配置文件是否存在失败: {}", e))?
-    {
-        return Ok(None);
+    let db = app.state::<Database>();
+    match db.get_config("ai_config")? {
+        Some(json) => {
+            let config: DeepSeekConfig = serde_json::from_str(&json)
+                .map_err(|e| format!("解析配置失败: {}", e))?;
+            Ok(Some(config))
+        }
+        None => Ok(None),
     }
-
-    let config_content = tokio::fs::read_to_string(&config_path)
-        .await
-        .map_err(|e| format!("读取本地配置文件失败: {}", e))?;
-
-    let config: DeepSeekConfig = serde_json::from_str(&config_content)
-        .map_err(|e| format!("解析本地配置文件失败: {}", e))?;
-
-    Ok(Some(config))
 }
 
-// 修改原有的加载配置函数，优先使用本地配置
+// 修改原有的加载配置函数，优先使用数据库，再回退到资源文件
 #[tauri::command]
 async fn load_deepseek_config(app: tauri::AppHandle) -> Result<DeepSeekConfig, String> {
-    // 先尝试加载本地配置
-    if let Ok(Some(local_config)) = load_local_deepseek_config(app.clone()).await {
-        if !local_config.api_key.is_empty() && local_config.api_key != "your_deepseek_api_key_here"
-        {
-            return Ok(local_config);
+    // 先尝试从数据库加载
+    let db = app.state::<Database>();
+    if let Ok(Some(json)) = db.get_config("ai_config") {
+        if let Ok(config) = serde_json::from_str::<DeepSeekConfig>(&json) {
+            if !config.api_key.is_empty() && config.api_key != "your_deepseek_api_key_here" {
+                return Ok(config);
+            }
         }
     }
 
-    // 如果本地配置不存在或无效，尝试加载资源文件配置
+    // 如果数据库配置不存在或无效，尝试加载资源文件配置
     let resource_path = app
         .path()
         .resolve("config/deepseek.json", tauri::path::BaseDirectory::Resource)
@@ -427,52 +389,24 @@ fn generate_youdao_sign(app_key: &str, query: &str, salt: &str, app_secret: &str
 // 保存有道翻译配置
 #[tauri::command]
 async fn save_youdao_config(app: tauri::AppHandle, config: YoudaoConfig) -> Result<(), String> {
-    let config_path = get_youdao_config_path(&app).await?;
-
+    let db = app.state::<Database>();
     let config_json =
-        serde_json::to_string_pretty(&config).map_err(|e| format!("序列化配置失败: {}", e))?;
-
-    tokio::fs::write(&config_path, config_json)
-        .await
-        .map_err(|e| format!("保存配置文件失败: {}", e))?;
-
-    Ok(())
+        serde_json::to_string(&config).map_err(|e| format!("序列化配置失败: {}", e))?;
+    db.set_config("youdao_config", &config_json)
 }
 
 // 加载有道翻译配置
 #[tauri::command]
 async fn load_youdao_config(app: tauri::AppHandle) -> Result<Option<YoudaoConfig>, String> {
-    let config_path = get_youdao_config_path(&app).await?;
-
-    if !tokio::fs::try_exists(&config_path)
-        .await
-        .map_err(|e| format!("检查配置文件是否存在失败: {}", e))?
-    {
-        return Ok(None);
+    let db = app.state::<Database>();
+    match db.get_config("youdao_config")? {
+        Some(json) => {
+            let config: YoudaoConfig = serde_json::from_str(&json)
+                .map_err(|e| format!("解析配置失败: {}", e))?;
+            Ok(Some(config))
+        }
+        None => Ok(None),
     }
-
-    let config_content = tokio::fs::read_to_string(&config_path)
-        .await
-        .map_err(|e| format!("读取配置文件失败: {}", e))?;
-
-    let config: YoudaoConfig =
-        serde_json::from_str(&config_content).map_err(|e| format!("解析配置文件失败: {}", e))?;
-
-    Ok(Some(config))
-}
-
-// 获取有道翻译配置路径
-async fn get_youdao_config_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
-    let app_data_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("无法获取应用数据目录: {}", e))?;
-
-    tokio::fs::create_dir_all(&app_data_dir)
-        .await
-        .map_err(|e| format!("创建配置目录失败: {}", e))?;
-
-    Ok(app_data_dir.join("youdao_config.json"))
 }
 
 // 有道翻译
@@ -577,25 +511,14 @@ struct CalendarSettings {
 // 日历相关命令
 #[tauri::command]
 async fn get_todos_for_date(app: AppHandle, date: String) -> Result<Vec<TodoItem>, String> {
-    let app_data_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("无法获取应用数据目录: {}", e))?;
-
-    let todos_file = app_data_dir.join("todos.json");
-
-    if !tokio::fs::try_exists(&todos_file).await.unwrap_or(false) {
-        return Ok(vec![]);
-    }
-
-    let content = tokio::fs::read_to_string(&todos_file)
-        .await
-        .map_err(|e| format!("读取todolist失败: {}", e))?;
-
-    let all_todos: HashMap<String, Vec<TodoItem>> =
-        serde_json::from_str(&content).unwrap_or_default();
-
-    Ok(all_todos.get(&date).cloned().unwrap_or_default())
+    let db = app.state::<Database>();
+    let cal_todos = db.get_todos_by_date(&date)?;
+    Ok(cal_todos.into_iter().map(|t| TodoItem {
+        id: t.id,
+        content: t.content,
+        completed: t.completed,
+        created_at: t.created_at,
+    }).collect())
 }
 
 #[tauri::command]
@@ -604,37 +527,18 @@ async fn save_todos_for_date(
     date: String,
     todos: Vec<TodoItem>,
 ) -> Result<(), String> {
-    let app_data_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("无法获取应用数据目录: {}", e))?;
-
-    tokio::fs::create_dir_all(&app_data_dir)
-        .await
-        .map_err(|e| format!("创建数据目录失败: {}", e))?;
-
-    let todos_file = app_data_dir.join("todos.json");
-
-    let mut all_todos: HashMap<String, Vec<TodoItem>> =
-        if tokio::fs::try_exists(&todos_file).await.unwrap_or(false) {
-            let content = tokio::fs::read_to_string(&todos_file)
-                .await
-                .unwrap_or_default();
-            serde_json::from_str(&content).unwrap_or_default()
-        } else {
-            HashMap::new()
-        };
-
-    all_todos.insert(date, todos);
-
-    let content = serde_json::to_string_pretty(&all_todos)
-        .map_err(|e| format!("序列化todolist失败: {}", e))?;
-
-    tokio::fs::write(&todos_file, content)
-        .await
-        .map_err(|e| format!("保存todolist失败: {}", e))?;
-
-    Ok(())
+    let db = app.state::<Database>();
+    let cal_todos: Vec<crate::calendar::TodoItem> = todos.into_iter().map(|t| {
+        crate::calendar::TodoItem {
+            id: t.id,
+            content: t.content,
+            completed: t.completed,
+            created_at: t.created_at,
+            priority: None,
+            category: None,
+        }
+    }).collect();
+    db.save_todos_for_date(&date, &cal_todos)
 }
 
 #[tauri::command]
@@ -677,49 +581,36 @@ async fn open_todo_window(date: String, app: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 async fn save_calendar_settings(app: AppHandle, settings: CalendarSettings) -> Result<(), String> {
-    let app_data_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("无法获取应用数据目录: {}", e))?;
-
-    tokio::fs::create_dir_all(&app_data_dir)
-        .await
-        .map_err(|e| format!("创建配置目录失败: {}", e))?;
-
-    let settings_file = app_data_dir.join("calendar_settings.json");
-
-    let settings_json =
-        serde_json::to_string_pretty(&settings).map_err(|e| format!("序列化配置失败: {}", e))?;
-
-    tokio::fs::write(&settings_file, settings_json)
-        .await
-        .map_err(|e| format!("保存配置文件失败: {}", e))?;
-
-    Ok(())
+    let db = app.state::<Database>();
+    let json = serde_json::to_string(&settings).map_err(|e| format!("序列化配置失败: {}", e))?;
+    db.set_config("calendar_settings", &json)
 }
 
 #[tauri::command]
 async fn load_calendar_settings(app: AppHandle) -> Result<CalendarSettings, String> {
+    let db = app.state::<Database>();
     let app_data_dir = app
         .path()
         .app_data_dir()
         .map_err(|e| format!("无法获取应用数据目录: {}", e))?;
 
-    let settings_file = app_data_dir.join("calendar_settings.json");
+    let mut settings = match db.get_config("calendar_settings")? {
+        Some(json) => serde_json::from_str(&json).map_err(|e| format!("解析配置失败: {}", e))?,
+        None => CalendarSettings {
+            background_images: vec!["../data/img0.jpeg".to_string()],
+            rotation_interval: 30,
+        },
+    };
 
-    if !tokio::fs::try_exists(&settings_file).await.unwrap_or(false) {
-        return Ok(CalendarSettings {
-            background_images: vec!["data/img0.jpeg".to_string()],
-            rotation_interval: 30, // 默认30分钟
-        });
+    // 将旧的相对路径 background_images/xxx 转换为绝对路径
+    for path in &mut settings.background_images {
+        if !path.is_empty() && !path.starts_with("..") && !path.starts_with("./") && !path.starts_with("/") && !path.starts_with("data/") && !path.starts_with("http") && !path.starts_with("file") {
+            // 如果是相对路径（如 background_images/bg_xxx.jpg），转换为绝对路径
+            if !std::path::Path::new(path).is_absolute() {
+                *path = app_data_dir.join(&*path).to_string_lossy().to_string();
+            }
+        }
     }
-
-    let content = tokio::fs::read_to_string(&settings_file)
-        .await
-        .map_err(|e| format!("读取配置文件失败: {}", e))?;
-
-    let settings: CalendarSettings =
-        serde_json::from_str(&content).map_err(|e| format!("解析配置文件失败: {}", e))?;
 
     Ok(settings)
 }
@@ -745,23 +636,20 @@ async fn upload_background_image(
         .await
         .map_err(|e| format!("保存图片失败: {}", e))?;
 
-    // 返回相对路径
-    Ok(format!("background_images/{}", filename))
+    // 返回绝对路径，方便前端通过 convertFileSrc 访问
+    Ok(file_path.to_string_lossy().to_string())
 }
 
 #[tauri::command]
-async fn delete_background_image(app: AppHandle, image_path: String) -> Result<(), String> {
-    let app_data_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("无法获取应用数据目录: {}", e))?;
+async fn delete_background_image(_app: AppHandle, image_path: String) -> Result<(), String> {
+    let file_path = std::path::Path::new(&image_path);
 
-    let file_path = app_data_dir.join(&image_path);
-
-    if tokio::fs::try_exists(&file_path).await.unwrap_or(false) {
-        tokio::fs::remove_file(&file_path)
-            .await
-            .map_err(|e| format!("删除图片失败: {}", e))?;
+    if file_path.is_absolute() {
+        if tokio::fs::try_exists(&file_path).await.unwrap_or(false) {
+            tokio::fs::remove_file(&file_path)
+                .await
+                .map_err(|e| format!("删除图片失败: {}", e))?;
+        }
     }
 
     Ok(())
@@ -944,6 +832,68 @@ async fn close_pomodoro_notification(app: AppHandle) -> Result<(), String> {
     }
     Ok(())
 }
+// 番茄钟设置结构体
+#[derive(Serialize, Deserialize, Clone)]
+struct PomodoroSettings {
+    workStartTime: String,
+    workEndTime: String,
+    workDuration: u32,
+    breakDuration: u32,
+    enabled: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+struct PomodoroTimerState {
+    isWorkTime: bool,
+    isRunning: bool,
+    cycleStartTime: Option<i64>,
+}
+
+#[tauri::command]
+async fn save_pomodoro_settings(app: AppHandle, settings: PomodoroSettings) -> Result<(), String> {
+    let db = app.state::<Database>();
+    let json = serde_json::to_string(&settings).map_err(|e| format!("序列化配置失败: {}", e))?;
+    db.set_config("pomodoro_settings", &json)
+}
+
+#[tauri::command]
+async fn load_pomodoro_settings(app: AppHandle) -> Result<Option<PomodoroSettings>, String> {
+    let db = app.state::<Database>();
+    match db.get_config("pomodoro_settings")? {
+        Some(json) => {
+            let settings: PomodoroSettings = serde_json::from_str(&json)
+                .map_err(|e| format!("解析配置失败: {}", e))?;
+            Ok(Some(settings))
+        }
+        None => Ok(None),
+    }
+}
+
+#[tauri::command]
+async fn save_pomodoro_timer(app: AppHandle, timer_state: Option<PomodoroTimerState>) -> Result<(), String> {
+    let db = app.state::<Database>();
+    match timer_state {
+        Some(state) => {
+            let json = serde_json::to_string(&state).map_err(|e| format!("序列化失败: {}", e))?;
+            db.set_config("pomodoro_timer", &json)
+        }
+        None => db.delete_config("pomodoro_timer"),
+    }
+}
+
+#[tauri::command]
+async fn load_pomodoro_timer(app: AppHandle) -> Result<Option<PomodoroTimerState>, String> {
+    let db = app.state::<Database>();
+    match db.get_config("pomodoro_timer")? {
+        Some(json) => {
+            let state: PomodoroTimerState = serde_json::from_str(&json)
+                .map_err(|e| format!("解析失败: {}", e))?;
+            Ok(Some(state))
+        }
+        None => Ok(None),
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -994,14 +944,44 @@ pub fn run() {
             get_commits_by_date,
             get_current_date,
             get_required_work_hours,
-            process_worklog_with_ai, // 添加新的AI命令
+            process_worklog_with_ai,
             save_ai_config,
             load_ai_config,
             open_translator_with_text,
             open_json_compare_with_text,
             open_url_in_browser,
+            save_pomodoro_settings,
+            load_pomodoro_settings,
+            save_pomodoro_timer,
+            load_pomodoro_timer,
         ])
         .setup(|app| {
+            // 初始化 SQLite 数据库
+            let handle = app.handle();
+            match handle.path().app_data_dir() {
+                Ok(app_data_dir) => {
+                    let db_path = app_data_dir.join("data").join("app.db");
+                    match database::Database::new(db_path.clone()) {
+                        Ok(database) => {
+                            if let Err(e) = database.init_tables() {
+                                eprintln!("数据库表初始化失败: {}", e);
+                            }
+                            if let Err(e) = database.migrate_from_json(handle) {
+                                eprintln!("数据迁移失败: {}", e);
+                            }
+                            app.manage(database);
+                            println!("数据库初始化成功: {:?}", db_path);
+                        }
+                        Err(e) => {
+                            eprintln!("数据库初始化失败: {}", e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("无法获取应用数据目录: {}", e);
+                }
+            }
+
             // 创建托盘菜单
             let tray_menu = create_tray_menu(app.handle())?;
 
