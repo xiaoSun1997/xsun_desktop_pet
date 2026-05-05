@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
+import { open } from "@tauri-apps/plugin-dialog";
 import { marked } from "marked";
 import "./AIChatComponent.css";
 
@@ -39,6 +40,13 @@ type MessageRecord = {
     timestamp: number;
 };
 
+type TreeNode = {
+    name: string;
+    path: string;
+    is_dir: boolean;
+    children?: TreeNode[];
+};
+
 export default function AIChatComponent() {
     const [messages, setMessages] = useState<Message[]>([]);
     const [inputValue, setInputValue] = useState("");
@@ -66,6 +74,19 @@ export default function AIChatComponent() {
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+    // Tab 导航
+    const [activeTab, setActiveTab] = useState<'history' | 'skill' | 'flowchart'>('history');
+
+    // Skill 模块
+    const [skillFileTree, setSkillFileTree] = useState<TreeNode[]>([]);
+    const [skillsDir, setSkillsDir] = useState<string>('');
+    const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
+    const [selectedFileName, setSelectedFileName] = useState<string>('');
+    const [editorContent, setEditorContent] = useState<string>('');
+    const [isFileLoading, setIsFileLoading] = useState(false);
+    const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+    const [isPreviewMode, setIsPreviewMode] = useState(false);
 
     // 加载配置
     useEffect(() => {
@@ -400,6 +421,137 @@ export default function AIChatComponent() {
         }
     };
 
+    // ===== Skill 模块函数 =====
+    const loadSkillTree = async () => {
+        try {
+            const dir = await invoke<string>('get_skills_dir');
+            setSkillsDir(dir);
+            const tree = await invoke<TreeNode[]>('list_skills_directory');
+            setSkillFileTree(tree);
+        } catch (error) {
+            console.error('加载skills目录失败:', error);
+        }
+    };
+
+    const toggleFolder = (path: string) => {
+        setExpandedFolders(prev => {
+            const next = new Set(prev);
+            if (next.has(path)) {
+                next.delete(path);
+            } else {
+                next.add(path);
+            }
+            return next;
+        });
+    };
+
+    const handleSkillFileClick = async (file: TreeNode) => {
+        if (file.is_dir) {
+            toggleFolder(file.path);
+            return;
+        }
+        try {
+            setIsFileLoading(true);
+            setSelectedFileName(file.name);
+            const fullPath = `${skillsDir}\\${file.path}`;
+            const content = await invoke<string>('read_text_file', { path: fullPath });
+            setSelectedFilePath(file.path);
+            setEditorContent(content);
+        } catch (error) {
+            console.error('读取文件失败:', error);
+            setEditorContent(`// 读取文件失败: ${error}`);
+        } finally {
+            setIsFileLoading(false);
+        }
+    };
+
+    const handleSaveSkillFile = async () => {
+        if (!selectedFilePath) return;
+        try {
+            const fullPath = `${skillsDir}\\${selectedFilePath}`;
+            await invoke('write_text_file', { path: fullPath, content: editorContent });
+            const tree = await invoke<TreeNode[]>('list_skills_directory');
+            setSkillFileTree(tree);
+            alert('保存成功');
+        } catch (error) {
+            console.error('保存文件失败:', error);
+            alert(`保存失败: ${error}`);
+        }
+    };
+
+    const handleUploadFile = async () => {
+        try {
+            const selected = await open({
+                multiple: true,
+                title: '选择要上传的文件或文件夹',
+            });
+            if (!selected) return;
+            const paths = Array.isArray(selected) ? selected : [selected];
+            for (const srcPath of paths) {
+                await invoke('copy_to_skills', { sourcePath: srcPath });
+            }
+            const tree = await invoke<TreeNode[]>('list_skills_directory');
+            setSkillFileTree(tree);
+        } catch (error) {
+            console.error('上传文件失败:', error);
+            alert(`上传失败: ${error}`);
+        }
+    };
+
+    const handleDeleteSkillItem = async (filePath: string, isDir: boolean) => {
+        const msg = isDir ? `确定要删除文件夹 "${filePath}" 及其所有内容吗？` : `确定要删除文件 "${filePath}" 吗？`;
+        if (!confirm(msg)) return;
+        try {
+            await invoke('delete_skill_item', { filePath, isDir });
+            const tree = await invoke<TreeNode[]>('list_skills_directory');
+            setSkillFileTree(tree);
+            if (selectedFilePath === filePath) {
+                setSelectedFilePath(null);
+                setSelectedFileName('');
+                setEditorContent('');
+            }
+        } catch (error) {
+            console.error('删除失败:', error);
+            alert(`删除失败: ${error}`);
+        }
+    };
+
+    const handleTogglePreview = () => {
+        setIsPreviewMode(prev => !prev);
+    };
+
+    const handleCreateFolder = async () => {
+        const name = prompt('请输入文件夹名称:');
+        if (!name || !name.trim()) return;
+        try {
+            await invoke('create_skill_folder', { name: name.trim() });
+            const tree = await invoke<TreeNode[]>('list_skills_directory');
+            setSkillFileTree(tree);
+        } catch (error) {
+            console.error('创建文件夹失败:', error);
+            alert(`创建失败: ${error}`);
+        }
+    };
+
+    const getEditorMode = (filename: string): 'markdown' | 'python' | 'plain' => {
+        if (filename.endsWith('.md') || filename.endsWith('.markdown')) return 'markdown';
+        if (filename.endsWith('.py') || filename.endsWith('.pyw')) return 'python';
+        return 'plain';
+    };
+
+    // 当activeTab变为skill时加载目录树
+    useEffect(() => {
+        if (activeTab === 'skill') {
+            loadSkillTree();
+        }
+        setIsPreviewMode(false);
+    }, [activeTab]);
+
+    // 切换文件时重置预览状态
+    useEffect(() => {
+        setIsPreviewMode(false);
+    }, [selectedFilePath]);
+
     const formatTime = (timestamp: number): string => {
         return new Date(timestamp).toLocaleTimeString('zh-CN', {
             hour: '2-digit',
@@ -503,170 +655,387 @@ export default function AIChatComponent() {
         );
     }
 
+    // ===== 渲染文件树 =====
+    const renderFileTree = (
+        nodes: TreeNode[],
+        parentPath: string,
+        expandedSet: Set<string>,
+        onToggle: (path: string) => void,
+        onClick: (file: TreeNode) => void,
+        onDelete: (path: string, isDir: boolean) => void
+    ): React.ReactNode => {
+        return nodes.map(node => {
+            const fullPath = parentPath ? `${parentPath}/${node.name}` : node.path;
+            if (node.is_dir) {
+                const isExpanded = expandedSet.has(node.path);
+                return (
+                    <div key={node.path} className="skill-tree-node">
+                        <div
+                            className="skill-tree-folder"
+                            onClick={() => onToggle(node.path)}
+                        >
+                            <span className="skill-tree-arrow">{isExpanded ? '▼' : '▶'}</span>
+                            <span className="skill-tree-folder-icon">{isExpanded ? '📂' : '📁'}</span>
+                            <span className="skill-tree-name">{node.name}</span>
+                            <button
+                                className="skill-tree-delete"
+                                onClick={(e) => { e.stopPropagation(); onDelete(node.path, true); }}
+                                title="删除文件夹"
+                            >🗑️</button>
+                        </div>
+                        {isExpanded && node.children && (
+                            <div className="skill-tree-children">
+                                {renderFileTree(node.children, fullPath, expandedSet, onToggle, onClick, onDelete)}
+                            </div>
+                        )}
+                    </div>
+                );
+            }
+            return (
+                <div key={node.path} className="skill-tree-node">
+                    <div
+                        className="skill-tree-file"
+                        onClick={() => onClick(node)}
+                    >
+                        <span className="skill-tree-file-icon">
+                            {node.name.endsWith('.md') ? '📝' : node.name.endsWith('.py') ? '🐍' : '📄'}
+                        </span>
+                        <span className="skill-tree-name">{node.name}</span>
+                        <button
+                            className="skill-tree-delete"
+                            onClick={(e) => { e.stopPropagation(); onDelete(node.path, false); }}
+                            title="删除文件"
+                        >🗑️</button>
+                    </div>
+                </div>
+            );
+        });
+    };
+
     return (
         <div className="ai-chat-container">
-            {/* 左侧对话历史侧边栏 */}
-            <div className="chat-sidebar open">
-                <div className="sidebar-header">
-                    <h2 className="sidebar-title">对话历史</h2>
-                    <button className="new-chat-btn" onClick={handleNewSession} title="新建对话">
-                        <span className="new-chat-icon">+</span>
-                        <span>新建</span>
-                    </button>
-                </div>
-                <div className="sidebar-list">
-                    {sessions.length === 0 ? (
-                        <div className="sidebar-empty">
-                            <p>暂无对话记录</p>
-                            <p className="sidebar-empty-hint">开始一段新对话吧</p>
-                        </div>
-                    ) : (
-                        sessions.map(session => (
-                            <div
-                                key={session.id}
-                                className={`sidebar-item ${currentSessionId === session.id ? 'active' : ''} ${session.is_pinned ? 'pinned' : ''}`}
-                                onClick={() => handleLoadSession(session.id)}
-                            >
-                                <div className="sidebar-item-content">
-                                    {editingSessionId === session.id ? (
-                                        <input
-                                            className="sidebar-item-rename-input"
-                                            value={editingSessionTitle}
-                                            onChange={(e) => setEditingSessionTitle(e.target.value)}
-                                            onBlur={() => handleRenameSession(session.id)}
-                                            onKeyDown={(e) => {
-                                                if (e.key === 'Enter') handleRenameSession(session.id);
-                                                if (e.key === 'Escape') setEditingSessionId(null);
-                                            }}
-                                            onClick={(e) => e.stopPropagation()}
-                                            autoFocus
-                                        />
-                                    ) : (
-                                        <div
-                                            className="sidebar-item-title"
-                                            onDoubleClick={(e) => {
-                                                e.stopPropagation();
-                                                setEditingSessionId(session.id);
-                                                setEditingSessionTitle(session.title);
-                                            }}
-                                            title="双击重命名"
-                                        >
-                                            {session.title}
-                                        </div>
-                                    )}
-                                    <div className="sidebar-item-time">{formatSessionTime(session.updated_at)}</div>
-                                </div>
-                                <div className="sidebar-item-actions">
-                                    <button
-                                        className={`sidebar-item-pin ${session.is_pinned ? 'pinned' : ''}`}
-                                        onClick={(e) => handleTogglePin(e, session.id)}
-                                        title={session.is_pinned ? "取消置顶" : "置顶"}
-                                    >
-                                        📌
-                                    </button>
-                                    <button
-                                        className="sidebar-item-delete"
-                                        onClick={(e) => handleDeleteSession(e, session.id)}
-                                        title="删除对话"
-                                    >
-                                        ✕
-                                    </button>
-                                </div>
+            {/* 左侧边栏 */}
+            <div className="chat-sidebar">
+                {/* Tab 内容区域 */}
+                <div className="sidebar-content">
+                    {activeTab === 'history' && (
+                        <>
+                            <div className="sidebar-header">
+                                <h2 className="sidebar-title">对话历史</h2>
+                                <button className="new-chat-btn" onClick={handleNewSession} title="新建对话">
+                                    <span className="new-chat-icon">+</span>
+                                    <span>新建</span>
+                                </button>
                             </div>
-                        ))
+                            <div className="sidebar-list">
+                                {sessions.length === 0 ? (
+                                    <div className="sidebar-empty">
+                                        <p>暂无对话记录</p>
+                                        <p className="sidebar-empty-hint">开始一段新对话吧</p>
+                                    </div>
+                                ) : (
+                                    sessions.map(session => (
+                                        <div
+                                            key={session.id}
+                                            className={`sidebar-item ${currentSessionId === session.id ? 'active' : ''} ${session.is_pinned ? 'pinned' : ''}`}
+                                            onClick={() => handleLoadSession(session.id)}
+                                        >
+                                            <div className="sidebar-item-content">
+                                                {editingSessionId === session.id ? (
+                                                    <input
+                                                        className="sidebar-item-rename-input"
+                                                        value={editingSessionTitle}
+                                                        onChange={(e) => setEditingSessionTitle(e.target.value)}
+                                                        onBlur={() => handleRenameSession(session.id)}
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter') handleRenameSession(session.id);
+                                                            if (e.key === 'Escape') setEditingSessionId(null);
+                                                        }}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        autoFocus
+                                                    />
+                                                ) : (
+                                                    <div
+                                                        className="sidebar-item-title"
+                                                        onDoubleClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setEditingSessionId(session.id);
+                                                            setEditingSessionTitle(session.title);
+                                                        }}
+                                                        title="双击重命名"
+                                                    >
+                                                        {session.title}
+                                                    </div>
+                                                )}
+                                                <div className="sidebar-item-time">{formatSessionTime(session.updated_at)}</div>
+                                            </div>
+                                            <div className="sidebar-item-actions">
+                                                <button
+                                                    className={`sidebar-item-pin ${session.is_pinned ? 'pinned' : ''}`}
+                                                    onClick={(e) => handleTogglePin(e, session.id)}
+                                                    title={session.is_pinned ? "取消置顶" : "置顶"}
+                                                >
+                                                    📌
+                                                </button>
+                                                <button
+                                                    className="sidebar-item-delete"
+                                                    onClick={(e) => handleDeleteSession(e, session.id)}
+                                                    title="删除对话"
+                                                >
+                                                    ✕
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </>
                     )}
+                    {activeTab === 'skill' && (
+                        <div className="skill-tree-panel">
+                            <div className="skill-tree-header">
+                                <span className="skill-tree-title">📁 Skills</span>
+                            </div>
+                            <div className="skill-tree">
+                                {renderFileTree(skillFileTree, '', expandedFolders, toggleFolder, handleSkillFileClick, handleDeleteSkillItem)}
+                                {skillFileTree.length === 0 && (
+                                    <div className="skill-tree-empty">
+                                        <p>暂无技能文件</p>
+                                        <p className="skill-tree-hint">点击上传添加</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                    {activeTab === 'flowchart' && (
+                        <div className="sidebar-tab-placeholder">
+                            <div className="placeholder-icon">📊</div>
+                            <p>流程图绘制</p>
+                            <span>开发中...</span>
+                        </div>
+                    )}
+                </div>
+
+                {/* 底部导航 */}
+                <div className="sidebar-nav">
+                    <button
+                        className={`sidebar-nav-item ${activeTab === 'history' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('history')}
+                    >
+                        <span className="nav-icon">💬</span>
+                        <span className="nav-label">对话</span>
+                    </button>
+                    <button
+                        className={`sidebar-nav-item ${activeTab === 'skill' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('skill')}
+                    >
+                        <span className="nav-icon">⚙️</span>
+                        <span className="nav-label">Skill</span>
+                    </button>
+                    <button
+                        className={`sidebar-nav-item ${activeTab === 'flowchart' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('flowchart')}
+                    >
+                        <span className="nav-icon">📊</span>
+                        <span className="nav-label">流程图</span>
+                    </button>
                 </div>
             </div>
 
-            {/* 主聊天区域 */}
+            {/* 主内容区域 */}
             <div className="chat-main">
-                <div className="ai-chat-header" data-tauri-drag-region>
-                    <div className="header-left">
-                        <div className="ai-avatar"></div>
-                        <div className="header-info">
-                            <h1 className="ai-chat-title">AI对话助手</h1>
-                            <div className="status-indicator">
-                                <div className={`status-dot ${isLoading ? 'thinking' : 'online'}`}></div>
-                                <span>{isLoading ? 'AI思考中...' : '在线'}</span>
+                {activeTab === 'history' && (
+                    <>
+                        <div className="ai-chat-header" data-tauri-drag-region>
+                            <div className="header-actions">
+                                <button className="chat-action-btn settings-btn" onClick={() => setShowSettings(true)} title="设置">
+                                    <span className="chat-action-icon">⚙️</span>
+                                    <span>设置</span>
+                                </button>
+                                <button className="chat-action-btn new-chat-action-btn" onClick={handleNewSession} title="开启新对话">
+                                    <span className="chat-action-icon">💬</span>
+                                    <span>新对话</span>
+                                </button>
+                                <button className="chat-action-btn fullscreen-btn" onClick={handleToggleFullscreen} title={isFullscreen ? "退出全屏" : "全屏"}>
+                                    <span className="chat-action-icon">{isFullscreen ? '⤡' : '⤢'}</span>
+                                    <span>{isFullscreen ? '退出全屏' : '全屏'}</span>
+                                </button>
+                                <button className="chat-action-btn close-window-btn" onClick={handleClose} title="关闭窗口">
+                                    <span className="chat-action-icon">✕</span>
+                                    <span>关闭</span>
+                                </button>
                             </div>
                         </div>
-                    </div>
-                    <div className="header-actions">
-                        <button className="chat-action-btn settings-btn" onClick={() => setShowSettings(true)} title="设置">
-                            <span className="chat-action-icon">⚙️</span>
-                            <span>设置</span>
-                        </button>
-                        <button className="chat-action-btn new-chat-action-btn" onClick={handleNewSession} title="开启新对话">
-                            <span className="chat-action-icon">💬</span>
-                            <span>新对话</span>
-                        </button>
-                        <button className="chat-action-btn fullscreen-btn" onClick={handleToggleFullscreen} title={isFullscreen ? "退出全屏" : "全屏"}>
-                            <span className="chat-action-icon">{isFullscreen ? '⤡' : '⤢'}</span>
-                            <span>{isFullscreen ? '退出全屏' : '全屏'}</span>
-                        </button>
-                        <button className="chat-action-btn close-window-btn" onClick={handleClose} title="关闭窗口">
-                            <span className="chat-action-icon">✕</span>
-                            <span>关闭</span>
-                        </button>
-                    </div>
-                </div>
 
-                <div className="messages-container">
-                    {messages.map((message, index) => (
-                        <div
-                            key={index}
-                            className={`message ${message.role === 'user' ? 'user-message' : 'assistant-message'} ${message.isStreaming ? 'streaming' : ''}`}
-                        >
-                            <div className="message-avatar"></div>
-                            <div className="message-content">
+                        <div className="messages-container">
+                            {messages.map((message, index) => (
                                 <div
-                                    className="message-text markdown-body"
-                                    dangerouslySetInnerHTML={{
-                                        __html: message.role === 'assistant'
-                                            ? renderMarkdown(message.content)
-                                            : escapeHtml(message.content)
-                                    }}
-                                />
-                                <div className="message-time">{formatTime(message.timestamp)}</div>
-                            </div>
-                        </div>
-                    ))}
-                    {isLoading && !messages.some(m => m.isStreaming) && (
-                        <div className="message assistant-message">
-                            <div className="message-avatar"></div>
-                            <div className="message-content">
-                                <div className="typing-indicator">
-                                    <span></span>
-                                    <span></span>
-                                    <span></span>
+                                    key={index}
+                                    className={`message ${message.role === 'user' ? 'user-message' : 'assistant-message'} ${message.isStreaming ? 'streaming' : ''}`}
+                                >
+                                    <div className="message-avatar"></div>
+                                    <div className="message-content">
+                                        <div
+                                            className="message-text markdown-body"
+                                            dangerouslySetInnerHTML={{
+                                                __html: message.role === 'assistant'
+                                                    ? renderMarkdown(message.content)
+                                                    : escapeHtml(message.content)
+                                            }}
+                                        />
+                                        <div className="message-time">{formatTime(message.timestamp)}</div>
+                                    </div>
                                 </div>
+                            ))}
+                            {isLoading && !messages.some(m => m.isStreaming) && (
+                                <div className="message assistant-message">
+                                    <div className="message-avatar"></div>
+                                    <div className="message-content">
+                                        <div className="typing-indicator">
+                                            <span></span>
+                                            <span></span>
+                                            <span></span>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                            <div ref={messagesEndRef} />
+                        </div>
+
+                        <div className="input-container">
+                            <div className="input-wrapper">
+                                <textarea
+                                    ref={textareaRef}
+                                    value={inputValue}
+                                    onChange={(e) => setInputValue(e.target.value)}
+                                    onKeyPress={handleKeyPress}
+                                    placeholder="输入你的问题... (Enter发送, Shift+Enter换行)"
+                                    className="message-input"
+                                    rows={1}
+                                    disabled={isLoading}
+                                />
+                                <button
+                                    className={`send-button ${inputValue.trim() && !isLoading ? 'active' : ''}`}
+                                    onClick={handleSendMessage}
+                                    disabled={!inputValue.trim() || isLoading}
+                                >
+                                    <div className="send-icon"></div>
+                                </button>
                             </div>
                         </div>
-                    )}
-                    <div ref={messagesEndRef} />
-                </div>
+                    </>
+                )}
 
-                <div className="input-container">
-                    <div className="input-wrapper">
-                        <textarea
-                            ref={textareaRef}
-                            value={inputValue}
-                            onChange={(e) => setInputValue(e.target.value)}
-                            onKeyPress={handleKeyPress}
-                            placeholder="输入你的问题... (Enter发送, Shift+Enter换行)"
-                            className="message-input"
-                            rows={1}
-                            disabled={isLoading}
-                        />
-                        <button
-                            className={`send-button ${inputValue.trim() && !isLoading ? 'active' : ''}`}
-                            onClick={handleSendMessage}
-                            disabled={!inputValue.trim() || isLoading}
-                        >
-                            <div className="send-icon"></div>
-                        </button>
+                {activeTab === 'skill' && (
+                    <div className="skill-main">
+                        <div className="skill-toolbar">
+                            <h3 className="skill-toolbar-title">Skill 管理器</h3>
+                            <div className="skill-toolbar-actions">
+                                <button className="skill-toolbar-btn upload-btn" onClick={handleUploadFile} title="上传文件或文件夹">
+                                    📁 上传
+                                </button>
+                                <button className="skill-toolbar-btn new-folder-btn" onClick={handleCreateFolder} title="新建文件夹">
+                                    📂 新建文件夹
+                                </button>
+                                <button className="chat-action-btn fullscreen-btn" onClick={handleToggleFullscreen} title={isFullscreen ? "退出全屏" : "全屏"}>
+                                    <span className="chat-action-icon">{isFullscreen ? '⤡' : '⤢'}</span>
+                                    <span>{isFullscreen ? '退出全屏' : '全屏'}</span>
+                                </button>
+                                <button className="chat-action-btn close-window-btn" onClick={handleClose} title="关闭窗口">
+                                    <span className="chat-action-icon">✕</span>
+                                    <span>关闭</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div className="skill-editor-area">
+                            {selectedFileName ? (
+                                <div className="skill-editor-container">
+                                    <div className="skill-editor-header">
+                                        <div className="skill-editor-file-info">
+                                            <span className={`skill-editor-file-icon ${getEditorMode(selectedFileName) === 'markdown' ? 'md-icon' : getEditorMode(selectedFileName) === 'python' ? 'py-icon' : ''}`}>
+                                                {getEditorMode(selectedFileName) === 'markdown' ? '📝' : getEditorMode(selectedFileName) === 'python' ? '🐍' : '📄'}
+                                            </span>
+                                            <span className="skill-editor-filename">{selectedFileName}</span>
+                                            <span className="skill-editor-mode">{getEditorMode(selectedFileName).toUpperCase()}</span>
+                                        </div>
+                                        <div className="skill-editor-actions">
+                                            {getEditorMode(selectedFileName) === 'markdown' && (
+                                                <button
+                                                    className={`skill-editor-btn ${isPreviewMode ? 'edit-btn' : 'preview-btn'}`}
+                                                    onClick={handleTogglePreview}
+                                                    title={isPreviewMode ? '编辑模式' : '预览'}
+                                                >
+                                                    {isPreviewMode ? '✏️ 编辑' : '👁️ 预览'}
+                                                </button>
+                                            )}
+                                            <button className="skill-editor-btn save-btn" onClick={handleSaveSkillFile} title="保存文件">
+                                                💾 保存
+                                            </button>
+                                            <button className="skill-editor-btn delete-editor-btn" onClick={() => {
+                                                setSelectedFilePath(null);
+                                                setSelectedFileName('');
+                                                setEditorContent('');
+                                                setIsPreviewMode(false);
+                                            }} title="关闭编辑器">
+                                                🗑️ 删除
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className={`skill-editor-body ${getEditorMode(selectedFileName)}-editor`}>
+                                        {isFileLoading ? (
+                                            <div className="skill-editor-loading">加载中...</div>
+                                        ) : isPreviewMode && getEditorMode(selectedFileName) === 'markdown' ? (
+                                            <div
+                                                className="skill-editor-preview markdown-body"
+                                                dangerouslySetInnerHTML={{ __html: renderMarkdown(editorContent) }}
+                                            />
+                                        ) : (
+                                            <textarea
+                                                className="skill-editor-textarea"
+                                                value={editorContent}
+                                                onChange={(e) => setEditorContent(e.target.value)}
+                                                spellCheck={false}
+                                            />
+                                        )}
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="skill-empty-state">
+                                    <div className="skill-empty-icon">📂</div>
+                                    <h3>选择或上传 Skill 文件</h3>
+                                    <p>从左侧文件树中选择一个文件进行编辑</p>
+                                    <p className="skill-empty-hint">支持 .md (Markdown) 和 .py (Python) 文件</p>
+                                    <button className="skill-upload-btn" onClick={handleUploadFile}>
+                                        📤 上传文件
+                                    </button>
+                                </div>
+                            )}
+                        </div>
                     </div>
-                </div>
+                )}
+
+                {activeTab === 'flowchart' && (
+                    <div className="flowchart-main">
+                        <div className="flowchart-header">
+                            <h3 className="flowchart-title">流程图绘制</h3>
+                            <div className="header-actions">
+                                <button className="chat-action-btn fullscreen-btn" onClick={handleToggleFullscreen} title={isFullscreen ? "退出全屏" : "全屏"}>
+                                    <span className="chat-action-icon">{isFullscreen ? '⤡' : '⤢'}</span>
+                                    <span>{isFullscreen ? '退出全屏' : '全屏'}</span>
+                                </button>
+                                <button className="chat-action-btn close-window-btn" onClick={handleClose} title="关闭窗口">
+                                    <span className="chat-action-icon">✕</span>
+                                    <span>关闭</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div className="flowchart-placeholder">
+                            <div className="flowchart-icon">📊</div>
+                            <h3>流程图绘制</h3>
+                            <p>功能开发中，敬请期待...</p>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {showSettings && (

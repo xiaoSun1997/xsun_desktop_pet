@@ -1284,9 +1284,217 @@ async fn delete_map_data(app: AppHandle, name: String) -> Result<(), String> {
     db.delete_map(&name)
 }
 
+#[derive(Serialize)]
+struct FileEntry {
+    name: String,
+    path: String,
+    is_dir: bool,
+    children: Option<Vec<FileEntry>>,
+}
+
+fn list_dir_recursive(dir: &std::path::Path, base: &std::path::Path) -> Result<Vec<FileEntry>, String> {
+    let mut entries = Vec::new();
+    let read_dir = std::fs::read_dir(dir).map_err(|e| format!("读取目录失败 {}: {}", dir.display(), e))?;
+    
+    let mut dirs: Vec<_> = Vec::new();
+    let mut files: Vec<_> = Vec::new();
+    
+    for entry in read_dir {
+        let entry = entry.map_err(|e| format!("读取目录项失败: {}", e))?;
+        let path = entry.path();
+        let name = entry.file_name().to_string_lossy().to_string();
+        let relative = path.strip_prefix(base).unwrap_or(&path).to_string_lossy().to_string();
+        
+        if path.is_dir() {
+            dirs.push((name, path, relative));
+        } else {
+            files.push((name, path, relative));
+        }
+    }
+    
+    // 目录排在前面
+    dirs.sort_by(|a, b| a.0.cmp(&b.0));
+    files.sort_by(|a, b| a.0.cmp(&b.0));
+    
+    for (name, path, relative) in dirs {
+        let children = list_dir_recursive(&path, base)?;
+        entries.push(FileEntry {
+            name,
+            path: relative,
+            is_dir: true,
+            children: Some(children),
+        });
+    }
+    
+    for (name, _path, relative) in files {
+        entries.push(FileEntry {
+            name,
+            path: relative,
+            is_dir: false,
+            children: None,
+        });
+    }
+    
+    Ok(entries)
+}
+
 #[tauri::command]
 async fn write_text_file(path: String, content: String) -> Result<(), String> {
     std::fs::write(&path, &content).map_err(|e| format!("写入文件失败: {}", e))
+}
+
+#[tauri::command]
+async fn read_text_file(path: String) -> Result<String, String> {
+    std::fs::read_to_string(&path).map_err(|e| format!("读取文件失败: {}", e))
+}
+
+#[tauri::command]
+async fn get_skills_dir(app: AppHandle) -> Result<String, String> {
+    let app_data_dir = app.path().app_data_dir().map_err(|e| format!("获取应用数据目录失败: {}", e))?;
+    let skills_dir = app_data_dir.join("skills");
+    std::fs::create_dir_all(&skills_dir).map_err(|e| format!("创建skills目录失败: {}", e))?;
+    Ok(skills_dir.to_string_lossy().to_string())
+}
+
+fn flatten_file_tree(entries: &[FileEntry]) -> Vec<database::SkillFileRecord> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+    let mut records = Vec::new();
+    for entry in entries {
+        let parent_path = std::path::Path::new(&entry.path)
+            .parent()
+            .and_then(|p| {
+                let s = p.to_string_lossy().to_string();
+                if s.is_empty() || s == "." { None } else { Some(s) }
+            })
+            .unwrap_or_default();
+        records.push(database::SkillFileRecord {
+            path: entry.path.clone(),
+            name: entry.name.clone(),
+            is_dir: entry.is_dir,
+            parent_path,
+            created_at: now,
+            updated_at: now,
+        });
+        if let Some(children) = &entry.children {
+            records.extend(flatten_file_tree(children));
+        }
+    }
+    records
+}
+
+#[tauri::command]
+async fn list_skills_directory(app: AppHandle) -> Result<Vec<FileEntry>, String> {
+    let app_data_dir = app.path().app_data_dir().map_err(|e| format!("获取应用数据目录失败: {}", e))?;
+    let skills_dir = app_data_dir.join("skills");
+    if !skills_dir.exists() {
+        std::fs::create_dir_all(&skills_dir).map_err(|e| format!("创建skills目录失败: {}", e))?;
+        return Ok(Vec::new());
+    }
+    let tree = list_dir_recursive(&skills_dir, &skills_dir)?;
+    // 同步到数据库
+    if let Some(db) = app.try_state::<Database>() {
+        let records = flatten_file_tree(&tree);
+        let _ = db.sync_skill_files(&records);
+    }
+    Ok(tree)
+}
+
+#[tauri::command]
+async fn copy_to_skills(app: AppHandle, source_path: String) -> Result<String, String> {
+    let app_data_dir = app.path().app_data_dir().map_err(|e| format!("获取应用数据目录失败: {}", e))?;
+    let skills_dir = app_data_dir.join("skills");
+    std::fs::create_dir_all(&skills_dir).map_err(|e| format!("创建skills目录失败: {}", e))?;
+    
+    let source = std::path::Path::new(&source_path);
+    if !source.exists() {
+        return Err(format!("源文件不存在: {}", source_path));
+    }
+    
+    let filename = source.file_name()
+        .ok_or_else(|| "无效文件名".to_string())?
+        .to_string_lossy()
+        .to_string();
+    let dest = skills_dir.join(&filename);
+    
+    if source.is_dir() {
+        copy_dir_recursive(source, &dest)?;
+    } else {
+        std::fs::copy(source, &dest).map_err(|e| format!("复制文件失败: {}", e))?;
+    }
+    
+    Ok(filename)
+}
+
+#[tauri::command]
+async fn delete_skill_item(app: AppHandle, file_path: String, is_dir: bool) -> Result<(), String> {
+    let app_data_dir = app.path().app_data_dir().map_err(|e| format!("获取应用数据目录失败: {}", e))?;
+    let full_path = app_data_dir.join("skills").join(&file_path);
+    
+    if !full_path.exists() {
+        return Err(format!("文件不存在: {}", full_path.display()));
+    }
+    
+    if is_dir {
+        std::fs::remove_dir_all(&full_path).map_err(|e| format!("删除文件夹失败: {}", e))?;
+    } else {
+        std::fs::remove_file(&full_path).map_err(|e| format!("删除文件失败: {}", e))?;
+    }
+    
+    // 从数据库删除记录
+    if let Some(db) = app.try_state::<Database>() {
+        let _ = db.remove_skill_file_record(&file_path);
+    }
+    
+    Ok(())
+}
+
+#[tauri::command]
+async fn create_skill_folder(app: AppHandle, name: String) -> Result<(), String> {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err("文件夹名称不能为空".to_string());
+    }
+    // 检查非法字符
+    let invalid_chars = ['/', '\\', ':', '*', '?', '"', '<', '>', '|'];
+    if name.contains(&invalid_chars) {
+        return Err("文件夹名称包含非法字符 (/ \\ : * ? \" < > |)".to_string());
+    }
+    
+    let app_data_dir = app.path().app_data_dir().map_err(|e| format!("获取应用数据目录失败: {}", e))?;
+    let skills_dir = app_data_dir.join("skills");
+    let folder_path = skills_dir.join(&name);
+    
+    if folder_path.exists() {
+        return Err(format!("文件夹 '{}' 已存在", name));
+    }
+    
+    std::fs::create_dir_all(&folder_path).map_err(|e| format!("创建文件夹失败: {}", e))?;
+    
+    // 添加到数据库
+    if let Some(db) = app.try_state::<Database>() {
+        let _ = db.add_skill_folder_record(&name, &name, "");
+    }
+    
+    Ok(())
+}
+
+fn copy_dir_recursive(src: &std::path::Path, dest: &std::path::Path) -> Result<(), String> {
+    std::fs::create_dir_all(dest).map_err(|e| format!("创建目录失败: {}", e))?;
+    for entry in std::fs::read_dir(src).map_err(|e| format!("读取目录失败: {}", e))? {
+        let entry = entry.map_err(|e| format!("读取目录项失败: {}", e))?;
+        let path = entry.path();
+        let name = entry.file_name();
+        let dest_path = dest.join(&name);
+        if path.is_dir() {
+            copy_dir_recursive(&path, &dest_path)?;
+        } else {
+            std::fs::copy(&path, &dest_path).map_err(|e| format!("复制文件失败: {}", e))?;
+        }
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -1373,6 +1581,12 @@ pub fn run() {
             list_map_names,
             delete_map_data,
             write_text_file,
+            read_text_file,
+            get_skills_dir,
+            list_skills_directory,
+            copy_to_skills,
+            delete_skill_item,
+            create_skill_folder,
             reveal_in_folder,
             create_chat_session,
             get_chat_sessions,

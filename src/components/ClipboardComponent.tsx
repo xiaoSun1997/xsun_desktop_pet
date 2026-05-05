@@ -28,7 +28,26 @@ export default function ClipboardComponent() {
 
     useEffect(() => {
         loadClipboardHistory(1);
-        const interval = setInterval(() => loadClipboardHistory(1, true), 2000);
+        // 每2秒检查是否有新的剪贴板内容，有则追加到前面，不替换整个列表
+        const interval = setInterval(async () => {
+            try {
+                const history = await invoke<ClipboardItem[]>("get_clipboard_history");
+                if (history.length === 0) return;
+                setClipboardItems(prev => {
+                    if (prev.length === 0) return history;
+                    // 比较最新的时间戳，只在有新内容时才追加
+                    const latestTimestamp = prev[0].timestamp;
+                    const newItems = history.filter(item => item.timestamp > latestTimestamp);
+                    if (newItems.length > 0) {
+                        return [...newItems, ...prev];
+                    }
+                    return prev;
+                });
+                setHasMore(history.length >= PAGE_SIZE);
+            } catch (error) {
+                console.error("自动刷新剪贴板失败:", error);
+            }
+        }, 2000);
         return () => clearInterval(interval);
     }, []);
 

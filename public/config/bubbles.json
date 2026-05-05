@@ -12,7 +12,7 @@
   {
     "label": "AI对话",
     "action": "open-ai",
-    "icon": "/menu/ai_512.png"
+    "icon": "/menu/ai.png"
   },
   {
     "label": "有道翻译",

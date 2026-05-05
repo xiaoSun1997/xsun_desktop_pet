@@ -25,6 +25,16 @@ pub struct ChatMessageRecord {
     pub timestamp: i64,
 }
 
+#[derive(Clone, serde::Serialize, serde::Deserialize, Debug)]
+pub struct SkillFileRecord {
+    pub path: String,
+    pub name: String,
+    pub is_dir: bool,
+    pub parent_path: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
 pub struct Database {
     conn: Mutex<Connection>,
 }
@@ -110,6 +120,16 @@ impl Database {
                 FOREIGN KEY (session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
             );
             CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id, timestamp);
+
+            CREATE TABLE IF NOT EXISTS skill_files (
+                path TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                is_dir INTEGER NOT NULL DEFAULT 0,
+                parent_path TEXT NOT NULL DEFAULT '',
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_skill_files_parent ON skill_files(parent_path);
         ",
         )
         .map_err(|e| format!("创建表失败: {}", e))?;
@@ -603,6 +623,56 @@ impl Database {
         )
         .map_err(|e| format!("更新置顶状态失败: {}", e))?;
         Ok(new_value)
+    }
+
+    // ==================== Skill 文件记录方法 ====================
+
+    pub fn sync_skill_files(&self, files: &[SkillFileRecord]) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("获取锁失败: {}", e))?;
+        let tx = conn
+            .unchecked_transaction()
+            .map_err(|e| format!("开始事务失败: {}", e))?;
+
+        tx.execute("DELETE FROM skill_files", [])
+            .map_err(|e| format!("清空skill_files失败: {}", e))?;
+
+        for file in files {
+            tx.execute(
+                "INSERT INTO skill_files (path, name, is_dir, parent_path, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![file.path, file.name, file.is_dir as i32, file.parent_path, file.created_at, file.updated_at],
+            )
+            .map_err(|e| format!("插入skill_files失败: {}", e))?;
+        }
+
+        tx.commit().map_err(|e| format!("提交事务失败: {}", e))?;
+        Ok(())
+    }
+
+    pub fn add_skill_folder_record(&self, path: &str, name: &str, parent_path: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("获取锁失败: {}", e))?;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        conn.execute(
+            "INSERT INTO skill_files (path, name, is_dir, parent_path, created_at, updated_at) VALUES (?1, ?2, 1, ?3, ?4, ?5)",
+            params![path, name, parent_path, now, now],
+        )
+        .map_err(|e| format!("添加skill_files记录失败: {}", e))?;
+
+        Ok(())
+    }
+
+    pub fn remove_skill_file_record(&self, path: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("获取锁失败: {}", e))?;
+        // 删除自身及所有子记录
+        conn.execute(
+            "DELETE FROM skill_files WHERE path = ?1 OR path LIKE ?2",
+            params![path, format!("{}/%", path)],
+        )
+        .map_err(|e| format!("删除skill_files记录失败: {}", e))?;
+        Ok(())
     }
 
     // ==================== 地图绘制数据方法 ====================
