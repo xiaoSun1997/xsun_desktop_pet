@@ -42,7 +42,7 @@ function App() {
         return <TodoWindow />;
     }else if (label ==="menu-panel"){
         return <MenuPanel />;
-    }else if (label.startsWith("json-format-")){  // JSON格式化窗口支持多开
+    }else if (label === "json-compare" || label.startsWith("json-format-")){  // JSON对比/格式化窗口支持多开
         return <JsonCompareComponent />;
     }else if (label === "pomodoro-timer"){  // 添加番茄钟组件条件
         return <PomodoroTimerComponent />;
