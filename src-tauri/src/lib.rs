@@ -6,6 +6,7 @@ use tauri::{AppHandle, Emitter, Manager, WebviewWindow,WebviewWindowBuilder,
             tray::{TrayIcon, TrayIconBuilder, TrayIconEvent, MouseButton}};
 use tokio::time::Duration;
 use urlencoding::encode as urlencode;
+use std::collections::HashMap;
 
 mod calendar;
 mod clipboard;
@@ -18,6 +19,7 @@ use database::Database;
 
 use clipboard::{
     add_to_clipboard_history, clear_clipboard_history, copy_to_clipboard, get_clipboard_history,
+    get_clipboard_history_paginated, delete_clipboard_item,
     get_current_clipboard, manual_clipboard_check, ClipboardHistory,
 };
 
@@ -36,6 +38,25 @@ struct SystemInfo {
     cpu_usage: f32,
     total_memory: u64,
     used_memory: u64,
+    total_swap: u64,
+    used_swap: u64,
+    uptime: u64,
+    os_name: String,
+    os_version: String,
+    host_name: String,
+    total_processes: usize,
+    cpu_cores: usize,
+    cpu_name: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProcessInfo {
+    pub pid: u32,
+    pub name: String,
+    pub cpu_usage: f32,
+    pub memory: u64,
+    pub exe_path: String,
+    pub ports: Vec<u16>,
 }
 
 #[tauri::command]
@@ -60,16 +81,153 @@ async fn wake_up_pet(app: AppHandle) -> Result<(), String> {
 
 fn collect_system_info(sys: &mut System) -> SystemInfo {
     sys.refresh_all();
+    sys.refresh_cpu_specifics(sysinfo::CpuRefreshKind::everything());
+
     let cpu_usage = sys.cpus().iter().map(|c| c.cpu_usage()).sum::<f32>() / sys.cpus().len() as f32;
     let total_memory = sys.total_memory();
     let used_memory = sys.used_memory();
+    let total_swap = sys.total_swap();
+    let used_swap = sys.used_swap();
+    let uptime = System::uptime();
+    let os_name = System::name().unwrap_or_default();
+    let os_version = System::os_version().unwrap_or_default();
+    let host_name = System::host_name().unwrap_or_default();
+    let total_processes = sys.processes().len();
+    let cpu_cores = sys.cpus().len();
+    let cpu_name = sys.cpus().first().map(|c| c.brand().to_string()).unwrap_or_default();
 
     SystemInfo {
         cpu_usage,
         total_memory,
         used_memory,
+        total_swap,
+        used_swap,
+        uptime,
+        os_name,
+        os_version,
+        host_name,
+        total_processes,
+        cpu_cores,
+        cpu_name,
     }
 }
+
+// 获取端口与PID映射
+fn get_port_pid_mapping() -> std::collections::HashMap<u32, Vec<u16>> {
+    let mut map: std::collections::HashMap<u32, Vec<u16>> = std::collections::HashMap::new();
+
+    if cfg!(target_os = "windows") {
+        if let Ok(output) = std::process::Command::new("netstat")
+            .args(&["-ano", "-p", "tcp"])
+            .output()
+        {
+            if let Ok(stdout) = String::from_utf8(output.stdout) {
+                for line in stdout.lines() {
+                    let parts: Vec<&str> = line.split_whitespace().collect();
+                    if parts.len() >= 5 {
+                        if let Some(local_addr) = parts.get(1) {
+                            if let Some(port_str) = local_addr.split(':').last() {
+                                if let Ok(port) = port_str.parse::<u16>() {
+                                    if let Some(pid_str) = parts.last() {
+                                        if let Ok(pid) = pid_str.parse::<u32>() {
+                                            map.entry(pid).or_default().push(port);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    map
+}
+
+// 获取进程列表
+#[tauri::command]
+fn get_processes(state: tauri::State<Arc<Mutex<System>>>, sort_by: String) -> Vec<ProcessInfo> {
+    let mut sys = state.lock().unwrap();
+    sys.refresh_all();
+    sys.refresh_cpu_specifics(sysinfo::CpuRefreshKind::everything());
+
+    // 获取端口映射
+    let port_map = get_port_pid_mapping();
+
+    let mut processes: Vec<ProcessInfo> = sys.processes().iter().map(|(pid, process)| {
+        let p: u32 = pid.as_u32();
+        ProcessInfo {
+            pid: p,
+            name: process.name().to_string(),
+            cpu_usage: process.cpu_usage(),
+            memory: process.memory(),
+            exe_path: process.exe().map(|p| p.to_string_lossy().to_string()).unwrap_or_default(),
+            ports: port_map.get(&p).cloned().unwrap_or_default(),
+        }
+    }).collect();
+
+    match sort_by.as_str() {
+        "memory" => processes.sort_by(|a, b| b.memory.cmp(&a.memory)),
+        _ => processes.sort_by(|a, b| b.cpu_usage.partial_cmp(&a.cpu_usage).unwrap_or(std::cmp::Ordering::Equal)),
+    }
+
+    processes.truncate(20);
+    processes
+}
+
+// 杀进程
+#[tauri::command]
+fn kill_process(pid: u32) -> Result<(), String> {
+    let output = std::process::Command::new("taskkill")
+        .args(&["/PID", &pid.to_string(), "/F"])
+        .output()
+        .map_err(|e| format!("执行taskkill失败: {}", e))?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!("杀进程失败(PID:{}): {}", pid, stderr))
+    }
+}
+
+// ===== 进程图标提取（前端映射为主，后端提供 exe_path） =====
+#[derive(Default)]
+pub struct ProcessIconCache(Mutex<HashMap<String, String>>);
+
+#[cfg(target_os = "windows")]
+fn extract_icon_from_exe(exe_path: &str) -> Option<String> {
+    // 简单尝试：读取 exe 所在目录的 .exe 图标资源（暂未实现完整图标提取）
+    let _ = exe_path;
+    None
+}
+
+#[cfg(not(target_os = "windows"))]
+fn extract_icon_from_exe(_exe_path: &str) -> Option<String> {
+    None
+}
+
+#[tauri::command]
+fn get_process_icon(
+    exe_path: String,
+    cache: tauri::State<'_, ProcessIconCache>,
+) -> Option<String> {
+    if exe_path.is_empty() {
+        return None;
+    }
+    let mut guard = cache.0.lock().ok()?;
+    if let Some(cached) = guard.get(&exe_path) {
+        return Some(cached.clone());
+    }
+    if let Some(icon) = extract_icon_from_exe(&exe_path) {
+        guard.insert(exe_path, icon.clone());
+        Some(icon)
+    } else {
+        None
+    }
+}
+
 // 在现有命令函数后添加
 #[tauri::command]
 async fn open_expand_window(content: String, app: AppHandle) -> Result<(), String> {
@@ -246,9 +404,146 @@ struct ChatResponse {
     choices: Vec<ChatChoice>,
 }
 
-// 读取配置文件
+// SSE流式响应结构
+#[derive(Deserialize, Debug)]
+struct StreamChoice {
+    delta: StreamDelta,
+    #[allow(dead_code)]
+    finish_reason: Option<String>,
+}
 
-// 发送聊天消息
+#[derive(Deserialize, Debug)]
+struct StreamDelta {
+    #[serde(default)]
+    content: Option<String>,
+    #[serde(default)]
+    role: Option<String>,
+}
+
+#[derive(Deserialize, Debug)]
+struct StreamResponse {
+    choices: Vec<StreamChoice>,
+}
+
+// 流式AI对话
+#[tauri::command]
+async fn stream_chat_message(
+    app: tauri::AppHandle,
+    messages: Vec<ChatMessage>,
+    session_id: Option<String>,
+) -> Result<(), String> {
+    let config = load_deepseek_config(app.clone()).await?;
+
+    // 如果提供了session_id，保存用户最新消息到数据库
+    if let Some(ref sid) = session_id {
+        if let Some(last_msg) = messages.last() {
+            if let Some(db) = app.try_state::<Database>() {
+                let _ = db.add_chat_message(sid, &last_msg.role, &last_msg.content);
+                // 如果是第一条消息，用内容生成标题
+                let msgs = db.get_chat_messages(sid).unwrap_or_default();
+                if msgs.len() <= 1 {
+                    let title = if last_msg.content.len() > 30 {
+                        format!("{}...", &last_msg.content[..30])
+                    } else {
+                        last_msg.content.clone()
+                    };
+                    let _ = db.update_chat_session_title(sid, &title);
+                }
+            }
+        }
+    }
+
+    let client = reqwest::Client::new();
+    let chat_request = ChatRequest {
+        model: config.model,
+        messages,
+        stream: true,
+    };
+
+    let response = client
+        .post(&format!("{}/chat/completions", config.base_url))
+        .header("Authorization", format!("Bearer {}", config.api_key))
+        .header("Content-Type", "application/json")
+        .header("Accept", "text/event-stream")
+        .header("Cache-Control", "no-cache")
+        .json(&chat_request)
+        .send()
+        .await
+        .map_err(|e| format!("发送请求失败: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let error_text = response.text().await.unwrap_or_default();
+        let err_msg = format!("API请求失败 ({}): {}", status, error_text);
+        let _ = app.emit("chat://stream-error", serde_json::json!({"error": &err_msg}));
+        return Err(err_msg);
+    }
+
+    // 流式读取SSE响应
+    use tokio_stream::StreamExt;
+    let mut stream = response.bytes_stream();
+    let mut full_content = String::new();
+    let mut buffer = String::new();
+
+    while let Some(chunk_result) = stream.next().await {
+        let chunk = match chunk_result {
+            Ok(c) => c,
+            Err(e) => {
+                let err_msg = format!("读取响应流失败: {}", e);
+                let _ = app.emit("chat://stream-error", serde_json::json!({"error": &err_msg}));
+                return Err(err_msg);
+            }
+        };
+
+        let chunk_str = String::from_utf8_lossy(&chunk);
+        buffer.push_str(&chunk_str);
+
+        // 解析SSE事件 (按行处理)
+        while let Some(line_end) = buffer.find('\n') {
+            let line = buffer[..line_end].trim().to_string();
+            buffer = buffer[line_end + 1..].to_string();
+
+            if line.is_empty() {
+                continue;
+            }
+
+            if line == "data: [DONE]" {
+                break;
+            }
+
+            if let Some(data) = line.strip_prefix("data: ") {
+                if let Ok(sse) = serde_json::from_str::<StreamResponse>(data) {
+                    if let Some(choice) = sse.choices.first() {
+                        if let Some(ref delta_content) = choice.delta.content {
+                            full_content.push_str(delta_content);
+                            let _ = app.emit("chat://stream-token", serde_json::json!({
+                                "token": delta_content
+                            }));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 流式完成, 发送完成事件
+    let _ = app.emit("chat://stream-done", serde_json::json!({
+        "content": full_content
+    }));
+
+    // 保存AI响应到数据库
+    if let Some(ref sid) = session_id {
+        if !full_content.is_empty() {
+            if let Some(db) = app.try_state::<Database>() {
+                let _ = db.add_chat_message(sid, "assistant", &full_content);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+// 保留非流式命令作为备用
 #[tauri::command]
 async fn send_chat_message(
     app: tauri::AppHandle,
@@ -346,6 +641,75 @@ async fn load_deepseek_config(app: tauri::AppHandle) -> Result<DeepSeekConfig, S
 
     Ok(config)
 }
+
+// ==================== 对话历史命令 ====================
+
+#[tauri::command]
+async fn create_chat_session(
+    app: tauri::AppHandle,
+) -> Result<database::ChatSession, String> {
+    let db = app.state::<Database>();
+    let id = db.create_chat_session("新对话")?;
+    let session = db.get_chat_session(&id)?.ok_or("创建会话失败")?;
+    Ok(session)
+}
+
+#[tauri::command]
+async fn get_chat_sessions(
+    app: tauri::AppHandle,
+) -> Result<Vec<database::ChatSession>, String> {
+    let db = app.state::<Database>();
+    db.get_chat_sessions()
+}
+
+#[tauri::command]
+async fn get_chat_session_messages(
+    app: tauri::AppHandle,
+    session_id: String,
+) -> Result<Vec<database::ChatMessageRecord>, String> {
+    let db = app.state::<Database>();
+    db.get_chat_messages(&session_id)
+}
+
+#[tauri::command]
+async fn delete_chat_session(
+    app: tauri::AppHandle,
+    session_id: String,
+) -> Result<(), String> {
+    let db = app.state::<Database>();
+    db.delete_chat_session(&session_id)
+}
+
+#[tauri::command]
+async fn update_chat_session_title(
+    app: tauri::AppHandle,
+    session_id: String,
+    title: String,
+) -> Result<(), String> {
+    let db = app.state::<Database>();
+    db.update_chat_session_title(&session_id, &title)
+}
+
+#[tauri::command]
+async fn save_chat_message(
+    app: tauri::AppHandle,
+    session_id: String,
+    role: String,
+    content: String,
+) -> Result<i64, String> {
+    let db = app.state::<Database>();
+    db.add_chat_message(&session_id, &role, &content)
+}
+
+#[tauri::command]
+async fn toggle_chat_session_pin(
+    app: tauri::AppHandle,
+    session_id: String,
+) -> Result<bool, String> {
+    let db = app.state::<Database>();
+    db.toggle_chat_session_pin(&session_id)
+}
+
 // 有道翻译
 #[derive(Serialize, Deserialize, Clone)]
 struct YoudaoConfig {
@@ -946,11 +1310,17 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(Arc::new(Mutex::new(System::new_all())))
         .manage(Arc::new(ClipboardHistory::new()))
+        .manage(ProcessIconCache::default())
         .invoke_handler(tauri::generate_handler![
             get_system_info,
+            get_processes,
+            kill_process,
+            get_process_icon,
             set_click_through,
             wake_up_pet,
             get_clipboard_history,
+            get_clipboard_history_paginated,
+            delete_clipboard_item,
             add_to_clipboard_history,
             copy_to_clipboard,
             get_current_clipboard,
@@ -959,6 +1329,7 @@ pub fn run() {
             open_expand_window,
             load_deepseek_config,
             send_chat_message,
+            stream_chat_message,
             save_deepseek_config,
             load_local_deepseek_config,
             save_youdao_config,
@@ -1003,6 +1374,13 @@ pub fn run() {
             delete_map_data,
             write_text_file,
             reveal_in_folder,
+            create_chat_session,
+            get_chat_sessions,
+            get_chat_session_messages,
+            delete_chat_session,
+            update_chat_session_title,
+            save_chat_message,
+            toggle_chat_session_pin,
         ])
         .setup(|app| {
             // 初始化 SQLite 数据库

@@ -1,49 +1,69 @@
 .expand-container {
     width: 100%;
     height: 100vh;
-    background: rgba(248, 249, 250, 0.95);
-    backdrop-filter: blur(10px);
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
     display: flex;
     flex-direction: column;
     border-radius: 12px;
     overflow: hidden;
+    position: relative;
+}
+
+/* 顶部装饰线 */
+.expand-container::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, #667eea, #764ba2, #f093fb);
+    z-index: 10;
 }
 
 .expand-header {
     display: flex;
     justify-content: space-between;
-    align-items: flex-start;
-    padding: 20px 24px 16px;
-    background: rgba(255, 255, 255, 0.8);
-    border-bottom: 1px solid rgba(0, 0, 0, 0.1);
-    backdrop-filter: blur(5px);
-    cursor: move; /* 添加移动光标提示 */
+    align-items: center;
+    padding: 16px 24px;
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    cursor: move;
+    z-index: 5;
 }
 
 .header-left {
-    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 12px;
 }
 
 .expand-title {
-    font-size: 18px;
-    font-weight: 600;
-    color: #2c3e50;
-    margin: 0 0 8px 0;
+    font-size: 16px;
+    font-weight: 700;
+    color: #1a1a2e;
+    margin: 0;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
 }
 
 .content-info {
     display: flex;
-    gap: 12px;
+    gap: 8px;
     align-items: center;
 }
 
 .content-size, .content-length {
-    font-size: 12px;
-    color: #666;
-    background: #e9ecef;
-    padding: 4px 8px;
-    border-radius: 12px;
+    font-size: 11px;
+    color: #888;
+    background: rgba(102, 126, 234, 0.08);
+    padding: 3px 10px;
+    border-radius: 20px;
     font-weight: 500;
+    border: 1px solid rgba(102, 126, 234, 0.12);
 }
 
 .header-actions {
@@ -52,186 +72,195 @@
     align-items: center;
 }
 
-.copy-button, .edit-button, .save-button, .cancel-button {
-    display: flex;
+/* 通用按钮样式 */
+.action-copy-button, .edit-button, .save-button, .cancel-button, .expand-close-button {
+    display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 8px 16px;
+    padding: 7px 16px;
     border: none;
     border-radius: 8px;
-    font-size: 13px;
-    font-weight: 500;
+    font-size: 12px;
+    font-weight: 600;
     cursor: pointer;
     transition: all 0.2s ease;
+    letter-spacing: 0.3px;
 }
 
-.copy-button {
-    background: linear-gradient(135deg, #3498db, #2980b9);
+.action-copy-button {
+    background: linear-gradient(135deg, #667eea, #5a67d8);
     color: white;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
 }
 
-.copy-button:hover {
-    background: linear-gradient(135deg, #2980b9, #1f5f8b);
+.action-copy-button:hover {
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
+    box-shadow: 0 4px 16px rgba(102, 126, 234, 0.4);
 }
 
-.copy-button.saved {
-    background: linear-gradient(135deg, #27ae60, #2ecc71);
+.action-copy-button.copied,
+.action-copy-button.saved {
+    background: linear-gradient(135deg, #48bb78, #38a169);
+    box-shadow: 0 2px 8px rgba(72, 187, 120, 0.3);
 }
 
 .edit-button {
-    background: linear-gradient(135deg, #f39c12, #e67e22);
+    background: linear-gradient(135deg, #ed8936, #dd6b20);
     color: white;
+    box-shadow: 0 2px 8px rgba(237, 137, 54, 0.3);
 }
 
 .edit-button:hover {
-    background: linear-gradient(135deg, #e67e22, #d35400);
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(243, 156, 18, 0.3);
+    box-shadow: 0 4px 16px rgba(237, 137, 54, 0.4);
 }
 
 .save-button {
-    background: linear-gradient(135deg, #27ae60, #2ecc71);
+    background: linear-gradient(135deg, #48bb78, #38a169);
     color: white;
+    box-shadow: 0 2px 8px rgba(72, 187, 120, 0.3);
 }
 
 .save-button:hover:not(.disabled) {
-    background: linear-gradient(135deg, #2ecc71, #27ae60);
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(39, 174, 96, 0.3);
+    box-shadow: 0 4px 16px rgba(72, 187, 120, 0.4);
 }
 
 .save-button.disabled {
-    background: #bdc3c7;
+    background: #cbd5e0;
     cursor: not-allowed;
     opacity: 0.6;
+    box-shadow: none;
 }
 
 .save-button.saved {
-    background: linear-gradient(135deg, #27ae60, #2ecc71);
+    background: linear-gradient(135deg, #48bb78, #38a169);
 }
 
 .save-button.error {
-    background: linear-gradient(135deg, #e74c3c, #c0392b);
+    background: linear-gradient(135deg, #fc8181, #e53e3e);
+    box-shadow: 0 2px 8px rgba(229, 62, 62, 0.3);
 }
 
 .cancel-button {
-    background: #6c757d;
+    background: #a0aec0;
     color: white;
 }
 
 .cancel-button:hover {
-    background: #545b62;
+    background: #718096;
     transform: translateY(-1px);
 }
 
 .expand-content {
     flex: 1;
-    padding: 20px 24px;
+    padding: 20px 24px 24px;
     overflow: hidden;
     display: flex;
     flex-direction: column;
 }
 
+/* 内容展示区域 */
 .content-display {
     flex: 1;
     overflow: auto;
-    background: rgba(255, 255, 255, 0.8);
-    border-radius: 8px;
-    padding: 16px;
-    border: 1px solid rgba(0, 0, 0, 0.1);
+    background: rgba(255, 255, 255, 0.9);
+    border-radius: 12px;
+    padding: 20px;
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.02);
 }
 
 .content-text {
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-    font-size: 14px;
-    line-height: 1.6;
-    color: #2c3e50;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', 'SF Mono', monospace;
+    font-size: 13px;
+    line-height: 1.7;
+    color: #2d3748;
     white-space: pre-wrap;
     word-wrap: break-word;
     margin: 0;
 }
 
+/* 编辑器区域 */
 .content-editor {
     flex: 1;
     width: 100%;
-    background: rgba(255, 255, 255, 0.9);
-    border: 2px solid #3498db;
-    border-radius: 8px;
-    padding: 16px;
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-    font-size: 14px;
-    line-height: 1.6;
-    color: #2c3e50;
+    background: rgba(255, 255, 255, 0.95);
+    border: 2px solid #cbd5e0;
+    border-radius: 12px;
+    padding: 20px;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', 'SF Mono', monospace;
+    font-size: 13px;
+    line-height: 1.7;
+    color: #2d3748;
     resize: none;
     outline: none;
     transition: all 0.2s ease;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.02);
 }
 
 .content-editor:focus {
-    border-color: #2980b9;
-    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1), inset 0 2px 4px rgba(0, 0, 0, 0.02);
 }
 
-.expand-close-container {
-    position: absolute;
-    top: 12px;
-    right: 12px;
-    z-index: 10;
+.content-editor::placeholder {
+    color: #a0aec0;
+}
+
+/* 底部信息栏 */
+.expand-footer {
+    padding: 10px 24px 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.5);
+    border-top: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.expand-footer-info {
+    display: flex;
+    gap: 16px;
+    font-size: 11px;
+    color: #888;
+}
+
+.expand-footer-info span {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* 关闭按钮与分隔线 */
+.expand-action-divider {
+    width: 1px;
+    height: 18px;
+    background: rgba(0, 0, 0, 0.1);
+    margin: 0 4px;
+    flex-shrink: 0;
+    align-self: center;
 }
 
 .expand-close-button {
-    width: 32px;
-    height: 32px;
-    border: none;
-    background: rgba(231, 76, 60, 0.9);
-    border-radius: 50%;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.2s ease;
-    backdrop-filter: blur(5px);
+    background: linear-gradient(135deg, #94a3b8, #64748b);
+    color: white;
+    box-shadow: 0 2px 8px rgba(100, 116, 139, 0.3);
 }
 
 .expand-close-button:hover {
-    background: rgba(192, 57, 43, 0.95);
-    transform: scale(1.1);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px rgba(100, 116, 139, 0.4);
+    background: linear-gradient(135deg, #64748b, #475569);
 }
 
-.close-icon {
-    width: 16px;
-    height: 16px;
-    position: relative;
-}
-
-.close-icon::before,
-.close-icon::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 12px;
-    height: 2px;
-    background: white;
-    border-radius: 1px;
-}
-
-.close-icon::before {
-    transform: translate(-50%, -50%) rotate(45deg);
-}
-
-.close-icon::after {
-    transform: translate(-50%, -50%) rotate(-45deg);
-}
-
+/* 图标 */
 .copy-icon {
     width: 14px;
     height: 14px;
     border: 2px solid currentColor;
     border-radius: 2px;
     position: relative;
+    flex-shrink: 0;
 }
 
 .copy-icon::after {
@@ -249,105 +278,39 @@
 .edit-icon {
     width: 14px;
     height: 14px;
-    border: 2px solid currentColor;
-    border-radius: 2px;
     position: relative;
+    flex-shrink: 0;
 }
 
-.edit-icon::after {
-    content: '';
+.edit-icon::before {
+    content: '✎';
+    font-size: 16px;
+    line-height: 1;
     position: absolute;
     top: -2px;
-    right: -2px;
-    width: 0;
-    height: 0;
-    border-left: 4px solid transparent;
-    border-right: 4px solid transparent;
-    border-bottom: 6px solid currentColor;
-    transform: rotate(45deg);
-}
-.format-button {
-    background: linear-gradient(135deg, #9b59b6, #8e44ad);
-    color: white;
+    left: 0;
 }
 
-.format-button:hover {
-    background: linear-gradient(135deg, #8e44ad, #732d91);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(155, 89, 182, 0.3);
+/* 滚动条美化 */
+.content-display::-webkit-scrollbar,
+.content-editor::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
 }
 
-.format-icon {
-    width: 14px;
-    height: 14px;
-    border: 2px solid currentColor;
+.content-display::-webkit-scrollbar-track,
+.content-editor::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.02);
     border-radius: 2px;
-    position: relative;
 }
 
-.format-icon::before,
-.format-icon::after {
-    content: '';
-    position: absolute;
-    background: currentColor;
-    border-radius: 1px;
-}
-
-.format-icon::before {
-    top: 2px;
-    left: 2px;
-    width: 8px;
-    height: 1.5px;
-}
-
-.format-icon::after {
-    top: 6px;
-    left: 2px;
-    width: 6px;
-    height: 1.5px;
-}
-
-.action-copy-button {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
-    border: none;
-    border-radius: 6px;
-    font-size: 12px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    background: linear-gradient(135deg, #3498db, #2980b9);
-    color: white;
-}
-
-.action-copy-button:hover {
-    background: linear-gradient(135deg, #2980b9, #1f5f8b);
-    transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(52, 152, 219, 0.3);
-}
-
-.action-copy-button.copied {
-    background: linear-gradient(135deg, #27ae60, #2ecc71);
-}
-
-.action-copy-button .copy-icon {
-    width: 12px;
-    height: 12px;
-    border: 1.5px solid currentColor;
+.content-display::-webkit-scrollbar-thumb,
+.content-editor::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.1);
     border-radius: 2px;
-    position: relative;
 }
 
-.action-copy-button .copy-icon::after {
-    content: '';
-    position: absolute;
-    top: -3px;
-    right: -3px;
-    width: 10px;
-    height: 10px;
-    border: 1.5px solid currentColor;
-    border-radius: 2px;
-    background: currentColor;
+.content-display::-webkit-scrollbar-thumb:hover,
+.content-editor::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.15);
 }

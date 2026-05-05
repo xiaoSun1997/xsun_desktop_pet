@@ -21,7 +21,7 @@ sysinfo = "0.30"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "fs"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", features = ["json", "stream", "rustls-tls"] }
 chrono = { version = "0.4", features = ["serde"] }
 tauri-plugin-clipboard-manager = "2.0"
 md5 = "0.7"
@@ -30,15 +30,23 @@ base64 = "0.21"
 git2 = { version = "0.18", features = ["vendored-openssl"] }
 uuid = { version = "1.0", features = ["v4"] }
 # AI相关依赖
-tokio-util = { version = "0.7", features = ["codec"] }
+tokio-util = { version = "0.7", features = ["codec", "io"] }
 cron = "0.12"
 tokio-cron-scheduler = { version = "0.10" }
 rusqlite = { version = "0.31", features = ["bundled"] }
+tokio-stream = "0.1"
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.58", features = [
     "Win32_System_LibraryLoader",
     "Win32_Foundation",
-    "Win32_UI_WindowsAndMessaging",  # 鼠标钩子
-    "Win32_UI_Input_KeyboardAndMouse"  # SendInput 模拟键盘
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Shell",
+    "Win32_Graphics_Gdi"
 ] }
+
+[dependencies.image]
+version = "0.24"
+default-features = false
+features = ["png"]

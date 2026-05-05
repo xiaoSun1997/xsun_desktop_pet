@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from "react";
-import { getCurrentWindow, getAllWindows } from "@tauri-apps/api/window";
+import { getCurrentWindow, getAllWindows, PhysicalPosition, currentMonitor } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import bubblesConfig from "../../public/config/bubbles.json";
@@ -199,6 +199,28 @@ export default function PetComponent() {
             unlistenSelection.then(fn => fn());
             if (doubleClickTimer.current) clearTimeout(doubleClickTimer.current);
         };
+    }, []);
+
+    // 窗口定位到屏幕右下角
+    useEffect(() => {
+        const positionAtBottomRight = async () => {
+            try {
+                const appWindow = getCurrentWindow();
+                const monitor = await currentMonitor();
+                if (monitor) {
+                    const { width: screenWidth, height: screenHeight } = monitor.size;
+                    // 窗口尺寸 60x60，加 15px 边距
+                    await appWindow.setPosition(new PhysicalPosition(
+                        Math.round(screenWidth - 75),
+                        Math.round(screenHeight - 80)
+                    ));
+                }
+            } catch (error) {
+                console.error("定位桌宠窗口失败:", error);
+            }
+        };
+
+        positionAtBottomRight();
     }, []);
 
     // 鼠标离开后隐藏气泡

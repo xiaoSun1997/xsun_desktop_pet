@@ -2,9 +2,28 @@ use rusqlite::{Connection, params};
 use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager};
+use uuid::Uuid;
 
 use crate::calendar::{TodoItem, TodoPriority, CalendarEvent};
 use crate::clipboard::ClipboardItem;
+
+#[derive(Clone, serde::Serialize, serde::Deserialize, Debug)]
+pub struct ChatSession {
+    pub id: String,
+    pub title: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+    pub is_pinned: bool,
+}
+
+#[derive(Clone, serde::Serialize, serde::Deserialize, Debug)]
+pub struct ChatMessageRecord {
+    pub id: i64,
+    pub session_id: String,
+    pub role: String,
+    pub content: String,
+    pub timestamp: i64,
+}
 
 pub struct Database {
     conn: Mutex<Connection>,
@@ -69,11 +88,65 @@ impl Database {
             CREATE TABLE IF NOT EXISTS clipboard_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 content TEXT NOT NULL,
+                content_type TEXT NOT NULL DEFAULT 'text',
                 timestamp INTEGER NOT NULL
             );
+            CREATE INDEX IF NOT EXISTS idx_clipboard_timestamp ON clipboard_history(timestamp DESC);
+
+            CREATE TABLE IF NOT EXISTS chat_sessions (
+                id TEXT PRIMARY KEY,
+                title TEXT NOT NULL DEFAULT '新对话',
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_chat_sessions_updated ON chat_sessions(updated_at DESC);
+
+            CREATE TABLE IF NOT EXISTS chat_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                timestamp INTEGER NOT NULL,
+                FOREIGN KEY (session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id, timestamp);
         ",
         )
         .map_err(|e| format!("创建表失败: {}", e))?;
+
+        // 迁移: 如果旧的clipboard_history没有content_type列, 添加它
+        let has_content_type: bool = conn
+            .prepare("PRAGMA table_info(clipboard_history)")
+            .map_err(|e| format!("检查表结构失败: {}", e))?
+            .query_map([], |row| row.get::<_, String>(1))
+            .map_err(|e| format!("查询列信息失败: {}", e))?
+            .filter_map(|r| r.ok())
+            .any(|name| name == "content_type");
+
+        if !has_content_type {
+            conn.execute_batch(
+                "ALTER TABLE clipboard_history ADD COLUMN content_type TEXT NOT NULL DEFAULT 'text';"
+            )
+            .map_err(|e| format!("迁移clipboard_history表失败: {}", e))?;
+            println!("迁移: 已为clipboard_history添加content_type列");
+        }
+
+        // 迁移: 如果旧的chat_sessions没有is_pinned列, 添加它
+        let has_is_pinned: bool = conn
+            .prepare("PRAGMA table_info(chat_sessions)")
+            .map_err(|e| format!("检查表结构失败: {}", e))?
+            .query_map([], |row| row.get::<_, String>(1))
+            .map_err(|e| format!("查询列信息失败: {}", e))?
+            .filter_map(|r| r.ok())
+            .any(|name| name == "is_pinned");
+
+        if !has_is_pinned {
+            conn.execute_batch(
+                "ALTER TABLE chat_sessions ADD COLUMN is_pinned INTEGER NOT NULL DEFAULT 0;"
+            )
+            .map_err(|e| format!("迁移chat_sessions表失败: {}", e))?;
+            println!("迁移: 已为chat_sessions添加is_pinned列");
+        }
 
         Ok(())
     }
@@ -261,8 +334,8 @@ impl Database {
 
         let mut stmt = conn
             .prepare(
-                "SELECT id, content, timestamp FROM clipboard_history 
-                 ORDER BY timestamp DESC LIMIT 50",
+                "SELECT id, content, content_type, timestamp FROM clipboard_history 
+                 ORDER BY timestamp DESC LIMIT 10",
             )
             .map_err(|e| format!("准备查询失败: {}", e))?;
 
@@ -271,7 +344,8 @@ impl Database {
                 Ok(ClipboardItem {
                     id: row.get::<_, i64>(0)? as usize,
                     content: row.get(1)?,
-                    timestamp: row.get(2)?,
+                    content_type: row.get(2)?,
+                    timestamp: row.get(3)?,
                 })
             })
             .map_err(|e| format!("查询剪贴板历史失败: {}", e))?
@@ -281,12 +355,64 @@ impl Database {
         Ok(items)
     }
 
+    pub fn get_clipboard_history_paginated(&self, page: usize, page_size: usize) -> Result<Vec<ClipboardItem>, String> {
+        let conn = self.conn.lock().map_err(|e| format!("获取锁失败: {}", e))?;
+        let offset = (page.saturating_sub(1)) * page_size;
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, content, content_type, timestamp FROM clipboard_history 
+                 ORDER BY timestamp DESC LIMIT ?1 OFFSET ?2",
+            )
+            .map_err(|e| format!("准备查询失败: {}", e))?;
+
+        let items = stmt
+            .query_map(params![page_size as i64, offset as i64], |row| {
+                Ok(ClipboardItem {
+                    id: row.get::<_, i64>(0)? as usize,
+                    content: row.get(1)?,
+                    content_type: row.get(2)?,
+                    timestamp: row.get(3)?,
+                })
+            })
+            .map_err(|e| format!("查询剪贴板历史失败: {}", e))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(items)
+    }
+
+    pub fn delete_clipboard_item(&self, id: usize) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("获取锁失败: {}", e))?;
+        conn.execute(
+            "DELETE FROM clipboard_history WHERE id = ?1",
+            params![id as i64],
+        )
+        .map_err(|e| format!("删除剪贴板记录失败: {}", e))?;
+        Ok(())
+    }
+
+    pub fn cleanup_old_clipboard_items(&self, days: i64) -> Result<usize, String> {
+        let conn = self.conn.lock().map_err(|e| format!("获取锁失败: {}", e))?;
+        let cutoff = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64
+            - (days * 86400);
+
+        let deleted = conn
+            .execute("DELETE FROM clipboard_history WHERE timestamp < ?1", params![cutoff])
+            .map_err(|e| format!("清理旧剪贴板记录失败: {}", e))?;
+
+        Ok(deleted)
+    }
+
     pub fn add_clipboard_item(&self, item: &ClipboardItem) -> Result<(), String> {
         let conn = self.conn.lock().map_err(|e| format!("获取锁失败: {}", e))?;
 
         conn.execute(
-            "INSERT INTO clipboard_history (content, timestamp) VALUES (?1, ?2)",
-            params![item.content, item.timestamp],
+            "INSERT INTO clipboard_history (content, content_type, timestamp) VALUES (?1, ?2, ?3)",
+            params![item.content, item.content_type, item.timestamp],
         )
         .map_err(|e| format!("添加剪贴板记录失败: {}", e))?;
 
@@ -298,6 +424,185 @@ impl Database {
         conn.execute("DELETE FROM clipboard_history", [])
             .map_err(|e| format!("清空剪贴板历史失败: {}", e))?;
         Ok(())
+    }
+
+    // ==================== 对话历史方法 ====================
+
+    pub fn create_chat_session(&self, title: &str) -> Result<String, String> {
+        let conn = self.conn.lock().map_err(|e| format!("获取锁失败: {}", e))?;
+        let id = Uuid::new_v4().to_string();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        conn.execute(
+            "INSERT INTO chat_sessions (id, title, created_at, updated_at) VALUES (?1, ?2, ?3, ?4)",
+            params![id, title, now, now],
+        )
+        .map_err(|e| format!("创建对话会话失败: {}", e))?;
+
+        Ok(id)
+    }
+
+    pub fn get_chat_sessions(&self) -> Result<Vec<ChatSession>, String> {
+        let conn = self.conn.lock().map_err(|e| format!("获取锁失败: {}", e))?;
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, title, created_at, updated_at, is_pinned FROM chat_sessions ORDER BY is_pinned DESC, updated_at DESC",
+            )
+            .map_err(|e| format!("准备查询失败: {}", e))?;
+
+        let sessions = stmt
+            .query_map([], |row| {
+                Ok(ChatSession {
+                    id: row.get(0)?,
+                    title: row.get(1)?,
+                    created_at: row.get(2)?,
+                    updated_at: row.get(3)?,
+                    is_pinned: row.get::<_, i32>(4)? != 0,
+                })
+            })
+            .map_err(|e| format!("查询对话会话失败: {}", e))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(sessions)
+    }
+
+    pub fn get_chat_session(&self, id: &str) -> Result<Option<ChatSession>, String> {
+        let conn = self.conn.lock().map_err(|e| format!("获取锁失败: {}", e))?;
+
+        let mut stmt = conn
+            .prepare("SELECT id, title, created_at, updated_at, is_pinned FROM chat_sessions WHERE id = ?1")
+            .map_err(|e| format!("准备查询失败: {}", e))?;
+
+        match stmt.query_row(params![id], |row| {
+            Ok(ChatSession {
+                id: row.get(0)?,
+                title: row.get(1)?,
+                created_at: row.get(2)?,
+                updated_at: row.get(3)?,
+                is_pinned: row.get::<_, i32>(4)? != 0,
+            })
+        }) {
+            Ok(session) => Ok(Some(session)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(format!("查询对话会话失败: {}", e)),
+        }
+    }
+
+    pub fn delete_chat_session(&self, id: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("获取锁失败: {}", e))?;
+        // 先删除会话下的所有消息
+        conn.execute("DELETE FROM chat_messages WHERE session_id = ?1", params![id])
+            .map_err(|e| format!("删除对话消息失败: {}", e))?;
+        // 再删除会话本身
+        conn.execute("DELETE FROM chat_sessions WHERE id = ?1", params![id])
+            .map_err(|e| format!("删除对话会话失败: {}", e))?;
+        Ok(())
+    }
+
+    pub fn update_chat_session_title(&self, id: &str, title: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("获取锁失败: {}", e))?;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        conn.execute(
+            "UPDATE chat_sessions SET title = ?1, updated_at = ?2 WHERE id = ?3",
+            params![title, now, id],
+        )
+        .map_err(|e| format!("更新对话标题失败: {}", e))?;
+        Ok(())
+    }
+
+    pub fn add_chat_message(&self, session_id: &str, role: &str, content: &str) -> Result<i64, String> {
+        let conn = self.conn.lock().map_err(|e| format!("获取锁失败: {}", e))?;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        // 插入消息
+        conn.execute(
+            "INSERT INTO chat_messages (session_id, role, content, timestamp) VALUES (?1, ?2, ?3, ?4)",
+            params![session_id, role, content, now],
+        )
+        .map_err(|e| format!("添加对话消息失败: {}", e))?;
+
+        let message_id = conn.last_insert_rowid();
+
+        // 更新会话的更新时间
+        conn.execute(
+            "UPDATE chat_sessions SET updated_at = ?1 WHERE id = ?2",
+            params![now, session_id],
+        )
+        .map_err(|e| format!("更新会话时间失败: {}", e))?;
+
+        Ok(message_id)
+    }
+
+    pub fn get_chat_messages(&self, session_id: &str) -> Result<Vec<ChatMessageRecord>, String> {
+        let conn = self.conn.lock().map_err(|e| format!("获取锁失败: {}", e))?;
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, session_id, role, content, timestamp FROM chat_messages 
+                 WHERE session_id = ?1 ORDER BY timestamp ASC",
+            )
+            .map_err(|e| format!("准备查询失败: {}", e))?;
+
+        let messages = stmt
+            .query_map(params![session_id], |row| {
+                Ok(ChatMessageRecord {
+                    id: row.get(0)?,
+                    session_id: row.get(1)?,
+                    role: row.get(2)?,
+                    content: row.get(3)?,
+                    timestamp: row.get(4)?,
+                })
+            })
+            .map_err(|e| format!("查询对话消息失败: {}", e))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(messages)
+    }
+
+    pub fn update_chat_session_timestamp(&self, id: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("获取锁失败: {}", e))?;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        conn.execute(
+            "UPDATE chat_sessions SET updated_at = ?1 WHERE id = ?2",
+            params![now, id],
+        )
+        .map_err(|e| format!("更新会话时间失败: {}", e))?;
+        Ok(())
+    }
+
+    pub fn toggle_chat_session_pin(&self, id: &str) -> Result<bool, String> {
+        let conn = self.conn.lock().map_err(|e| format!("获取锁失败: {}", e))?;
+        // 先查询当前状态
+        let current: bool = conn
+            .query_row(
+                "SELECT is_pinned FROM chat_sessions WHERE id = ?1",
+                params![id],
+                |row| row.get::<_, i32>(0).map(|v| v != 0),
+            )
+            .map_err(|e| format!("查询置顶状态失败: {}", e))?;
+        let new_value = !current;
+        conn.execute(
+            "UPDATE chat_sessions SET is_pinned = ?1 WHERE id = ?2",
+            params![new_value as i32, id],
+        )
+        .map_err(|e| format!("更新置顶状态失败: {}", e))?;
+        Ok(new_value)
     }
 
     // ==================== 地图绘制数据方法 ====================
@@ -339,6 +644,16 @@ impl Database {
     // ==================== 数据迁移（从旧JSON文件） ====================
 
     pub fn migrate_from_json(&self, app: &AppHandle) -> Result<(), String> {
+        // 启动时清理超过7天的剪贴板记录
+        match self.cleanup_old_clipboard_items(7) {
+            Ok(count) => {
+                if count > 0 {
+                    println!("自动清理了 {} 条过期剪贴板记录(>7天)", count);
+                }
+            }
+            Err(e) => eprintln!("清理过期剪贴板记录失败: {}", e),
+        }
+
         use std::io::Read;
 
         // 如果已经迁移过则跳过

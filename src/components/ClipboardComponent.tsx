@@ -1,33 +1,78 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import "./ClipboardComponent.css";
 
 type ClipboardItem = {
     content: string;
+    content_type: string; // "text" 或 "image"
     timestamp: number;
     id: number;
 };
+
+const MAX_COLLAPSE_LENGTH = 500;
+const PREVIEW_LENGTH = 200;
+const PAGE_SIZE = 10;
 
 export default function ClipboardComponent() {
     const [clipboardItems, setClipboardItems] = useState<ClipboardItem[]>([]);
     const [copyStatus, setCopyStatus] = useState<{ [key: number]: boolean }>({});
     const [isLoading, setIsLoading] = useState(true);
+    const [isLoadingMore, setIsLoadingMore] = useState(false);
+    const [expandedItems, setExpandedItems] = useState<Set<number>>(new Set());
+    const [currentPage, setCurrentPage] = useState(1);
+    const [hasMore, setHasMore] = useState(true);
+    const [enlargeImage, setEnlargeImage] = useState<string | null>(null);
+    const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
+    const scrollRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        loadClipboardHistory();
-        const interval = setInterval(loadClipboardHistory, 2000);
+        loadClipboardHistory(1);
+        const interval = setInterval(() => loadClipboardHistory(1, true), 2000);
         return () => clearInterval(interval);
     }, []);
 
-    const loadClipboardHistory = async () => {
+    const loadClipboardHistory = async (page: number = 1, silent: boolean = false) => {
         try {
-            const history = await invoke<ClipboardItem[]>("get_clipboard_history");
-            setClipboardItems(history);
+            if (page === 1) {
+                if (!silent) setIsLoading(true);
+                const history = await invoke<ClipboardItem[]>("get_clipboard_history");
+                setClipboardItems(history);
+                setHasMore(history.length >= PAGE_SIZE);
+                setCurrentPage(1);
+            } else {
+                setIsLoadingMore(true);
+                const history = await invoke<ClipboardItem[]>("get_clipboard_history_paginated", {
+                    page,
+                    pageSize: PAGE_SIZE,
+                });
+                if (history.length < PAGE_SIZE) {
+                    setHasMore(false);
+                }
+                setClipboardItems(prev => [...prev, ...history]);
+                setCurrentPage(page);
+                setIsLoadingMore(false);
+            }
         } catch (error) {
             console.error("获取剪贴板历史失败:", error);
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    const handleLoadMore = () => {
+        if (!isLoadingMore && hasMore) {
+            loadClipboardHistory(currentPage + 1);
+        }
+    };
+
+    const handleDelete = async (id: number) => {
+        try {
+            await invoke("delete_clipboard_item", { id });
+            setClipboardItems(prev => prev.filter(item => item.id !== id));
+            setConfirmDelete(null);
+        } catch (error) {
+            console.error("删除失败:", error);
         }
     };
 
@@ -55,6 +100,7 @@ export default function ClipboardComponent() {
         try {
             await invoke("clear_clipboard_history");
             setClipboardItems([]);
+            setHasMore(false);
         } catch (error) {
             console.error("清空历史失败:", error);
         }
@@ -67,6 +113,26 @@ export default function ClipboardComponent() {
         } catch (error) {
             console.error('关闭窗口失败:', error);
         }
+    };
+
+    const handleImageDblClick = (content: string) => {
+        setEnlargeImage(content);
+    };
+
+    const handleCloseEnlarge = () => {
+        setEnlargeImage(null);
+    };
+
+    const toggleExpand = (id: number) => {
+        setExpandedItems(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) {
+                next.delete(id);
+            } else {
+                next.add(id);
+            }
+            return next;
+        });
     };
 
     const formatTime = (timestamp: number): string => {
@@ -85,11 +151,6 @@ export default function ClipboardComponent() {
         }
     };
 
-    const truncateText = (text: string, maxLength: number = 100): string => {
-        if (text.length <= maxLength) return text;
-        return text.substring(0, maxLength) + "...";
-    };
-
     const formatContentSize = (content: string): string => {
         const size = new Blob([content]).size;
         if (size < 1024) return `${size}B`;
@@ -97,85 +158,232 @@ export default function ClipboardComponent() {
         return `${(size / (1024 * 1024)).toFixed(1)}MB`;
     };
 
+    const getContentTypeLabel = (type: string): string => {
+        return type === "image" ? "图片" : "文本";
+    };
+
+    const getContentTypeIcon = (type: string): string => {
+        return type === "image" ? "🖼️" : "📄";
+    };
+
+    const truncateText = (text: string, isExpanded: boolean): string => {
+        if (!isExpanded && text.length > MAX_COLLAPSE_LENGTH) {
+            return text.substring(0, PREVIEW_LENGTH) + "...";
+        }
+        return text;
+    };
+
+    const shouldShowExpandToggle = (content: string): boolean => {
+        return content.length > MAX_COLLAPSE_LENGTH;
+    };
+
+    const JSON_FORMAT_LIMIT = 200 * 1024;
+
+    const isLikelyJson = (content: string): boolean => {
+        if (content.length > JSON_FORMAT_LIMIT) return false;
+        const trimmed = content.trim();
+        return (trimmed.startsWith("{") && trimmed.endsWith("}")) ||
+               (trimmed.startsWith("[") && trimmed.endsWith("]"));
+    };
+
+    const formatJsonForDisplay = (content: string): string => {
+        try {
+            const parsed = JSON.parse(content);
+            return JSON.stringify(parsed, null, 2);
+        } catch {
+            return content;
+        }
+    };
+
     return (
         <div className="clipboard-container">
-            <div
-                className="clipboard-header"
-                data-tauri-drag-region  // 添加这个属性使整个头部可拖拽
-            >
-                <h1 className="clipboard-title">剪贴板历史</h1>
-                <div className="clipboard-badge">最近5条</div>
-                {clipboardItems.length > 0 && (
-                    <button
-                        className="clear-button"
-                        onClick={handleClearHistory}
-                        title="清空历史"
-                    >
-                        <div className="clear-icon"></div>
-                        <span>清空</span>
-                    </button>
-                )}
+            <div className="clipboard-header" data-tauri-drag-region>
+                <div className="clipboard-header-top">
+                    <h1 className="clipboard-title">剪贴板</h1>
+                    <div className="clipboard-badge">{clipboardItems.length} 项</div>
+                </div>
+                <div className="clipboard-header-actions">
+                    {clipboardItems.length > 0 && (
+                        <button
+                            className="clipboard-action-btn clear-btn"
+                            onClick={handleClearHistory}
+                            title="清空历史"
+                        >
+                            🗑️ 清空
+                        </button>
+                    )}
+                </div>
             </div>
 
-            <div className="clipboard-items">
+            <div className="clipboard-items" ref={scrollRef}>
                 {isLoading ? (
-                    <div className="loading-container">
-                        <div className="loading-spinner"></div>
-                        <p className="loading-text">加载中...</p>
+                    <div className="cb-loading-container">
+                        <div className="cb-loading-spinner"></div>
+                        <p className="cb-loading-text">加载中...</p>
                     </div>
                 ) : clipboardItems.length > 0 ? (
-                    clipboardItems.map((item) => (
-                        <div key={item.id} className="clipboard-item">
-                            <div className="clipboard-content">
-                                <div className="content-text">
-                                    {truncateText(item.content)}
-                                </div>
-                                <div className="content-meta">
-                                    <span className="content-time">
-                                        {formatTime(item.timestamp)}
-                                    </span>
-                                    <span className="content-size">
-                                        {formatContentSize(item.content)}
-                                    </span>
-                                </div>
-                            </div>
-                            <div className="action-buttons">
-                                <button
-                                    className={`action-copy-button ${copyStatus[item.id] ? 'copied' : ''}`}
-                                    onClick={() => handleCopy(item.content, item.id)}
-                                    title={copyStatus[item.id] ? "已复制!" : "复制"}
-                                >
-                                    <div className="copy-icon"></div>
-                                    <span>{copyStatus[item.id] ? "已复制" : "复制"}</span>
-                                </button>
+                    <>
+                        {clipboardItems.map((item) => {
+                            const isExpanded = expandedItems.has(item.id);
+                            const needsToggle = shouldShowExpandToggle(item.content);
+                            const displayContent = truncateText(
+                                item.content_type === "text" && isLikelyJson(item.content)
+                                    ? formatJsonForDisplay(item.content)
+                                    : item.content,
+                                isExpanded
+                            );
 
-                                <button
-                                    className="expand-button"
-                                    onClick={() => handleExpand(item.content)}
-                                    title="编辑/查看详情"
+                            return (
+                                <div
+                                    key={item.id}
+                                    className={`cb-item ${item.content_type === "image" ? "cb-item-image" : "cb-item-text"}`}
                                 >
-                                    <div className="expand-icon"></div>
+                                    <div className="cb-item-header">
+                                        <span className="cb-type-badge" data-type={item.content_type}>
+                                            {getContentTypeIcon(item.content_type)} {getContentTypeLabel(item.content_type)}
+                                        </span>
+                                        <span className="cb-time">{formatTime(item.timestamp)}</span>
+                                        <span className="cb-size">{formatContentSize(item.content)}</span>
+                                    </div>
+
+                                    <div className="cb-item-body">
+                                        {item.content_type === "image" ? (
+                                            <div className="cb-image-container">
+                                                <img
+                                                    src={item.content}
+                                                    alt="剪贴板图片"
+                                                    className="cb-image"
+                                                    onDoubleClick={() => handleImageDblClick(item.content)}
+                                                    onError={(e) => {
+                                                        (e.target as HTMLImageElement).style.display = "none";
+                                                    }}
+                                                />
+                                                <div className="cb-image-hint">双击放大</div>
+                                            </div>
+                                        ) : (
+                                            <div className="cb-text-container">
+                                                <pre className={`cb-text ${isExpanded ? "cb-text-expanded" : ""}`}>
+                                                    {displayContent || "（空内容）"}
+                                                </pre>
+                                                {needsToggle && (
+                                                    <button
+                                                        className="cb-expand-toggle"
+                                                        onClick={() => toggleExpand(item.id)}
+                                                    >
+                                                        {isExpanded ? "▲ 收起" : `▼ 展开全部 (${(item.content.length / 1024).toFixed(1)}KB)`}
+                                                    </button>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="cb-item-actions">
+                                        <button
+                                            className={`cb-action-btn cb-copy-btn ${copyStatus[item.id] ? 'copied' : ''}`}
+                                            onClick={() => handleCopy(item.content, item.id)}
+                                            title={copyStatus[item.id] ? "已复制!" : "复制到剪贴板"}
+                                        >
+                                            <span className="cb-action-icon">
+                                                {copyStatus[item.id] ? "✓" : "📋"}
+                                            </span>
+                                            <span>{copyStatus[item.id] ? "已复制" : "复制"}</span>
+                                        </button>
+                                        {item.content_type === "text" && (
+                                            <button
+                                                className="cb-action-btn cb-edit-btn"
+                                                onClick={() => handleExpand(item.content)}
+                                                title="编辑/查看详情"
+                                            >
+                                                <span className="cb-action-icon">✏️</span>
+                                                <span>编辑</span>
+                                            </button>
+                                        )}
+                                        <button
+                                            className="cb-action-btn cb-delete-btn"
+                                            onClick={() => setConfirmDelete(item.id)}
+                                            title="删除"
+                                        >
+                                            <span className="cb-action-icon">🗑️</span>
+                                            <span>删除</span>
+                                        </button>
+                                    </div>
+
+                                    {confirmDelete === item.id && (
+                                        <div className="cb-delete-confirm">
+                                            <span>确认删除？</span>
+                                            <button
+                                                className="cb-confirm-yes"
+                                                onClick={() => handleDelete(item.id)}
+                                            >
+                                                确认
+                                            </button>
+                                            <button
+                                                className="cb-confirm-no"
+                                                onClick={() => setConfirmDelete(null)}
+                                            >
+                                                取消
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+
+                        {hasMore && (
+                            <div className="cb-load-more-container">
+                                <button
+                                    className="cb-load-more-btn"
+                                    onClick={handleLoadMore}
+                                    disabled={isLoadingMore}
+                                >
+                                    {isLoadingMore ? (
+                                        <>
+                                            <div className="cb-loading-spinner-small"></div>
+                                            加载中...
+                                        </>
+                                    ) : (
+                                        "加载更多"
+                                    )}
                                 </button>
                             </div>
-                        </div>
-                    ))
+                        )}
+                    </>
                 ) : (
-                    <div className="empty-state">
-                        <p>暂无剪贴板历史</p>
-                        <p className="empty-hint">复制一些内容试试吧</p>
+                    <div className="cb-empty-state">
+                        <div className="cb-empty-icon">📋</div>
+                        <p className="cb-empty-title">暂无剪贴板历史</p>
+                        <p className="cb-empty-hint">复制一些内容试试吧</p>
                     </div>
                 )}
             </div>
 
-            <div className="close-button-container">
+            <div className="clipboard-footer">
                 <button
-                    className="close-button"
+                    className="cb-close-btn"
                     onClick={handleClose}
                     title="关闭窗口"
                 >
-                    <div className="close-icon"></div>
+                    <div className="cb-close-icon"></div>
                 </button>
             </div>
+
+
+            {/* 图片放大弹窗 */}
+            {enlargeImage && (
+                <div className="cb-image-overlay" onClick={handleCloseEnlarge}>
+                    <div className="cb-image-enlarge-container">
+                        <button className="cb-image-enlarge-close" onClick={handleCloseEnlarge}>
+                            ✕
+                        </button>
+                        <img
+                            src={enlargeImage}
+                            alt="放大的图片"
+                            className="cb-image-enlarge"
+                            onClick={(e) => e.stopPropagation()}
+                        />
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

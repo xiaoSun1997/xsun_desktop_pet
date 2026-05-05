@@ -9,28 +9,20 @@ export default function ExpandWindow() {
     const [saveStatus, setSaveStatus] = useState<"" | "saving" | "saved" | "error">("");
     const [originalContent, setOriginalContent] = useState("");
 
-    // 自动格式化函数
     const autoFormat = (text: string): string => {
         try {
-            // 尝试解析为JSON
             const parsed = JSON.parse(text);
             return JSON.stringify(parsed, null, 2);
-        } catch (error) {
-            // 如果不是JSON，按逗号换行
-            return text
-                .split(',')
-                .map(item => item.trim())
-                .join(',\n');
+        } catch {
+            return text;
         }
     };
 
     useEffect(() => {
-        // 从全局变量获取内容
         const initialContent = (window as any).__EXPAND_CONTENT__ || "";
-        // 自动格式化内容
         const formattedContent = autoFormat(initialContent);
         setContent(formattedContent);
-        setOriginalContent(initialContent); // 保存原始内容用于比较
+        setOriginalContent(initialContent);
     }, []);
 
     const handleClose = async () => {
@@ -75,27 +67,43 @@ export default function ExpandWindow() {
         setIsEditing(false);
     };
 
+    const handleFormat = () => {
+        setContent(autoFormat(content));
+    };
+
     const hasChanges = content !== autoFormat(originalContent);
-    const contentSize = new Blob([content]).size;
+    const contentSizeByte = new Blob([content]).size;
     const formatSize = (size: number): string => {
         if (size < 1024) return `${size}B`;
         if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)}KB`;
         return `${(size / (1024 * 1024)).toFixed(1)}MB`;
     };
+    const lineCount = content.split('\n').length;
+    const wordCount = content.replace(/\s+/g, ' ').trim().split(' ').filter(w => w.length > 0).length;
 
     return (
         <div className="expand-container">
             <div className="expand-header" data-tauri-drag-region>
                 <div className="header-left">
-                    <h1 className="expand-title">剪贴板内容编辑</h1>
+                    <h1 className="expand-title">📝 剪贴板内容</h1>
                     <div className="content-info">
-                        <span className="content-size">{formatSize(contentSize)}</span>
+                        <span className="content-size">{formatSize(contentSizeByte)}</span>
                         <span className="content-length">{content.length} 字符</span>
                     </div>
                 </div>
                 <div className="header-actions">
                     {isEditing ? (
                         <>
+                            {content.length <= 200000 && (
+                                <button
+                                    className="edit-button"
+                                    onClick={handleFormat}
+                                    title="格式化内容"
+                                    style={{ background: 'linear-gradient(135deg, #9b59b6, #8e44ad)' }}
+                                >
+                                    🔧 格式化
+                                </button>
+                            )}
                             <button
                                 className="cancel-button"
                                 onClick={handleCancel}
@@ -110,8 +118,8 @@ export default function ExpandWindow() {
                                 title="保存到剪贴板"
                             >
                                 {saveStatus === "saving" ? "保存中..." :
-                                    saveStatus === "saved" ? "已保存" :
-                                        saveStatus === "error" ? "保存失败" : "保存"}
+                                    saveStatus === "saved" ? "✓ 已保存" :
+                                        saveStatus === "error" ? "✗ 保存失败" : "💾 保存"}
                             </button>
                         </>
                     ) : (
@@ -129,8 +137,15 @@ export default function ExpandWindow() {
                                 onClick={() => setIsEditing(true)}
                                 title="编辑内容"
                             >
-                                <div className="edit-icon"></div>
-                                <span>编辑</span>
+                                <span>✏️ 编辑</span>
+                            </button>
+                            <div className="expand-action-divider"></div>
+                            <button
+                                className="expand-close-button"
+                                onClick={handleClose}
+                                title="关闭窗口"
+                            >
+                                <span>✕ 关闭</span>
                             </button>
                         </>
                     )}
@@ -145,6 +160,7 @@ export default function ExpandWindow() {
                         onChange={(e) => setContent(e.target.value)}
                         placeholder="在此编辑内容..."
                         autoFocus
+                        spellCheck={false}
                     />
                 ) : (
                     <div className="content-display">
@@ -153,15 +169,14 @@ export default function ExpandWindow() {
                 )}
             </div>
 
-            <div className="expand-close-container">
-                <button
-                    className="expand-close-button"
-                    onClick={handleClose}
-                    title="关闭窗口"
-                >
-                    <div className="close-icon"></div>
-                </button>
+            <div className="expand-footer">
+                <div className="expand-footer-info">
+                    <span>📄 {lineCount} 行</span>
+                    <span>📝 {wordCount} 词</span>
+                    <span>📏 {content.length} 字符</span>
+                </div>
             </div>
+
         </div>
     );
 }

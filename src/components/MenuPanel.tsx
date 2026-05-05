@@ -119,6 +119,7 @@ export default function MenuPanel() {
                         visible: true,
                         transparent: true,
                         decorations: false,
+                        center: true,
                     }
                 });
                 break;

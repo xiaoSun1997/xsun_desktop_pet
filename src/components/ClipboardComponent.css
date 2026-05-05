@@ -1,395 +1,623 @@
 .clipboard-container {
     width: 100%;
     height: 100vh;
-    padding: 8px 8px 50px 8px;
-    background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
-    color: white;
+    padding: 8px 8px 56px 8px;
+    background: rgba(248, 249, 250, 0.95);
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     overflow-y: auto;
     box-sizing: border-box;
+    animation: slideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* ===== 头部 ===== */
 .clipboard-header {
     text-align: center;
-    margin-bottom: 16px;
-    padding-top: 8px;
+    margin-bottom: 12px;
+    padding: 10px 12px 8px;
+    background: rgba(255, 255, 255, 0.85);
+    border-radius: 14px;
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    cursor: move;
     position: relative;
-    cursor: move; /* 添加移动光标提示 */
+}
+
+.clipboard-header-top {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 6px;
 }
 
 .clipboard-title {
-    font-size: 16px;
-    font-weight: 600;
+    font-size: 18px;
+    font-weight: 700;
     margin: 0;
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    color: #1a1a1a;
+    letter-spacing: 0.5px;
 }
 
 .clipboard-badge {
-    display: inline-block;
-    background: rgba(255, 255, 255, 0.2);
-    padding: 3px 6px;
+    display: inline-flex;
+    align-items: center;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    padding: 2px 8px;
     border-radius: 10px;
-    font-size: 9px;
-    margin-top: 6px;
-    backdrop-filter: blur(10px);
+    font-size: 10px;
+    font-weight: 600;
 }
 
-/* 清空按钮样式 */
-.clear-button {
-    position: absolute;
-    top: 0;
-    right: 8px;
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 8px;
-    padding: 6px 10px;
-    color: white;
-    font-size: 10px;
-    cursor: pointer;
+.clipboard-header-actions {
     display: flex;
+    justify-content: center;
+    gap: 6px;
+}
+
+.clipboard-action-btn {
+    display: inline-flex;
     align-items: center;
     gap: 4px;
-    backdrop-filter: blur(10px);
+    padding: 4px 10px;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 8px;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
     transition: all 0.2s ease;
+    background: rgba(255, 255, 255, 0.8);
+    color: #555;
     user-select: none;
 }
 
-.clear-button:hover {
-    background: rgba(255, 255, 255, 0.2);
+.clipboard-action-btn:hover {
+    background: rgba(255, 255, 255, 1);
     transform: translateY(-1px);
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
-.clear-icon {
-    width: 10px;
-    height: 10px;
-    position: relative;
-}
-
-.clear-icon::before,
-.clear-icon::after {
-    content: '';
-    position: absolute;
-    width: 10px;
-    height: 1px;
-    background: rgba(255, 255, 255, 0.9);
-    border-radius: 0.5px;
-    top: 50%;
-    left: 50%;
-    transform-origin: center;
-}
-
-.clear-icon::before {
-    transform: translate(-50%, -50%) rotate(45deg);
-}
-
-.clear-icon::after {
-    transform: translate(-50%, -50%) rotate(-45deg);
-}
-
+/* ===== 项目列表 ===== */
 .clipboard-items {
     display: flex;
     flex-direction: column;
     gap: 8px;
-    padding: 0 4px;
+    padding: 0 2px;
 }
 
-.clipboard-item {
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 10px;
-    padding: 12px 10px;
+.cb-item {
+    background: rgba(255, 255, 255, 0.88);
+    border-radius: 12px;
+    padding: 10px 12px;
     backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.9);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+    transition: all 0.2s ease;
+    animation: itemIn 0.25s ease both;
+}
+
+@keyframes itemIn {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.cb-item:hover {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+    transform: translateY(-1px);
+}
+
+/* ===== 项目头部 ===== */
+.cb-item-header {
     display: flex;
     align-items: center;
-    gap: 8px;
-    transition: all 0.2s ease;
-    box-sizing: border-box;
+    gap: 6px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
 }
 
-.clipboard-item:hover {
-    background: rgba(255, 255, 255, 0.15);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+.cb-type-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 2px 7px;
+    border-radius: 6px;
+    font-size: 10px;
+    font-weight: 600;
 }
 
-.clipboard-content {
-    flex: 1;
-    min-width: 0;
+.cb-type-badge[data-type="image"] {
+    background: rgba(139, 92, 246, 0.1);
+    color: #7c3aed;
 }
 
-.content-text {
+.cb-type-badge[data-type="text"] {
+    background: rgba(59, 130, 246, 0.1);
+    color: #2563eb;
+}
+
+.cb-time {
+    font-size: 10px;
+    color: #999;
+    font-weight: 400;
+    margin-left: auto;
+}
+
+.cb-size {
+    font-size: 9px;
+    color: #aaa;
+    background: rgba(0, 0, 0, 0.04);
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-weight: 500;
+}
+
+/* ===== 项目内容区域 ===== */
+.cb-item-body {
+    margin-bottom: 8px;
+}
+
+/* 图片样式 */
+.cb-image-container {
+    border-radius: 8px;
+    overflow: hidden;
+    background: rgba(0, 0, 0, 0.02);
+    border: 1px solid rgba(0, 0, 0, 0.04);
+    max-height: 300px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.cb-image {
+    max-width: 100%;
+    max-height: 280px;
+    object-fit: contain;
+    cursor: pointer;
+    transition: transform 0.2s ease;
+    display: block;
+}
+
+.cb-image:hover {
+    transform: scale(1.02);
+}
+
+/* 文本样式 */
+.cb-text-container {
+    position: relative;
+}
+
+.cb-text {
     font-size: 11px;
-    line-height: 1.4;
-    margin-bottom: 4px;
+    line-height: 1.5;
+    color: #333;
+    white-space: pre-wrap;
     word-wrap: break-word;
     overflow-wrap: break-word;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    margin: 0;
+    max-height: 80px;
+    overflow: hidden;
+    transition: max-height 0.3s ease;
 }
 
-.content-time {
-    font-size: 9px;
-    opacity: 0.7;
-    font-weight: 400;
+.cb-text-expanded {
+    max-height: 2000px;
 }
 
-/* 操作按钮容器 */
-.action-buttons {
-    display: flex;
+.cb-expand-toggle {
+    display: inline-flex;
     align-items: center;
     gap: 4px;
-    flex-shrink: 0;
-}
-
-.copy-button, .expand-button {
-    width: 28px;
-    height: 28px;
+    margin-top: 6px;
+    padding: 3px 10px;
     border: none;
     border-radius: 6px;
-    background: rgba(255, 255, 255, 0.2);
+    background: rgba(59, 130, 246, 0.08);
+    color: #3b82f6;
+    font-size: 10px;
+    font-weight: 600;
     cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
     transition: all 0.2s ease;
-    flex-shrink: 0;
-}
-
-.copy-button:hover, .expand-button:hover {
-    background: rgba(255, 255, 255, 0.3);
-    transform: scale(1.05);
-}
-
-.copy-button.copied {
-    background: rgba(34, 197, 94, 0.8);
-    transform: scale(1.05);
-}
-
-.copy-icon {
-    width: 12px;
-    height: 12px;
-    position: relative;
-}
-
-.copy-icon::before {
-    content: '';
-    position: absolute;
-    width: 8px;
-    height: 10px;
-    border: 1.5px solid rgba(255, 255, 255, 0.9);
-    border-radius: 2px;
-    top: 0;
-    left: 2px;
-}
-
-.copy-icon::after {
-    content: '';
-    position: absolute;
-    width: 8px;
-    height: 10px;
-    border: 1.5px solid rgba(255, 255, 255, 0.9);
-    border-radius: 2px;
-    top: 2px;
-    left: 0;
-    background: rgba(79, 70, 229, 0.3);
-}
-
-.check-icon {
-    width: 12px;
-    height: 12px;
-    position: relative;
-}
-
-.check-icon::after {
-    content: '';
-    position: absolute;
-    left: 4px;
-    top: 2px;
-    width: 4px;
-    height: 8px;
-    border: solid white;
-    border-width: 0 2px 2px 0;
-    transform: rotate(45deg);
-}
-
-/* 展开按钮图标 */
-.expand-icon {
-    width: 12px;
-    height: 12px;
-    position: relative;
-}
-
-.expand-icon::before {
-    content: '';
-    position: absolute;
-    width: 6px;
-    height: 6px;
-    border-top: 2px solid rgba(255, 255, 255, 0.9);
-    border-right: 2px solid rgba(255, 255, 255, 0.9);
-    transform: rotate(45deg);
-    top: 3px;
-    left: 3px;
-}
-
-.empty-state {
-    text-align: center;
-    padding: 40px 20px;
-    opacity: 0.7;
-}
-
-.empty-state p {
-    font-size: 12px;
-    margin: 0;
-}
-
-/* 关闭按钮样式 */
-.close-button-container {
-    position: fixed;
-    bottom: 16px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 1000;
-}
-
-.close-button {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    background: linear-gradient(135deg,
-    rgba(255, 255, 255, 0.3) 0%,
-    rgba(255, 255, 255, 0.1) 100%);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    backdrop-filter: blur(10px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     user-select: none;
 }
 
-.close-button:hover {
-    background: linear-gradient(135deg,
-    rgba(255, 255, 255, 0.4) 0%,
-    rgba(255, 255, 255, 0.2) 100%);
-    transform: scale(1.05);
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
-    border-color: rgba(255, 255, 255, 0.3);
+.cb-expand-toggle:hover {
+    background: rgba(59, 130, 246, 0.15);
+    transform: translateY(-1px);
 }
 
-.close-icon {
-    width: 14px;
-    height: 14px;
+/* ===== 操作按钮 ===== */
+.cb-item-actions {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.cb-action-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 11px;
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    border-radius: 8px;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    background: rgba(255, 255, 255, 0.9);
+    color: #555;
+    user-select: none;
+    letter-spacing: 0.02em;
+}
+
+.cb-action-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.08);
+}
+
+.cb-action-btn:active {
+    transform: translateY(0px);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.cb-action-icon {
+    font-size: 12px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.cb-copy-btn {
+    background: rgba(59, 130, 246, 0.08);
+    border-color: rgba(59, 130, 246, 0.15);
+    color: #3b82f6;
+}
+
+.cb-copy-btn:hover {
+    background: rgba(59, 130, 246, 0.15);
+    border-color: rgba(59, 130, 246, 0.25);
+    box-shadow: 0 3px 10px rgba(59, 130, 246, 0.12);
+}
+
+.cb-copy-btn.copied {
+    background: rgba(34, 197, 94, 0.12);
+    border-color: rgba(34, 197, 94, 0.2);
+    color: #16a34a;
+}
+
+.cb-copy-btn.copied:hover {
+    background: rgba(34, 197, 94, 0.18);
+    box-shadow: 0 3px 10px rgba(34, 197, 94, 0.12);
+}
+
+.cb-edit-btn {
+    background: rgba(139, 92, 246, 0.08);
+    border-color: rgba(139, 92, 246, 0.15);
+    color: #7c3aed;
+}
+
+.cb-edit-btn:hover {
+    background: rgba(139, 92, 246, 0.15);
+    border-color: rgba(139, 92, 246, 0.25);
+    box-shadow: 0 3px 10px rgba(139, 92, 246, 0.12);
+}
+
+.cb-delete-btn {
+    background: rgba(239, 68, 68, 0.06);
+    border-color: rgba(239, 68, 68, 0.12);
+    color: #ef4444;
+}
+
+.cb-delete-btn:hover {
+    background: rgba(239, 68, 68, 0.12);
+    border-color: rgba(239, 68, 68, 0.2);
+    box-shadow: 0 3px 10px rgba(239, 68, 68, 0.1);
+}
+
+/* ===== 删除确认弹窗 ===== */
+.cb-delete-confirm {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+    padding: 6px 10px;
+    background: rgba(239, 68, 68, 0.06);
+    border-radius: 8px;
+    font-size: 11px;
+    color: #ef4444;
+    animation: itemIn 0.2s ease both;
+}
+
+.cb-confirm-yes, .cb-confirm-no {
+    border: none;
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 10px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.cb-confirm-yes {
+    background: #ef4444;
+    color: white;
+}
+
+.cb-confirm-yes:hover {
+    background: #dc2626;
+}
+
+.cb-confirm-no {
+    background: rgba(0, 0, 0, 0.06);
+    color: #666;
+}
+
+.cb-confirm-no:hover {
+    background: rgba(0, 0, 0, 0.1);
+}
+
+/* ===== 加载更多 ===== */
+.cb-load-more-container {
+    text-align: center;
+    padding: 8px;
+}
+
+.cb-load-more-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 20px;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 8px;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.8);
+    color: #555;
+    transition: all 0.2s ease;
+}
+
+.cb-load-more-btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 1);
+    transform: translateY(-1px);
+}
+
+.cb-load-more-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.cb-loading-spinner-small {
+    width: 12px;
+    height: 12px;
+    border: 2px solid rgba(100, 100, 100, 0.12);
+    border-top-color: #667eea;
+    border-radius: 50%;
+    animation: cbSpin 0.8s linear infinite;
+    display: inline-block;
+}
+
+/* ===== 图片放大弹窗 ===== */
+.cb-image-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    animation: fadeIn 0.2s ease;
+    backdrop-filter: blur(4px);
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.cb-image-enlarge-container {
+    position: relative;
+    max-width: 90%;
+    max-height: 90%;
+    animation: scaleIn 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes scaleIn {
+    from { transform: scale(0.8); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+}
+
+.cb-image-enlarge {
+    max-width: 100%;
+    max-height: 85vh;
+    border-radius: 12px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    cursor: default;
+}
+
+.cb-image-enlarge-close {
+    position: absolute;
+    top: -12px;
+    right: -12px;
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.6);
+    color: white;
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    z-index: 10;
+}
+
+.cb-image-enlarge-close:hover {
+    background: rgba(239, 68, 68, 0.8);
+    transform: scale(1.1);
+}
+
+.cb-image-hint {
+    text-align: center;
+    font-size: 10px;
+    color: #aaa;
+    margin-top: -4px;
+    margin-bottom: 2px;
+}
+
+/* ===== 空状态 ===== */
+.cb-empty-state {
+    text-align: center;
+    padding: 50px 20px;
+    animation: itemIn 0.4s ease both;
+}
+
+.cb-empty-icon {
+    font-size: 40px;
+    margin-bottom: 12px;
+    opacity: 0.6;
+}
+
+.cb-empty-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #666;
+    margin: 0 0 6px 0;
+}
+
+.cb-empty-hint {
+    font-size: 11px;
+    color: #aaa;
+    margin: 0;
+}
+
+/* ===== 加载状态 ===== */
+.cb-loading-container {
+    text-align: center;
+    padding: 40px 15px;
+    animation: itemIn 0.3s ease both;
+}
+
+.cb-loading-text {
+    font-size: 11px;
+    color: #999;
+    margin: 0;
+}
+
+.cb-loading-spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(100, 100, 100, 0.12);
+    border-top-color: #667eea;
+    border-radius: 50%;
+    animation: cbSpin 0.8s linear infinite;
+    margin: 0 auto 10px;
+}
+
+@keyframes cbSpin {
+    to { transform: rotate(360deg); }
+}
+
+/* ===== 底部关闭按钮 ===== */
+.clipboard-footer {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 100;
+}
+
+.cb-close-btn {
+    width: 30px;
+    height: 30px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.9);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    border: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.cb-close-btn:hover {
+    background: rgba(255, 255, 255, 1);
+    transform: scale(1.08);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+.cb-close-icon {
+    width: 12px;
+    height: 12px;
     position: relative;
 }
 
-.close-icon::before,
-.close-icon::after {
+.cb-close-icon::before,
+.cb-close-icon::after {
     content: '';
     position: absolute;
-    width: 14px;
-    height: 2px;
-    background: rgba(255, 255, 255, 0.9);
+    width: 12px;
+    height: 1.5px;
+    background: #666;
     border-radius: 1px;
     top: 50%;
     left: 50%;
     transform-origin: center;
-    transition: background 0.2s ease;
 }
 
-.close-icon::before {
+.cb-close-icon::before {
     transform: translate(-50%, -50%) rotate(45deg);
 }
 
-.close-icon::after {
+.cb-close-icon::after {
     transform: translate(-50%, -50%) rotate(-45deg);
 }
 
-/* 滚动条样式 */
+/* ===== 滚动条 ===== */
 .clipboard-container::-webkit-scrollbar {
     width: 3px;
 }
 
 .clipboard-container::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(0, 0, 0, 0.02);
 }
 
 .clipboard-container::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.3);
+    background: rgba(0, 0, 0, 0.1);
     border-radius: 2px;
 }
 
-.clipboard-container::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.5);
-}
-/* 添加到现有 CSS 中 */
-.content-meta {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-top: 4px;
-}
-
-.content-size {
-    font-size: 10px;
-    color: #666;
-    background: #f0f0f0;
-    padding: 2px 6px;
-    border-radius: 10px;
-    font-weight: 500;
-}
-
-.content-time {
-    font-size: 11px;
-    color: #999;
-}
-
-.expand-button:hover {
-    background: linear-gradient(135deg, #4CAF50, #45a049);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
-}
-.action-copy-button {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
-    border: none;
-    border-radius: 6px;
-    font-size: 12px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    background: linear-gradient(135deg, #3498db, #2980b9);
-    color: white;
-}
-
-.action-copy-button:hover {
-    background: linear-gradient(135deg, #2980b9, #1f5f8b);
-    transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(52, 152, 219, 0.3);
-}
-
-.action-copy-button.copied {
-    background: linear-gradient(135deg, #27ae60, #2ecc71);
-}
-
-.action-copy-button .copy-icon {
-    width: 12px;
-    height: 12px;
-    border: 1.5px solid currentColor;
-    border-radius: 2px;
-    position: relative;
-}
-
-.action-copy-button .copy-icon::after {
-    content: '';
-    position: absolute;
-    top: -3px;
-    right: -3px;
-    width: 10px;
-    height: 10px;
-    border: 1.5px solid currentColor;
-    border-radius: 2px;
-    background: currentColor;
+/* ===== 窄屏适配 ===== */
+@media (max-width: 220px) {
+    .clipboard-container { padding: 6px; }
+    .cb-item { padding: 8px; }
+    .cb-item-header { flex-wrap: wrap; }
+    .cb-time { margin-left: 0; }
 }
