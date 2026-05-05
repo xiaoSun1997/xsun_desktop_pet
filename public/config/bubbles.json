@@ -45,6 +45,11 @@
     "icon": "/menu/close_512.png"
   },
   {
+    "label": "地图绘制",
+    "action": "map-drawing",
+    "icon": "/menu/system_512.png"
+  },
+  {
     "label": "最小化托盘",
     "action": "minimize-to-tray",
     "icon": "/menu/minimize_512.png"

@@ -237,6 +237,25 @@ export default function MenuPanel() {
                 });
                 break;
 
+            case "map-drawing":
+                await createOrShowWindow("map-drawing", {
+                    devUrl: "http://localhost:1420",
+                    prodUrl: "index.html",
+                    options: {
+                        title: "图形绘制",
+                        width: 1200,
+                        height: 800,
+                        visible: true,
+                        transparent: true,
+                        decorations: false,
+                        resizable: true,
+                        minWidth: 900,
+                        minHeight: 600,
+                        center: true,
+                    }
+                });
+                break;
+
             case "minimize-to-tray":
                 await invoke("hide_to_tray");
                 break;

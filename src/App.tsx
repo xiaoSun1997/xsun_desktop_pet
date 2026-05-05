@@ -14,6 +14,7 @@ import PomodoroTimerComponent from "./components/PomodoroTimerComponent"; // 添
 import PomodoroNotification from './components/PomodoroNotification';
 import JiraComponent from './components/JiraComponent'; // 添加JIRA组件导入
 import SelectionMenu from './components/SelectionMenu';
+import MapDrawingComponent from './components/MapDrawingComponent';
 
 function App() {
     const [label, setLabel] = useState<string>("");
@@ -52,6 +53,8 @@ function App() {
         return <JiraComponent />;
     } else if (label === "selection-menu") {
         return <SelectionMenu />;
+    } else if (label === "map-drawing") {
+        return <MapDrawingComponent />;
     }
 
     return null;

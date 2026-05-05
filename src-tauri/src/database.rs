@@ -300,6 +300,42 @@ impl Database {
         Ok(())
     }
 
+    // ==================== 地图绘制数据方法 ====================
+
+    pub fn save_map(&self, name: &str, data: &str) -> Result<(), String> {
+        let key = format!("map_drawing:{}", name);
+        self.set_config(&key, data)
+    }
+
+    pub fn get_map(&self, name: &str) -> Result<Option<String>, String> {
+        let key = format!("map_drawing:{}", name);
+        self.get_config(&key)
+    }
+
+    pub fn delete_map(&self, name: &str) -> Result<(), String> {
+        let key = format!("map_drawing:{}", name);
+        self.delete_config(&key)
+    }
+
+    pub fn list_map_names(&self) -> Result<Vec<String>, String> {
+        let conn = self.conn.lock().map_err(|e| format!("获取锁失败: {}", e))?;
+        let prefix = "map_drawing:";
+        let mut stmt = conn
+            .prepare("SELECT key FROM configs WHERE key LIKE ?1 ORDER BY updated_at DESC")
+            .map_err(|e| format!("准备查询失败: {}", e))?;
+
+        let names = stmt
+            .query_map(rusqlite::params![format!("{}%", prefix)], |row| {
+                let key: String = row.get(0)?;
+                Ok(key.replacen(prefix, "", 1))
+            })
+            .map_err(|e| format!("查询地图列表失败: {}", e))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(names)
+    }
+
     // ==================== 数据迁移（从旧JSON文件） ====================
 
     pub fn migrate_from_json(&self, app: &AppHandle) -> Result<(), String> {

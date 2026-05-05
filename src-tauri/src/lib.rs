@@ -894,6 +894,49 @@ async fn load_pomodoro_timer(app: AppHandle) -> Result<Option<PomodoroTimerState
     }
 }
 
+// ===== 地图绘制数据持久化 =====
+
+#[tauri::command]
+async fn save_map_data(app: AppHandle, name: String, data: String) -> Result<(), String> {
+    let db = app.state::<Database>();
+    db.save_map(&name, &data)
+}
+
+#[tauri::command]
+async fn load_map_data(app: AppHandle, name: String) -> Result<Option<String>, String> {
+    let db = app.state::<Database>();
+    db.get_map(&name)
+}
+
+#[tauri::command]
+async fn list_map_names(app: AppHandle) -> Result<Vec<String>, String> {
+    let db = app.state::<Database>();
+    db.list_map_names()
+}
+
+#[tauri::command]
+async fn delete_map_data(app: AppHandle, name: String) -> Result<(), String> {
+    let db = app.state::<Database>();
+    db.delete_map(&name)
+}
+
+#[tauri::command]
+async fn write_text_file(path: String, content: String) -> Result<(), String> {
+    std::fs::write(&path, &content).map_err(|e| format!("写入文件失败: {}", e))
+}
+
+#[tauri::command]
+async fn reveal_in_folder(path: String) -> Result<(), String> {
+    let result = std::process::Command::new("explorer")
+        .arg("/select,")
+        .arg(&path)
+        .spawn();
+    match result {
+        Ok(_) => Ok(()),
+        Err(e) => Err(format!("打开文件位置失败: {}", e)),
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -954,6 +997,12 @@ pub fn run() {
             load_pomodoro_settings,
             save_pomodoro_timer,
             load_pomodoro_timer,
+            save_map_data,
+            load_map_data,
+            list_map_names,
+            delete_map_data,
+            write_text_file,
+            reveal_in_folder,
         ])
         .setup(|app| {
             // 初始化 SQLite 数据库

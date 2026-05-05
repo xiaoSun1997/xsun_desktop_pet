@@ -28,6 +28,7 @@
     "core:tray:default",
     "core:window:allow-set-always-on-top",
     "dialog:allow-open",
+    "dialog:allow-save",
     "dialog:default",
     "fs:allow-read-file",
     "fs:default",
