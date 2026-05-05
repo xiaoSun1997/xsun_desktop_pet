@@ -1452,7 +1452,7 @@ async fn delete_skill_item(app: AppHandle, file_path: String, is_dir: bool) -> R
 }
 
 #[tauri::command]
-async fn create_skill_folder(app: AppHandle, name: String) -> Result<(), String> {
+async fn create_skill_folder(app: AppHandle, name: String, parent_path: String) -> Result<(), String> {
     let name = name.trim().to_string();
     if name.is_empty() {
         return Err("文件夹名称不能为空".to_string());
@@ -1465,7 +1465,11 @@ async fn create_skill_folder(app: AppHandle, name: String) -> Result<(), String>
     
     let app_data_dir = app.path().app_data_dir().map_err(|e| format!("获取应用数据目录失败: {}", e))?;
     let skills_dir = app_data_dir.join("skills");
-    let folder_path = skills_dir.join(&name);
+    let folder_path = if parent_path.is_empty() {
+        skills_dir.join(&name)
+    } else {
+        skills_dir.join(&parent_path).join(&name)
+    };
     
     if folder_path.exists() {
         return Err(format!("文件夹 '{}' 已存在", name));
@@ -1473,10 +1477,40 @@ async fn create_skill_folder(app: AppHandle, name: String) -> Result<(), String>
     
     std::fs::create_dir_all(&folder_path).map_err(|e| format!("创建文件夹失败: {}", e))?;
     
+    let relative_path = if parent_path.is_empty() {
+        name.clone()
+    } else {
+        format!("{}/{}", parent_path, name)
+    };
+    
     // 添加到数据库
     if let Some(db) = app.try_state::<Database>() {
-        let _ = db.add_skill_folder_record(&name, &name, "");
+        let _ = db.add_skill_folder_record(&relative_path, &name, &parent_path);
     }
+    
+    Ok(())
+}
+
+#[tauri::command]
+async fn create_skill_file(app: AppHandle, relative_path: String) -> Result<(), String> {
+    let relative_path = relative_path.trim().to_string();
+    if relative_path.is_empty() {
+        return Err("文件路径不能为空".to_string());
+    }
+    
+    let app_data_dir = app.path().app_data_dir().map_err(|e| format!("获取应用数据目录失败: {}", e))?;
+    let full_path = app_data_dir.join("skills").join(&relative_path);
+    
+    if full_path.exists() {
+        return Err(format!("文件 '{}' 已存在", relative_path));
+    }
+    
+    // 确保父目录存在
+    if let Some(parent) = full_path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {}", e))?;
+    }
+    
+    std::fs::write(&full_path, "").map_err(|e| format!("创建文件失败: {}", e))?;
     
     Ok(())
 }
@@ -1587,6 +1621,7 @@ pub fn run() {
             copy_to_skills,
             delete_skill_item,
             create_skill_folder,
+            create_skill_file,
             reveal_in_folder,
             create_chat_session,
             get_chat_sessions,

@@ -983,6 +983,9 @@
 }
 
 .skill-tree-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     padding: 14px 16px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.06);
     flex-shrink: 0;
@@ -1098,6 +1101,48 @@
     color: #ef4444;
 }
 
+/* "+"按钮 - 添加文件/文件夹 */
+.skill-tree-add,
+.skill-tree-add-root {
+    width: 20px;
+    height: 20px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.2);
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    padding: 0;
+    line-height: 1;
+    transition: all 0.15s ease;
+}
+
+.skill-tree-folder:hover .skill-tree-add {
+    display: flex;
+}
+
+.skill-tree-add-root {
+    display: flex;
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 18px;
+}
+
+.skill-tree-add-root:hover {
+    color: rgba(255, 255, 255, 0.9);
+    background: rgba(16, 185, 129, 0.3);
+    color: #10b981;
+}
+
+.skill-tree-add:hover {
+    background: rgba(16, 185, 129, 0.3);
+    color: #10b981;
+}
+
 .skill-tree-children {
     padding-left: 16px;
 }
@@ -1171,6 +1216,14 @@
     background: linear-gradient(135deg, #0d9488, #0f766e);
 }
 
+.upload-folder-btn {
+    background: linear-gradient(135deg, #14b8a6, #0d9488);
+}
+
+.upload-folder-btn:hover {
+    background: linear-gradient(135deg, #0d9488, #0f766e);
+}
+
 /* ===== Skill 编辑器 ===== */
 .skill-editor-area {
     flex: 1;
@@ -1224,68 +1277,95 @@
 .skill-editor-actions {
     display: flex;
     gap: 6px;
+    flex-shrink: 0;
+    align-items: center;
 }
 
 .skill-editor-btn {
-    display: inline-flex;
+    display: flex;
     align-items: center;
+    justify-content: center;
     gap: 4px;
-    padding: 5px 12px;
+    padding: 0 10px;
     border: none;
     border-radius: 6px;
     font-size: 11px;
-    font-weight: 500;
+    font-weight: 600;
+    height: 28px;
+    min-width: 56px;
     cursor: pointer;
     transition: all 0.2s ease;
+    color: #ffffff;
+    box-sizing: border-box;
+    font-family: inherit;
+    white-space: nowrap;
+}
+
+.skill-editor-btn .btn-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 14px;
+    line-height: 1;
+    font-size: 12px;
+    font-family: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif;
+    /* 通过 translateY 微调 emoji 字形视觉中心，消除基线差异 */
+    transform: translateY(0);
+}
+
+.skill-editor-btn .btn-text {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 14px;
+    line-height: 1;
+    font-size: 11px;
+    font-weight: 600;
 }
 
 .skill-editor-btn:hover {
     transform: translateY(-1px);
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15);
 }
 
 .save-btn {
-    background: linear-gradient(135deg, #10b981, #059669);
-    color: white;
-    box-shadow: 0 2px 6px rgba(16, 185, 129, 0.3);
+    background: #059669;
+    box-shadow: 0 1px 4px rgba(5, 150, 105, 0.3);
 }
 
 .save-btn:hover {
-    background: linear-gradient(135deg, #059669, #047857);
-    box-shadow: 0 3px 10px rgba(16, 185, 129, 0.4);
+    background: #047857;
+    box-shadow: 0 3px 8px rgba(5, 150, 105, 0.4);
 }
 
 .preview-btn {
-    background: linear-gradient(135deg, #8b5cf6, #7c3aed);
-    color: white;
-    box-shadow: 0 2px 6px rgba(139, 92, 246, 0.3);
+    background: #8b5cf6;
+    box-shadow: 0 1px 4px rgba(139, 92, 246, 0.3);
 }
 
 .preview-btn:hover {
-    background: linear-gradient(135deg, #7c3aed, #6d28d9);
-    box-shadow: 0 3px 10px rgba(139, 92, 246, 0.4);
+    background: #7c3aed;
+    box-shadow: 0 3px 8px rgba(139, 92, 246, 0.4);
 }
 
 .edit-btn {
-    background: linear-gradient(135deg, #3b82f6, #2563eb);
-    color: white;
-    box-shadow: 0 2px 6px rgba(59, 130, 246, 0.3);
+    background: #3b82f6;
+    box-shadow: 0 1px 4px rgba(59, 130, 246, 0.3);
 }
 
 .edit-btn:hover {
-    background: linear-gradient(135deg, #2563eb, #1d4ed8);
-    box-shadow: 0 3px 10px rgba(59, 130, 246, 0.4);
+    background: #2563eb;
+    box-shadow: 0 3px 8px rgba(59, 130, 246, 0.4);
 }
 
 .delete-editor-btn {
-    background: linear-gradient(135deg, #f43f5e, #e11d48);
-    color: white;
-    box-shadow: 0 2px 6px rgba(244, 63, 94, 0.3);
+    background: #f43f5e;
+    box-shadow: 0 1px 4px rgba(244, 63, 94, 0.3);
 }
 
 .delete-editor-btn:hover {
-    background: linear-gradient(135deg, #e11d48, #be123c);
-    box-shadow: 0 3px 10px rgba(244, 63, 94, 0.4);
-    transform: translateY(-1px);
+    background: #e11d48;
+    box-shadow: 0 3px 8px rgba(244, 63, 94, 0.4);
 }
 
 .skill-editor-body {
@@ -1380,21 +1460,58 @@
     color: #e11d48;
 }
 
-.skill-editor-preview pre {
+.skill-editor-preview.markdown-body pre {
     margin: 12px 0;
     padding: 14px 16px;
+    padding-top: 40px;
     background: #1e293b;
     border-radius: 8px;
     overflow-x: auto;
+    position: relative;
 }
 
-.skill-editor-preview pre code {
+.skill-editor-preview.markdown-body pre code {
     background: none;
     padding: 0;
     color: #e2e8f0;
     font-size: 13px;
     line-height: 1.6;
     white-space: pre;
+}
+
+/* 代码块复制按钮 */
+.skill-editor-preview .copy-code-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    padding: 4px 10px;
+    border: none;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: inherit;
+    line-height: 1.4;
+    z-index: 1;
+    opacity: 0;
+}
+
+.skill-editor-preview pre:hover .copy-code-btn {
+    opacity: 1;
+}
+
+.skill-editor-preview .copy-code-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: #fff;
+}
+
+.skill-editor-preview .copy-code-btn.copied {
+    background: rgba(16, 185, 129, 0.3);
+    color: #10b981;
+    opacity: 1;
 }
 
 .skill-editor-preview blockquote {
@@ -1406,23 +1523,29 @@
     color: #4a5568;
 }
 
-.skill-editor-preview table {
+.skill-editor-preview.markdown-body table {
     border-collapse: collapse;
     margin: 12px 0;
     width: 100%;
     font-size: 13px;
+    border: 1px solid #cbd5e1;
 }
 
-.skill-editor-preview th,
-.skill-editor-preview td {
-    border: 1px solid #e2e8f0;
+.skill-editor-preview.markdown-body th,
+.skill-editor-preview.markdown-body td {
+    border: 1px solid #cbd5e1;
     padding: 8px 12px;
     text-align: left;
+    color: #1a202c !important;
 }
 
-.skill-editor-preview th {
+.skill-editor-preview.markdown-body th {
     font-weight: 600;
-    background: rgba(0, 0, 0, 0.03);
+    background: #f1f5f9;
+}
+
+.skill-editor-preview.markdown-body tr:last-child td {
+    border-bottom: 1px solid #cbd5e1;
 }
 
 .skill-editor-preview hr {
@@ -1730,4 +1853,52 @@
 
 .message.streaming .message-text:empty + .message-time {
     display: none;
+}
+
+/* ===== 上下文菜单 ===== */
+.context-menu-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 999;
+    background: transparent;
+}
+
+.folder-context-menu {
+    position: fixed;
+    z-index: 1000;
+    min-width: 150px;
+    background: rgba(30, 41, 59, 0.95);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    padding: 4px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    overflow: hidden;
+}
+
+.context-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+}
+
+.context-menu-item:hover {
+    background: rgba(102, 126, 234, 0.25);
+    color: #fff;
+}
+
+.context-menu-icon {
+    font-size: 14px;
+    flex-shrink: 0;
 }

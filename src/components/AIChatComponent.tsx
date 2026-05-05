@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
+import { confirm } from "@tauri-apps/plugin-dialog";
 import { marked } from "marked";
 import "./AIChatComponent.css";
 
@@ -87,6 +88,8 @@ export default function AIChatComponent() {
     const [isFileLoading, setIsFileLoading] = useState(false);
     const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
     const [isPreviewMode, setIsPreviewMode] = useState(false);
+    const [addMenuPos, setAddMenuPos] = useState<{x: number; y: number; folderPath: string} | null>(null);
+    const previewRef = useRef<HTMLDivElement>(null);
 
     // 加载配置
     useEffect(() => {
@@ -500,7 +503,8 @@ export default function AIChatComponent() {
 
     const handleDeleteSkillItem = async (filePath: string, isDir: boolean) => {
         const msg = isDir ? `确定要删除文件夹 "${filePath}" 及其所有内容吗？` : `确定要删除文件 "${filePath}" 吗？`;
-        if (!confirm(msg)) return;
+        const confirmed = await confirm(msg, { title: "确认删除", kind: "warning" });
+        if (!confirmed) return;
         try {
             await invoke('delete_skill_item', { filePath, isDir });
             const tree = await invoke<TreeNode[]>('list_skills_directory');
@@ -520,11 +524,31 @@ export default function AIChatComponent() {
         setIsPreviewMode(prev => !prev);
     };
 
-    const handleCreateFolder = async () => {
+    const handleUploadFolder = async () => {
+        try {
+            const selected = await open({
+                directory: true,
+                title: '选择要上传的文件夹',
+            });
+            if (!selected) return;
+            const paths = Array.isArray(selected) ? selected : [selected];
+            for (const srcPath of paths) {
+                await invoke('copy_to_skills', { sourcePath: srcPath });
+            }
+            const tree = await invoke<TreeNode[]>('list_skills_directory');
+            setSkillFileTree(tree);
+        } catch (error) {
+            console.error('上传文件夹失败:', error);
+            alert(`上传失败: ${error}`);
+        }
+    };
+
+    const handleNewFolderIn = async (parentPath: string) => {
+        setAddMenuPos(null);
         const name = prompt('请输入文件夹名称:');
         if (!name || !name.trim()) return;
         try {
-            await invoke('create_skill_folder', { name: name.trim() });
+            await invoke('create_skill_folder', { name: name.trim(), parentPath });
             const tree = await invoke<TreeNode[]>('list_skills_directory');
             setSkillFileTree(tree);
         } catch (error) {
@@ -532,6 +556,46 @@ export default function AIChatComponent() {
             alert(`创建失败: ${error}`);
         }
     };
+
+    const handleNewFileIn = async (parentPath: string) => {
+        setAddMenuPos(null);
+        const name = prompt('请输入文件名 (例如: script.py 或 skill.md):');
+        if (!name || !name.trim()) return;
+        try {
+            const relativePath = parentPath ? `${parentPath}/${name.trim()}` : name.trim();
+            await invoke('create_skill_file', { relativePath });
+            const tree = await invoke<TreeNode[]>('list_skills_directory');
+            setSkillFileTree(tree);
+            // 在编辑器中打开新文件
+            const fullPath = `${skillsDir}\\${relativePath}`;
+            const content = await invoke<string>('read_text_file', { path: fullPath });
+            setSelectedFilePath(relativePath);
+            setSelectedFileName(name.trim());
+            setEditorContent(content);
+        } catch (error) {
+            console.error('创建文件失败:', error);
+            alert(`创建失败: ${error}`);
+        }
+    };
+
+    const handleFolderAddClick = (folderPath: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+        setAddMenuPos({
+            x: rect.left,
+            y: rect.bottom + 4,
+            folderPath,
+        });
+    };
+
+    // 点击外部关闭菜单
+    useEffect(() => {
+        const handleClickOutside = () => setAddMenuPos(null);
+        if (addMenuPos) {
+            document.addEventListener('click', handleClickOutside);
+        }
+        return () => document.removeEventListener('click', handleClickOutside);
+    }, [addMenuPos]);
 
     const getEditorMode = (filename: string): 'markdown' | 'python' | 'plain' => {
         if (filename.endsWith('.md') || filename.endsWith('.markdown')) return 'markdown';
@@ -551,6 +615,38 @@ export default function AIChatComponent() {
     useEffect(() => {
         setIsPreviewMode(false);
     }, [selectedFilePath]);
+
+    // Markdown预览代码块添加复制按钮
+    useEffect(() => {
+        if (!isPreviewMode || !previewRef.current) return;
+        const preElements = previewRef.current.querySelectorAll('pre');
+        preElements.forEach((pre) => {
+            if (pre.querySelector('.copy-code-btn')) return;
+            const btn = document.createElement('button');
+            btn.className = 'copy-code-btn';
+            btn.textContent = '📋 复制';
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const code = pre.querySelector('code');
+                const text = code ? code.textContent || '' : pre.textContent || '';
+                try {
+                    await navigator.clipboard.writeText(text);
+                    btn.textContent = '✅ 已复制';
+                    btn.classList.add('copied');
+                    setTimeout(() => {
+                        btn.textContent = '📋 复制';
+                        btn.classList.remove('copied');
+                    }, 2000);
+                } catch {
+                    btn.textContent = '❌ 失败';
+                    setTimeout(() => {
+                        btn.textContent = '📋 复制';
+                    }, 2000);
+                }
+            });
+            pre.appendChild(btn);
+        });
+    }, [isPreviewMode, editorContent]);
 
     const formatTime = (timestamp: number): string => {
         return new Date(timestamp).toLocaleTimeString('zh-CN', {
@@ -662,7 +758,8 @@ export default function AIChatComponent() {
         expandedSet: Set<string>,
         onToggle: (path: string) => void,
         onClick: (file: TreeNode) => void,
-        onDelete: (path: string, isDir: boolean) => void
+        onDelete: (path: string, isDir: boolean) => void,
+        onAddClick: (path: string, e: React.MouseEvent) => void
     ): React.ReactNode => {
         return nodes.map(node => {
             const fullPath = parentPath ? `${parentPath}/${node.name}` : node.path;
@@ -678,6 +775,11 @@ export default function AIChatComponent() {
                             <span className="skill-tree-folder-icon">{isExpanded ? '📂' : '📁'}</span>
                             <span className="skill-tree-name">{node.name}</span>
                             <button
+                                className="skill-tree-add"
+                                onClick={(e) => onAddClick(node.path, e)}
+                                title="新建文件或文件夹"
+                            >+</button>
+                            <button
                                 className="skill-tree-delete"
                                 onClick={(e) => { e.stopPropagation(); onDelete(node.path, true); }}
                                 title="删除文件夹"
@@ -685,7 +787,7 @@ export default function AIChatComponent() {
                         </div>
                         {isExpanded && node.children && (
                             <div className="skill-tree-children">
-                                {renderFileTree(node.children, fullPath, expandedSet, onToggle, onClick, onDelete)}
+                                {renderFileTree(node.children, fullPath, expandedSet, onToggle, onClick, onDelete, onAddClick)}
                             </div>
                         )}
                     </div>
@@ -795,9 +897,14 @@ export default function AIChatComponent() {
                         <div className="skill-tree-panel">
                             <div className="skill-tree-header">
                                 <span className="skill-tree-title">📁 Skills</span>
+                                <button
+                                    className="skill-tree-add-root"
+                                    onClick={(e) => handleFolderAddClick('', e)}
+                                    title="新建文件或文件夹"
+                                >+</button>
                             </div>
                             <div className="skill-tree">
-                                {renderFileTree(skillFileTree, '', expandedFolders, toggleFolder, handleSkillFileClick, handleDeleteSkillItem)}
+                                {renderFileTree(skillFileTree, '', expandedFolders, toggleFolder, handleSkillFileClick, handleDeleteSkillItem, handleFolderAddClick)}
                                 {skillFileTree.length === 0 && (
                                     <div className="skill-tree-empty">
                                         <p>暂无技能文件</p>
@@ -931,11 +1038,11 @@ export default function AIChatComponent() {
                         <div className="skill-toolbar">
                             <h3 className="skill-toolbar-title">Skill 管理器</h3>
                             <div className="skill-toolbar-actions">
-                                <button className="skill-toolbar-btn upload-btn" onClick={handleUploadFile} title="上传文件或文件夹">
-                                    📁 上传
+                                <button className="skill-toolbar-btn upload-btn" onClick={handleUploadFile} title="上传文件">
+                                    📁 上传文件
                                 </button>
-                                <button className="skill-toolbar-btn new-folder-btn" onClick={handleCreateFolder} title="新建文件夹">
-                                    📂 新建文件夹
+                                <button className="skill-toolbar-btn upload-folder-btn" onClick={handleUploadFolder} title="上传文件夹">
+                                    📂 上传文件夹
                                 </button>
                                 <button className="chat-action-btn fullscreen-btn" onClick={handleToggleFullscreen} title={isFullscreen ? "退出全屏" : "全屏"}>
                                     <span className="chat-action-icon">{isFullscreen ? '⤡' : '⤢'}</span>
@@ -965,11 +1072,11 @@ export default function AIChatComponent() {
                                                     onClick={handleTogglePreview}
                                                     title={isPreviewMode ? '编辑模式' : '预览'}
                                                 >
-                                                    {isPreviewMode ? '✏️ 编辑' : '👁️ 预览'}
+                                                    <span className="btn-text">{isPreviewMode ? '编辑' : '预览'}</span>
                                                 </button>
                                             )}
                                             <button className="skill-editor-btn save-btn" onClick={handleSaveSkillFile} title="保存文件">
-                                                💾 保存
+                                                <span className="btn-text">保存</span>
                                             </button>
                                             <button className="skill-editor-btn delete-editor-btn" onClick={() => {
                                                 setSelectedFilePath(null);
@@ -977,7 +1084,7 @@ export default function AIChatComponent() {
                                                 setEditorContent('');
                                                 setIsPreviewMode(false);
                                             }} title="关闭编辑器">
-                                                🗑️ 删除
+                                                <span className="btn-text">删除</span>
                                             </button>
                                         </div>
                                     </div>
@@ -986,6 +1093,7 @@ export default function AIChatComponent() {
                                             <div className="skill-editor-loading">加载中...</div>
                                         ) : isPreviewMode && getEditorMode(selectedFileName) === 'markdown' ? (
                                             <div
+                                                ref={previewRef}
                                                 className="skill-editor-preview markdown-body"
                                                 dangerouslySetInnerHTML={{ __html: renderMarkdown(editorContent) }}
                                             />
@@ -1037,6 +1145,38 @@ export default function AIChatComponent() {
                     </div>
                 )}
             </div>
+
+            {/* 右键菜单 - 新建文件/文件夹 */}
+            {addMenuPos && (
+                <div
+                    className="context-menu-overlay"
+                    onClick={() => setAddMenuPos(null)}
+                />
+            )}
+            {addMenuPos && (
+                <div
+                    className="folder-context-menu"
+                    style={{
+                        left: addMenuPos.x,
+                        top: addMenuPos.y,
+                    }}
+                >
+                    <div
+                        className="context-menu-item"
+                        onClick={() => handleNewFolderIn(addMenuPos.folderPath)}
+                    >
+                        <span className="context-menu-icon">📁</span>
+                        <span>新建文件夹</span>
+                    </div>
+                    <div
+                        className="context-menu-item"
+                        onClick={() => handleNewFileIn(addMenuPos.folderPath)}
+                    >
+                        <span className="context-menu-icon">📄</span>
+                        <span>新建文件</span>
+                    </div>
+                </div>
+            )}
 
             {showSettings && (
                 <div className="settings-overlay">
