@@ -13,6 +13,7 @@ import JsonCompareComponent from "./components/JsonCompareComponent"; // 添加J
 import PomodoroTimerComponent from "./components/PomodoroTimerComponent"; // 添加番茄钟组件导入
 import PomodoroNotification from './components/PomodoroNotification';
 import JiraComponent from './components/JiraComponent'; // 添加JIRA组件导入
+import SelectionMenu from './components/SelectionMenu';
 
 function App() {
     const [label, setLabel] = useState<string>("");
@@ -49,6 +50,8 @@ function App() {
         return <PomodoroNotification />;
     } else if (label === "jira") {
         return <JiraComponent />;
+    } else if (label === "selection-menu") {
+        return <SelectionMenu />;
     }
 
     return null;

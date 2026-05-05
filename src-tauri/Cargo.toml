@@ -38,5 +38,6 @@ tokio-cron-scheduler = { version = "0.10" }
 windows = { version = "0.58", features = [
     "Win32_System_LibraryLoader",
     "Win32_Foundation",
-    "Win32_UI_WindowsAndMessaging"  # 添加鼠标钩子需要的功能
+    "Win32_UI_WindowsAndMessaging",  # 鼠标钩子
+    "Win32_UI_Input_KeyboardAndMouse"  # SendInput 模拟键盘
 ] }

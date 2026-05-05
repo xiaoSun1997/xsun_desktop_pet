@@ -11,6 +11,7 @@ use urlencoding::encode as urlencode;
 
 mod calendar;
 mod clipboard;
+mod global_mouse;
 mod jira_tools;
 mod task_scheduler;
 mod window_utils;
@@ -19,6 +20,8 @@ use clipboard::{
     add_to_clipboard_history, clear_clipboard_history, copy_to_clipboard, get_clipboard_history,
     get_current_clipboard, manual_clipboard_check, ClipboardHistory,
 };
+
+use global_mouse::init_global_mouse_hook;
 
 use jira_tools::{
     GitCommit, JiraIssue, WorklogEntry, JiraConfig, GitConfig, GitRepository, test_jira_connection
@@ -105,6 +108,118 @@ async fn open_expand_window(content: String, app: AppHandle) -> Result<(), Strin
         .set_focus()
         .map_err(|e| format!("聚焦窗口失败: {}", e))?;
 
+    Ok(())
+}
+
+// 打开翻译窗口并填充选中文本
+#[tauri::command]
+async fn open_translator_with_text(text: String, app: AppHandle) -> Result<(), String> {
+    // 检查窗口是否已存在
+    if let Some(existing_window) = app.get_webview_window("translator") {
+        // 窗口已存在，发送填充事件
+        existing_window
+            .emit("translator://fill-text", &text)
+            .map_err(|e| format!("发送填充事件失败: {}", e))?;
+        existing_window
+            .show()
+            .map_err(|e| format!("显示窗口失败: {}", e))?;
+        existing_window
+            .set_focus()
+            .map_err(|e| format!("聚焦窗口失败: {}", e))?;
+        return Ok(());
+    }
+
+    // 创建新窗口并注入文本
+    let webview_window = WebviewWindowBuilder::new(
+        &app,
+        "translator",
+        WebviewUrl::App("index.html".into()),
+    )
+    .title("有道翻译")
+    .inner_size(1000.0, 700.0)
+    .visible(true)
+    .transparent(true)
+    .decorations(false)
+    .resizable(true)
+    .center()
+    .initialization_script(&format!(
+        "window.__TRANSLATE_TEXT__ = {};",
+        serde_json::to_string(&text).map_err(|e| e.to_string())?
+    ))
+    .build()
+    .map_err(|e| format!("创建翻译窗口失败: {}", e))?;
+
+    webview_window
+        .show()
+        .map_err(|e| format!("显示窗口失败: {}", e))?;
+    webview_window
+        .set_focus()
+        .map_err(|e| format!("聚焦窗口失败: {}", e))?;
+
+    Ok(())
+}
+
+// 打开JSON比较窗口并填充选中文本
+#[tauri::command]
+async fn open_json_compare_with_text(text: String, app: AppHandle) -> Result<(), String> {
+    // 检查窗口是否已存在
+    if let Some(existing_window) = app.get_webview_window("json-compare") {
+        // 窗口已存在，发送填充事件
+        existing_window
+            .emit("json://fill-text", &text)
+            .map_err(|e| format!("发送填充事件失败: {}", e))?;
+        existing_window
+            .show()
+            .map_err(|e| format!("显示窗口失败: {}", e))?;
+        existing_window
+            .set_focus()
+            .map_err(|e| format!("聚焦窗口失败: {}", e))?;
+        return Ok(());
+    }
+
+    // 创建新窗口并注入文本
+    let webview_window = WebviewWindowBuilder::new(
+        &app,
+        "json-compare",
+        WebviewUrl::App("index.html".into()),
+    )
+    .title("JSON对比工具")
+    .inner_size(900.0, 600.0)
+    .visible(true)
+    .transparent(true)
+    .decorations(false)
+    .resizable(true)
+    .center()
+    .skip_taskbar(true)
+    .initialization_script(&format!(
+        "window.__JSON_TEXT__ = {};",
+        serde_json::to_string(&text).map_err(|e| e.to_string())?
+    ))
+    .build()
+    .map_err(|e| format!("创建JSON比较窗口失败: {}", e))?;
+
+    webview_window
+        .show()
+        .map_err(|e| format!("显示窗口失败: {}", e))?;
+    webview_window
+        .set_focus()
+        .map_err(|e| format!("聚焦窗口失败: {}", e))?;
+
+    Ok(())
+}
+
+// 在默认浏览器中打开URL
+#[tauri::command]
+async fn open_url_in_browser(url: String) -> Result<(), String> {
+    // 如果URL未包含协议前缀，自动添加 https://
+    let url = url.trim();
+    let url = if !url.starts_with("http://") && !url.starts_with("https://") {
+        format!("https://{}", url)
+    } else {
+        url.to_string()
+    };
+    tauri_plugin_opener::open_path(&url, Option::<&str>::None)
+        .map_err(|e| format!("打开URL失败: {}", e))?;
     Ok(())
 }
 
@@ -298,8 +413,9 @@ struct YoudaoTranslateResponse {
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use tauri::WebviewUrl;
 use tauri::menu::MenuItem;
-use crate::jira_tools::{get_current_date, get_my_today_worklogs, get_my_unfinished_issues, get_required_work_hours, get_today_commits_by_user, load_ai_config, load_git_config, load_jira_config, log_work, process_worklog_with_ai, save_ai_config, save_git_config, save_jira_config};
+use crate::jira_tools::{get_commits_by_date, get_current_date, get_my_today_worklogs, get_my_unfinished_issues, get_required_work_hours, load_ai_config, load_git_config, load_jira_config, log_work, process_worklog_with_ai, save_ai_config, save_git_config, save_jira_config};
 
 // 生成有道翻译签名
 // 修改签名生成函数
@@ -875,12 +991,15 @@ pub fn run() {
             get_my_today_worklogs,
             log_work,
             test_jira_connection,
-            get_today_commits_by_user,
+            get_commits_by_date,
             get_current_date,
             get_required_work_hours,
             process_worklog_with_ai, // 添加新的AI命令
             save_ai_config,
             load_ai_config,
+            open_translator_with_text,
+            open_json_compare_with_text,
+            open_url_in_browser,
         ])
         .setup(|app| {
             // 创建托盘菜单
@@ -916,6 +1035,9 @@ pub fn run() {
                     eprintln!("Failed to set click through for pet window: {}", e);
                 }
             }
+
+            // 启动全局鼠标中键钩子
+            init_global_mouse_hook(app.app_handle().clone());
 
             // 系统信息监控任务
             let app_handle = app.app_handle().clone();

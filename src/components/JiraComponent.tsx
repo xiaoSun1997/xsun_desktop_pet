@@ -177,7 +177,9 @@ export default function JiraComponent() {
             const year = date.getFullYear();
             const month = String(date.getMonth() + 1).padStart(2, '0');
             const day = String(date.getDate()).padStart(2, '0');
-            return `${year}-${month}-${day}`;
+            const formattedDate = `${year}-${month}-${day}`;
+            console.log("初始化日期字符串:", formattedDate);
+            return formattedDate;
         };
         
         setSelectedDateString(formatDate(selectedDate));
@@ -231,8 +233,18 @@ export default function JiraComponent() {
 
             const worklogs = await invoke("get_my_today_worklogs");
             setTodayWorklogs(worklogs as WorklogEntry[]);
-
-            const commits = await invoke("get_today_commits_by_user");
+            
+            // 确保获取正确的日期字符串
+            const currentDateStr = selectedDateString || (() => {
+                const date = selectedDate;
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+            })();
+            
+            console.log("query data is :" + currentDateStr);
+            const commits = await invoke("get_commits_by_date", { dateStr: currentDateStr });
             setTodayCommits(commits as GitCommit[]);
         } catch (error) {
             console.error("加载今日数据失败:", error);

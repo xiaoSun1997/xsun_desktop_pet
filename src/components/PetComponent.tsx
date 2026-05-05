@@ -183,6 +183,11 @@ export default function PetComponent() {
             createOrShowJira();
         });
 
+        // 监听全局鼠标中键选中文本事件
+        const unlistenSelection = listen<{ text: string; x: number; y: number }>("selection://popup", (event) => {
+            createSelectionMenu(event.payload);
+        });
+
         return () => {
             unlistenWakeUp.then(fn => fn());
             unlistenTrayClipboard.then(fn => fn());
@@ -191,6 +196,7 @@ export default function PetComponent() {
             unlistenTrayTranslator.then(fn => fn());
             unlistenTrayCalendar.then(fn => fn());
             unlistenTrayJira.then(fn => fn());
+            unlistenSelection.then(fn => fn());
             if (doubleClickTimer.current) clearTimeout(doubleClickTimer.current);
         };
     }, []);
@@ -573,6 +579,70 @@ export default function PetComponent() {
             console.log("已最小化到托盘");
         } catch (error) {
             console.error("最小化到托盘失败:", error);
+        }
+    };
+
+    // 创建选中文本快捷菜单窗口
+    const createSelectionMenu = async (payload: { text: string; x: number; y: number }) => {
+        // 检查是否已有菜单窗口，有则关闭
+        const windows = await getAllWindows();
+        const existing = windows.find((w) => w.label === "selection-menu");
+        if (existing) {
+            try {
+                await existing.close();
+            } catch (e) {
+                console.warn("关闭旧菜单窗口失败:", e);
+            }
+            // 等待窗口关闭
+            await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+
+        const url = import.meta.env.DEV ? "http://localhost:1420" : "index.html";
+
+        try {
+            const webview = new WebviewWindow("selection-menu", {
+                url,
+                title: "快速操作",
+                width: 220,
+                height: 210,
+                x: Math.min(payload.x, window.screen.availWidth - 240),
+                y: Math.min(payload.y, window.screen.availHeight - 230),
+                visible: false,
+                transparent: true,
+                decorations: false,
+                resizable: false,
+                alwaysOnTop: true,
+                skipTaskbar: true,
+                focus: true,
+            });
+
+            // 等待窗口创建
+            await new Promise<void>((resolve, reject) => {
+                const timeout = setTimeout(() => {
+                    reject(new Error("等待菜单窗口创建超时"));
+                }, 5000);
+
+                webview.once("tauri://created", () => {
+                    clearTimeout(timeout);
+                    resolve();
+                });
+
+                webview.once("tauri://error", (e) => {
+                    clearTimeout(timeout);
+                    reject(new Error(`创建菜单窗口时出错: ${JSON.stringify(e)}`));
+                });
+            });
+
+            // 等待窗口加载完成，然后通过事件发送数据
+            await webview.show();
+            await webview.setFocus();
+            // 延迟一下确保窗口已加载完毕
+            await new Promise((resolve) => setTimeout(resolve, 300));
+            // 通过事件发送选中文本数据
+            await webview.emit("selection://show", payload);
+            console.log("选中文本快捷菜单已显示");
+        } catch (err) {
+            console.error("创建选中文本快捷菜单失败:", err);
         }
     };
 

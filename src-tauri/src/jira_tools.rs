@@ -522,11 +522,13 @@ fn is_me(commit: &git2::Commit, username: &str, email: Option<&str>) -> bool {
 }
 
 #[tauri::command]
-pub async fn get_today_commits_by_user(app: AppHandle) -> Result<Vec<GitCommit>, String> {
+pub async fn get_commits_by_date(app: AppHandle, date_str: String) -> Result<Vec<GitCommit>, String> {
     let git_config = load_git_config(app.clone()).await?
         .ok_or_else(|| "Git配置未设置".to_string())?;
 
-    let today = Local::now().date_naive();
+    // 解析传入的日期字符串
+    let target_date = NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
+        .map_err(|e| format!("日期格式错误: {}", e))?;
     let mut all_commits: Vec<GitCommit> = Vec::new();
 
     for repo_config in &git_config.repositories {
@@ -615,8 +617,8 @@ pub async fn get_today_commits_by_user(app: AppHandle) -> Result<Vec<GitCommit>,
 
             // 用 author date 对齐 Java
             let commit_date = author_local_date(&commit);
-            if commit_date != today {
-                // 因为我们 TIME 排序 + REVERSE(新->旧)，一旦日期小于 today 可考虑 break
+            if commit_date != target_date {
+                // 因为我们 TIME 排序 + REVERSE(新->旧)，一旦日期小于 target_date 可考虑 break
                 // 但严格来说不同分支可能有乱序，保守不 break
                 continue;
             }
@@ -817,7 +819,8 @@ pub async fn process_worklog_with_ai(app: AppHandle) -> Result<String, String> {
     let unfinished_issues = get_my_unfinished_issues(app.clone()).await?;
     
     // 获取今天的Git提交
-    let today_commits = get_today_commits_by_user(app.clone()).await?;
+    let today_str = Local::now().format("%Y-%m-%d").to_string();
+    let today_commits = get_commits_by_date(app.clone(), today_str).await?;
     
     // 计算剩余需要记录的时间
     let remaining_hours = (required_hours - total_worked_hours).max(0.0);

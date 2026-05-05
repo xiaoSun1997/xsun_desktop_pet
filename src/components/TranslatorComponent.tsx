@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { listen } from "@tauri-apps/api/event";
 import "./TranslatorComponent.css";
 
 type YoudaoConfig = {
@@ -73,6 +74,22 @@ export default function TranslatorComponent() {
 
     useEffect(() => {
         checkConfig();
+    
+        // 检查是否为通过初始化脚本注入的文本（从快捷菜单创建新窗口时）
+        const globalText = (window as any).__TRANSLATE_TEXT__;
+        if (globalText) {
+            setInputText(globalText);
+            delete (window as any).__TRANSLATE_TEXT__;
+        }
+    
+        // 监听外部填充文本事件（从快捷菜单注入到已有窗口）
+        const unlisten = listen<string>("translator://fill-text", (event) => {
+            setInputText(event.payload);
+        });
+    
+        return () => {
+            unlisten.then(fn => fn());
+        };
     }, []);
 
     const checkConfig = async () => {

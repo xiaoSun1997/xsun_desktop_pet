@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { listen } from "@tauri-apps/api/event";
 import "./JsonCompareComponent.css";
 
 type JsonPanel = {
@@ -44,6 +45,39 @@ export default function JsonCompareComponent() {
 
     useEffect(() => {
         leftTextareaRef.current?.focus();
+    
+        // 检查是否为通过初始化脚本注入的文本（从快捷菜单创建新窗口时）
+        const globalText = (window as any).__JSON_TEXT__;
+        if (globalText) {
+            const { formatted, isValid } = formatJson(globalText);
+            const timestamp = globalText.trim() ? updateTimestamp() : '';
+            setLeftPanel({
+                id: 'left',
+                rawText: globalText,
+                formattedText: formatted,
+                timestamp,
+                isValid
+            });
+            delete (window as any).__JSON_TEXT__;
+        }
+    
+        // 监听外部填充文本事件（从快捷菜单注入到已有窗口）
+        const unlisten = listen<string>("json://fill-text", (event) => {
+            const text = event.payload;
+            const { formatted, isValid } = formatJson(text);
+            const timestamp = text.trim() ? updateTimestamp() : '';
+            setLeftPanel({
+                id: 'left',
+                rawText: text,
+                formattedText: formatted,
+                timestamp,
+                isValid
+            });
+        });
+    
+        return () => {
+            unlisten.then(fn => fn());
+        };
     }, []);
 
     // 自动对比效果
