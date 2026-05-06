@@ -43,6 +43,10 @@
     ],
     "security": {
       "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["$APPDATA/**"]
+      },
       "capabilities": [
         "drag",
         "window-management",

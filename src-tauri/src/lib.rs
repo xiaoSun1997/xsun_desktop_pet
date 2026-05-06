@@ -15,7 +15,7 @@ mod jira_tools;
 mod task_scheduler;
 mod window_utils;
 mod database;
-use database::Database;
+use database::{Database, NoteRecord};
 
 use clipboard::{
     add_to_clipboard_history, clear_clipboard_history, copy_to_clipboard, get_clipboard_history,
@@ -1531,6 +1531,98 @@ fn copy_dir_recursive(src: &std::path::Path, dest: &std::path::Path) -> Result<(
     Ok(())
 }
 
+// ==================== 记事本命令 ====================
+
+#[tauri::command]
+async fn get_all_notes(app: AppHandle) -> Result<Vec<NoteRecord>, String> {
+    let db = app.state::<Database>();
+    db.get_all_notes()
+}
+
+#[tauri::command]
+async fn create_note_document(app: AppHandle, name: String, parent_path: String, is_dir: bool) -> Result<NoteRecord, String> {
+    let db = app.state::<Database>();
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err("名称不能为空".to_string());
+    }
+    db.create_note_document(&name, &parent_path, is_dir)
+}
+
+#[tauri::command]
+async fn get_note_content(app: AppHandle, id: String) -> Result<String, String> {
+    let db = app.state::<Database>();
+    db.get_note_content(&id)
+}
+
+#[tauri::command]
+async fn update_note_content(app: AppHandle, id: String, content: String) -> Result<(), String> {
+    let db = app.state::<Database>();
+    db.update_note_content(&id, &content)
+}
+
+#[tauri::command]
+async fn rename_note_document(app: AppHandle, id: String, name: String) -> Result<(), String> {
+    let db = app.state::<Database>();
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err("名称不能为空".to_string());
+    }
+    db.rename_note_document(&id, &name)
+}
+
+#[tauri::command]
+async fn delete_note_document(app: AppHandle, id: String) -> Result<(), String> {
+    let db = app.state::<Database>();
+    db.delete_note_document(&id)
+}
+
+#[tauri::command]
+async fn save_note_image(app: AppHandle, note_id: String, file_name: String, image_data_base64: String) -> Result<String, String> {
+    use std::io::Write;
+    let app_data_dir = app.path().app_data_dir().map_err(|e| format!("获取应用数据目录失败: {}", e))?;
+    let img_dir = app_data_dir.join("note_images").join(&note_id);
+    std::fs::create_dir_all(&img_dir).map_err(|e| format!("创建图片目录失败: {}", e))?;
+    
+    let img_path = img_dir.join(&file_name);
+    use base64::Engine as _;
+    let img_data = base64::engine::general_purpose::STANDARD.decode(&image_data_base64)
+        .map_err(|e| format!("解码图片数据失败: {}", e))?;
+    
+    let mut file = std::fs::File::create(&img_path).map_err(|e| format!("创建图片文件失败: {}", e))?;
+    file.write_all(&img_data).map_err(|e| format!("写入图片数据失败: {}", e))?;
+    
+    Ok(img_path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+async fn read_clipboard_image(app: AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_clipboard_manager::ClipboardExt;
+    use base64::Engine;
+    
+    // 先尝试读取图片
+    match app.clipboard().read_image() {
+        Ok(img) => {
+            let width = tauri::image::Image::width(&img);
+            let height = tauri::image::Image::height(&img);
+            let rgba = img.rgba().to_vec();
+            
+            if let Some(img_buffer) = image::RgbaImage::from_raw(width, height, rgba) {
+                let mut png_bytes = std::io::Cursor::new(Vec::new());
+                if image::DynamicImage::from(img_buffer)
+                    .write_to(&mut png_bytes, image::ImageFormat::Png)
+                    .is_ok()
+                {
+                    let b64 = base64::engine::general_purpose::STANDARD.encode(png_bytes.into_inner());
+                    return Ok(Some(format!("data:image/png;base64,{}", b64)));
+                }
+            }
+            Ok(None)
+        }
+        _ => Ok(None),
+    }
+}
+
 #[tauri::command]
 async fn reveal_in_folder(path: String) -> Result<(), String> {
     let result = std::process::Command::new("explorer")
@@ -1630,6 +1722,14 @@ pub fn run() {
             update_chat_session_title,
             save_chat_message,
             toggle_chat_session_pin,
+            get_all_notes,
+            create_note_document,
+            get_note_content,
+            update_note_content,
+            rename_note_document,
+            delete_note_document,
+            save_note_image,
+            read_clipboard_image,
         ])
         .setup(|app| {
             // 初始化 SQLite 数据库

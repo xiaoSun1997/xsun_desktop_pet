@@ -23,6 +23,7 @@ export default function ClipboardComponent() {
     const [currentPage, setCurrentPage] = useState(1);
     const [hasMore, setHasMore] = useState(true);
     const [enlargeImage, setEnlargeImage] = useState<string | null>(null);
+    const [enlargeSize, setEnlargeSize] = useState<{width: number; height: number} | null>(null);
     const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
     const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -136,10 +137,25 @@ export default function ClipboardComponent() {
 
     const handleImageDblClick = (content: string) => {
         setEnlargeImage(content);
+        setEnlargeSize(null);
+        // 计算 2.5 倍原始尺寸
+        const img = new Image();
+        img.onload = () => {
+            setEnlargeSize({
+                width: Math.round(img.naturalWidth * 2.5),
+                height: Math.round(img.naturalHeight * 2.5),
+            });
+        };
+        img.onerror = () => {
+            // 加载失败时使用默认尺寸
+            setEnlargeSize({ width: 800, height: 600 });
+        };
+        img.src = content;
     };
 
     const handleCloseEnlarge = () => {
         setEnlargeImage(null);
+        setEnlargeSize(null);
     };
 
     const toggleExpand = (id: number) => {
@@ -399,6 +415,12 @@ export default function ClipboardComponent() {
                             alt="放大的图片"
                             className="cb-image-enlarge"
                             onClick={(e) => e.stopPropagation()}
+                            style={enlargeSize ? {
+                                width: enlargeSize.width,
+                                height: enlargeSize.height,
+                                maxWidth: '90vw',
+                                maxHeight: '90vh',
+                            } : undefined}
                         />
                     </div>
                 </div>

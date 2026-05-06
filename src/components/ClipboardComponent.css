@@ -451,11 +451,10 @@
 }
 
 .cb-image-enlarge {
-    max-width: 100%;
-    max-height: 85vh;
     border-radius: 12px;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
     cursor: default;
+    /* 尺寸由 JS 动态计算 2.5x */
 }
 
 .cb-image-enlarge-close {

@@ -1,0 +1,820 @@
+/* ===== 记事本 - 整体布局 ===== */
+.notepad-container {
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background: #1a1b2e;
+    color: rgba(255, 255, 255, 0.85);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    overflow: hidden;
+}
+
+/* ===== 标题栏 ===== */
+.notepad-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 16px;
+    background: rgba(30, 32, 52, 0.95);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    flex-shrink: 0;
+    -webkit-app-region: drag;
+    user-select: none;
+}
+
+.notepad-header-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.8);
+    letter-spacing: 0.3px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.notepad-header-actions {
+    display: flex;
+    gap: 8px;
+    -webkit-app-region: no-drag;
+}
+
+.notepad-header-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 6px 12px;
+    border: none;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    color: rgba(255, 255, 255, 0.6);
+    background: transparent;
+}
+
+.notepad-header-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.9);
+}
+
+/* ===== 主区域 ===== */
+.notepad-main {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+    position: relative;
+}
+
+/* ===== 左侧面板 - 文件树 ===== */
+.notepad-sidebar {
+    width: 220px;
+    min-width: 220px;
+    display: flex;
+    flex-direction: column;
+    background: rgba(25, 26, 42, 0.95);
+    border-right: 1px solid rgba(255, 255, 255, 0.06);
+    flex-shrink: 0;
+}
+
+.notepad-sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    flex-shrink: 0;
+}
+
+.notepad-sidebar-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.8);
+    letter-spacing: 0.3px;
+}
+
+.notepad-sidebar-add-btn {
+    width: 22px;
+    height: 22px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.3);
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    line-height: 1;
+    transition: all 0.15s ease;
+}
+
+.notepad-sidebar-add-btn:hover {
+    color: rgba(255, 255, 255, 0.9);
+    background: rgba(16, 185, 129, 0.3);
+    color: #10b981;
+}
+
+/* 文件树容器 */
+.notepad-tree {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 0;
+}
+
+.notepad-tree::-webkit-scrollbar {
+    width: 4px;
+}
+.notepad-tree::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+}
+
+/* 树节点 */
+.notepad-tree-node {
+    user-select: none;
+}
+
+.notepad-tree-folder,
+.notepad-tree-file {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 12px 6px 12px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 12px;
+    position: relative;
+}
+
+.notepad-tree-folder:hover,
+.notepad-tree-file:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: rgba(255, 255, 255, 0.95);
+}
+
+.notepad-tree-file.selected {
+    background: rgba(59, 130, 246, 0.15);
+    color: #60a5fa;
+}
+
+.notepad-tree-arrow {
+    font-size: 8px;
+    width: 12px;
+    text-align: center;
+    flex-shrink: 0;
+    color: rgba(255, 255, 255, 0.4);
+}
+
+.notepad-tree-folder-icon,
+.notepad-tree-file-icon {
+    font-size: 13px;
+    flex-shrink: 0;
+}
+
+.notepad-tree-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.notepad-tree-delete {
+    width: 20px;
+    height: 20px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.2);
+    font-size: 11px;
+    cursor: pointer;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    padding: 0;
+    line-height: 1;
+    transition: all 0.15s ease;
+}
+
+.notepad-tree-folder:hover .notepad-tree-delete,
+.notepad-tree-file:hover .notepad-tree-delete {
+    display: flex;
+}
+
+.notepad-tree-delete:hover {
+    background: rgba(239, 68, 68, 0.3);
+    color: #ef4444;
+}
+
+.notepad-tree-add {
+    width: 20px;
+    height: 20px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.2);
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    padding: 0;
+    line-height: 1;
+    transition: all 0.15s ease;
+}
+
+.notepad-tree-folder:hover .notepad-tree-add {
+    display: flex;
+}
+
+.notepad-tree-add:hover {
+    background: rgba(16, 185, 129, 0.3);
+    color: #10b981;
+}
+
+.notepad-tree-children {
+    padding-left: 16px;
+}
+
+.notepad-tree-empty {
+    padding: 24px 16px;
+    text-align: center;
+    color: rgba(255, 255, 255, 0.3);
+    font-size: 13px;
+}
+
+.notepad-tree-empty p {
+    margin: 0 0 4px 0;
+    font-size: 13px;
+}
+
+/* ===== 右侧编辑器区域 ===== */
+.notepad-editor-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: margin-right 0.3s ease;
+}
+
+.notepad-editor-area.with-ai-panel {
+    margin-right: 400px;
+}
+
+.notepad-editor-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* 编辑器头部 */
+.notepad-editor-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 16px;
+    background: rgba(30, 32, 52, 0.95);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    flex-shrink: 0;
+}
+
+.notepad-editor-file-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.notepad-editor-file-icon {
+    font-size: 14px;
+}
+
+.notepad-editor-filename {
+    font-size: 13px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.notepad-editor-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+    align-items: center;
+}
+
+.notepad-editor-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 0 10px;
+    border: none;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    height: 28px;
+    min-width: 56px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    color: #ffffff;
+    box-sizing: border-box;
+    font-family: inherit;
+    white-space: nowrap;
+}
+
+.notepad-editor-btn .btn-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 14px;
+    line-height: 1;
+    font-size: 12px;
+    font-family: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif;
+}
+
+.notepad-editor-btn .btn-text {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 14px;
+    line-height: 1;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.notepad-editor-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15);
+}
+
+.notepad-preview-btn {
+    background: #8b5cf6;
+    box-shadow: 0 1px 4px rgba(139, 92, 246, 0.3);
+}
+.notepad-preview-btn:hover {
+    background: #7c3aed;
+}
+
+.notepad-edit-btn {
+    background: #3b82f6;
+    box-shadow: 0 1px 4px rgba(59, 130, 246, 0.3);
+}
+.notepad-edit-btn:hover {
+    background: #2563eb;
+}
+
+.notepad-save-btn {
+    background: #059669;
+    box-shadow: 0 1px 4px rgba(5, 150, 105, 0.3);
+}
+.notepad-save-btn:hover {
+    background: #047857;
+}
+
+.notepad-close-editor-btn {
+    background: #f43f5e;
+    box-shadow: 0 1px 4px rgba(244, 63, 94, 0.3);
+}
+.notepad-close-editor-btn:hover {
+    background: #e11d48;
+}
+
+/* 编辑器内容区 */
+.notepad-editor-body {
+    flex: 1;
+    overflow: hidden;
+}
+
+.notepad-editor-textarea {
+    width: 100%;
+    height: 100%;
+    padding: 16px;
+    border: none;
+    outline: none;
+    resize: none;
+    background: #1e2034;
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 13px;
+    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    line-height: 1.6;
+    tab-size: 4;
+    box-sizing: border-box;
+}
+
+.notepad-editor-textarea::placeholder {
+    color: rgba(255, 255, 255, 0.25);
+}
+
+.notepad-editor-preview {
+    width: 100%;
+    height: 100%;
+    padding: 24px;
+    overflow-y: auto;
+    background: #1e2034;
+    box-sizing: border-box;
+}
+
+.notepad-editor-preview::-webkit-scrollbar {
+    width: 6px;
+}
+.notepad-editor-preview::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+}
+
+/* Markdown 预览样式 */
+.notepad-editor-preview.markdown-body {
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 14px;
+    line-height: 1.7;
+}
+
+.notepad-editor-preview.markdown-body h1,
+.notepad-editor-preview.markdown-body h2,
+.notepad-editor-preview.markdown-body h3,
+.notepad-editor-preview.markdown-body h4 {
+    color: rgba(255, 255, 255, 0.95);
+    margin: 16px 0 8px;
+    font-weight: 600;
+}
+
+.notepad-editor-preview.markdown-body p {
+    margin: 8px 0;
+}
+
+.notepad-editor-preview.markdown-body code {
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 3px;
+    padding: 2px 6px;
+    font-size: 13px;
+    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+}
+
+.notepad-editor-preview.markdown-body pre {
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 6px;
+    padding: 12px;
+    overflow-x: auto;
+}
+
+.notepad-editor-preview.markdown-body pre code {
+    background: none;
+    padding: 0;
+}
+
+.notepad-editor-preview.markdown-body blockquote {
+    border-left: 3px solid rgba(59, 130, 246, 0.5);
+    padding-left: 12px;
+    margin: 8px 0;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.notepad-editor-preview.markdown-body img {
+    display: block;
+    margin: 12px auto;
+    max-width: 80%;
+    border-radius: 6px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.notepad-editor-preview.markdown-body ul,
+.notepad-editor-preview.markdown-body ol {
+    padding-left: 20px;
+    margin: 8px 0;
+}
+
+.notepad-editor-preview.markdown-body li {
+    margin: 4px 0;
+}
+
+.notepad-editor-preview.markdown-body table {
+    border-collapse: collapse;
+    margin: 12px 0;
+    width: 100%;
+    font-size: 13px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.notepad-editor-preview.markdown-body th,
+.notepad-editor-preview.markdown-body td {
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    padding: 8px 12px;
+    text-align: left;
+    color: rgba(255, 255, 255, 0.85);
+}
+
+.notepad-editor-preview.markdown-body th {
+    font-weight: 600;
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.notepad-editor-preview.markdown-body a {
+    color: #60a5fa;
+    text-decoration: none;
+}
+
+.notepad-editor-preview.markdown-body a:hover {
+    text-decoration: underline;
+}
+
+.notepad-editor-preview.markdown-body hr {
+    border: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    margin: 16px 0;
+}
+
+/* 空状态 */
+.notepad-editor-empty {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255, 255, 255, 0.2);
+    font-size: 14px;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.notepad-editor-empty-icon {
+    font-size: 48px;
+    opacity: 0.3;
+}
+
+.notepad-loading {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 13px;
+}
+
+/* ===== AI 面板 ===== */
+.notepad-ai-panel-overlay {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 400px;
+    background: rgba(26, 28, 46, 0.98);
+    border-left: 1px solid rgba(255, 255, 255, 0.08);
+    display: flex;
+    flex-direction: column;
+    animation: slideIn 0.25s ease;
+    z-index: 10;
+    box-shadow: -4px 0 20px rgba(0, 0, 0, 0.3);
+}
+
+@keyframes slideIn {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+
+.notepad-ai-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    flex-shrink: 0;
+}
+
+.notepad-ai-panel-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.85);
+}
+
+.notepad-ai-panel-close {
+    width: 24px;
+    height: 24px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+}
+
+.notepad-ai-panel-close:hover {
+    background: rgba(239, 68, 68, 0.2);
+    color: #ef4444;
+}
+
+.notepad-ai-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 16px;
+}
+
+.notepad-ai-messages::-webkit-scrollbar {
+    width: 4px;
+}
+.notepad-ai-messages::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+}
+
+.notepad-ai-message {
+    margin-bottom: 12px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    line-height: 1.6;
+    max-width: 90%;
+}
+
+.notepad-ai-message.user {
+    background: rgba(59, 130, 246, 0.15);
+    color: rgba(255, 255, 255, 0.9);
+    margin-left: auto;
+    border-bottom-right-radius: 4px;
+}
+
+.notepad-ai-message.assistant {
+    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.85);
+    margin-right: auto;
+    border-bottom-left-radius: 4px;
+}
+
+.notepad-ai-message .message-text p {
+    margin: 4px 0;
+}
+
+.notepad-ai-streaming {
+    opacity: 0.8;
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 0.8; }
+    50% { opacity: 0.5; }
+}
+
+.notepad-ai-input-area {
+    padding: 12px 16px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    flex-shrink: 0;
+}
+
+.notepad-ai-input-wrapper {
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+}
+
+.notepad-ai-input {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 13px;
+    font-family: inherit;
+    resize: none;
+    outline: none;
+    min-height: 36px;
+    max-height: 120px;
+    box-sizing: border-box;
+}
+
+.notepad-ai-input:focus {
+    border-color: rgba(59, 130, 246, 0.4);
+}
+
+.notepad-ai-send-btn {
+    width: 36px;
+    height: 36px;
+    border: none;
+    border-radius: 8px;
+    background: #3b82f6;
+    color: white;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.notepad-ai-send-btn:hover {
+    background: #2563eb;
+    transform: translateY(-1px);
+}
+
+.notepad-ai-send-btn:disabled {
+    background: rgba(59, 130, 246, 0.3);
+    cursor: not-allowed;
+    transform: none;
+}
+
+.notepad-ai-typing {
+    display: flex;
+    gap: 4px;
+    padding: 8px 0;
+    align-items: center;
+}
+
+.notepad-ai-typing span {
+    width: 6px;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.4);
+    border-radius: 50%;
+    animation: bounce 1.4s infinite ease-in-out both;
+}
+
+.notepad-ai-typing span:nth-child(1) { animation-delay: -0.32s; }
+.notepad-ai-typing span:nth-child(2) { animation-delay: -0.16s; }
+.notepad-ai-typing span:nth-child(3) { animation-delay: 0s; }
+
+@keyframes bounce {
+    0%, 80%, 100% { transform: scale(0); }
+    40% { transform: scale(1); }
+}
+
+/* ===== 右下角 AI 按钮 ===== */
+.notepad-ai-fab {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 44px;
+    height: 44px;
+    border: none;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #667eea 0%, #3b82f6 100%);
+    color: white;
+    font-size: 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 16px rgba(59, 130, 246, 0.4);
+    transition: all 0.2s ease;
+    z-index: 20;
+}
+
+.notepad-ai-fab:hover {
+    transform: scale(1.1);
+    box-shadow: 0 6px 20px rgba(59, 130, 246, 0.5);
+}
+
+.notepad-ai-fab.active {
+    background: linear-gradient(135deg, #f43f5e 0%, #e11d48 100%);
+    box-shadow: 0 4px 16px rgba(244, 63, 94, 0.4);
+}
+
+/* ===== 添加菜单弹出框 ===== */
+.notepad-add-menu-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1000;
+}
+
+.notepad-add-menu {
+    position: fixed;
+    background: rgba(35, 37, 60, 0.98);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 4px;
+    z-index: 1001;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    min-width: 140px;
+}
+
+.notepad-add-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 12px;
+    cursor: pointer;
+    width: 100%;
+    text-align: left;
+    transition: all 0.15s ease;
+}
+
+.notepad-add-menu-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.95);
+}

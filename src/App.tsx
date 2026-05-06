@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getCurrentWindow, getAllWindows } from "@tauri-apps/api/window";
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import PetComponent from "./components/PetComponent";
 import SystemInfoComponent from "./components/SystemInfoComponent";
 import Clipboard from "./components/ClipboardComponent";
@@ -15,6 +16,7 @@ import PomodoroNotification from './components/PomodoroNotification';
 import JiraComponent from './components/JiraComponent'; // 添加JIRA组件导入
 import SelectionMenu from './components/SelectionMenu';
 import MapDrawingComponent from './components/MapDrawingComponent';
+import NotepadComponent from './components/NotepadComponent';
 
 function App() {
     const [label, setLabel] = useState<string>("");
@@ -24,6 +26,69 @@ function App() {
         const win = getCurrentWindow();
         setLabel(win.label);
     }, []);
+
+    // ===== 双击反引号打开记事本 =====
+    useEffect(() => {
+        let lastTickTime = 0;
+        const handler = (e: KeyboardEvent) => {
+            if (e.key === '`') {
+                const now = Date.now();
+                if (now - lastTickTime < 500) {
+                    // 双击反引号 - 打开/切换到记事本
+                    openNotepadWindow();
+                    lastTickTime = 0;
+                } else {
+                    lastTickTime = now;
+                }
+            }
+        };
+        window.addEventListener('keydown', handler);
+        return () => window.removeEventListener('keydown', handler);
+    }, []);
+
+    const openNotepadWindow = async () => {
+        try {
+            const windows = await getAllWindows();
+            const existing = windows.find(w => w.label === 'notepad');
+            if (existing) {
+                await existing.show();
+                await existing.setFocus();
+                return;
+            }
+
+            const url = import.meta.env.DEV
+                ? 'http://localhost:1420'
+                : 'index.html';
+
+            const webview = new WebviewWindow('notepad', {
+                url,
+                title: '记事本',
+                width: 1100,
+                height: 750,
+                center: true,
+                resizable: true,
+            });
+
+            await new Promise<void>((resolve, reject) => {
+                const timeout = setTimeout(() => {
+                    reject(new Error('等待记事本窗口创建超时'));
+                }, 5000);
+                webview.once('tauri://created', () => {
+                    clearTimeout(timeout);
+                    resolve();
+                });
+                webview.once('tauri://error', (e) => {
+                    clearTimeout(timeout);
+                    reject(new Error(`创建记事本窗口出错: ${JSON.stringify(e)}`));
+                });
+            });
+
+            await webview.show();
+            await webview.setFocus();
+        } catch (error) {
+            console.error('打开记事本失败:', error);
+        }
+    };
 
     if (label === "pet") {
         return <PetComponent />;      // 桌宠窗口
@@ -55,6 +120,8 @@ function App() {
         return <SelectionMenu />;
     } else if (label === "map-drawing") {
         return <MapDrawingComponent />;
+    } else if (label === "notepad") {
+        return <NotepadComponent />;
     }
 
     return null;

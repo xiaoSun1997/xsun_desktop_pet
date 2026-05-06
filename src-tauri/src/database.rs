@@ -35,6 +35,17 @@ pub struct SkillFileRecord {
     pub updated_at: i64,
 }
 
+#[derive(Clone, serde::Serialize, serde::Deserialize, Debug)]
+pub struct NoteRecord {
+    pub id: String,
+    pub name: String,
+    pub content: String,
+    pub parent_path: String,
+    pub is_dir: bool,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
 pub struct Database {
     conn: Mutex<Connection>,
 }
@@ -130,6 +141,17 @@ impl Database {
                 updated_at INTEGER NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_skill_files_parent ON skill_files(parent_path);
+
+            CREATE TABLE IF NOT EXISTS note_documents (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                content TEXT NOT NULL DEFAULT '',
+                parent_path TEXT NOT NULL DEFAULT '',
+                is_dir INTEGER NOT NULL DEFAULT 0,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_notes_parent ON note_documents(parent_path);
         ",
         )
         .map_err(|e| format!("创建表失败: {}", e))?;
@@ -709,6 +731,144 @@ impl Database {
             .collect();
 
         Ok(names)
+    }
+
+    // ==================== 笔记文档方法 ====================
+
+    pub fn get_all_notes(&self) -> Result<Vec<NoteRecord>, String> {
+        let conn = self.conn.lock().map_err(|e| format!("获取锁失败: {}", e))?;
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, name, content, parent_path, is_dir, created_at, updated_at 
+                 FROM note_documents ORDER BY is_dir DESC, name ASC",
+            )
+            .map_err(|e| format!("准备查询失败: {}", e))?;
+
+        let notes = stmt
+            .query_map([], |row| {
+                Ok(NoteRecord {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    content: row.get(2)?,
+                    parent_path: row.get(3)?,
+                    is_dir: row.get::<_, i32>(4)? != 0,
+                    created_at: row.get(5)?,
+                    updated_at: row.get(6)?,
+                })
+            })
+            .map_err(|e| format!("查询笔记失败: {}", e))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(notes)
+    }
+
+    pub fn create_note_document(&self, name: &str, parent_path: &str, is_dir: bool) -> Result<NoteRecord, String> {
+        let conn = self.conn.lock().map_err(|e| format!("获取锁失败: {}", e))?;
+        let id = Uuid::new_v4().to_string();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        conn.execute(
+            "INSERT INTO note_documents (id, name, content, parent_path, is_dir, created_at, updated_at) 
+             VALUES (?1, ?2, '', ?3, ?4, ?5, ?6)",
+            params![id, name, parent_path, is_dir as i32, now, now],
+        )
+        .map_err(|e| format!("创建笔记失败: {}", e))?;
+
+        Ok(NoteRecord {
+            id,
+            name: name.to_string(),
+            content: String::new(),
+            parent_path: parent_path.to_string(),
+            is_dir,
+            created_at: now,
+            updated_at: now,
+        })
+    }
+
+    pub fn get_note_content(&self, id: &str) -> Result<String, String> {
+        let conn = self.conn.lock().map_err(|e| format!("获取锁失败: {}", e))?;
+
+        let mut stmt = conn
+            .prepare("SELECT content FROM note_documents WHERE id = ?1")
+            .map_err(|e| format!("准备查询失败: {}", e))?;
+
+        stmt.query_row(params![id], |row| row.get::<_, String>(0))
+            .map_err(|e| format!("查询笔记内容失败: {}", e))
+    }
+
+    pub fn update_note_content(&self, id: &str, content: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("获取锁失败: {}", e))?;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        conn.execute(
+            "UPDATE note_documents SET content = ?1, updated_at = ?2 WHERE id = ?3",
+            params![content, now, id],
+        )
+        .map_err(|e| format!("更新笔记内容失败: {}", e))?;
+
+        Ok(())
+    }
+
+    pub fn rename_note_document(&self, id: &str, name: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("获取锁失败: {}", e))?;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        conn.execute(
+            "UPDATE note_documents SET name = ?1, updated_at = ?2 WHERE id = ?3",
+            params![name, now, id],
+        )
+        .map_err(|e| format!("重命名笔记失败: {}", e))?;
+
+        Ok(())
+    }
+
+    pub fn delete_note_document(&self, id: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("获取锁失败: {}", e))?;
+        // 删除自身及所有子记录
+        conn.execute(
+            "DELETE FROM note_documents WHERE id = ?1 OR parent_path = ?1 OR parent_path LIKE ?2",
+            params![id, format!("{}/%", id)],
+        )
+        .map_err(|e| format!("删除笔记失败: {}", e))?;
+        Ok(())
+    }
+
+    pub fn get_note_by_path(&self, folder_id: &str, file_name: &str) -> Result<Option<NoteRecord>, String> {
+        let conn = self.conn.lock().map_err(|e| format!("获取锁失败: {}", e))?;
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, name, content, parent_path, is_dir, created_at, updated_at 
+                 FROM note_documents WHERE parent_path = ?1 AND name = ?2 AND is_dir = 0",
+            )
+            .map_err(|e| format!("准备查询失败: {}", e))?;
+
+        match stmt.query_row(params![folder_id, file_name], |row| {
+            Ok(NoteRecord {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                content: row.get(2)?,
+                parent_path: row.get(3)?,
+                is_dir: row.get::<_, i32>(4)? != 0,
+                created_at: row.get(5)?,
+                updated_at: row.get(6)?,
+            })
+        }) {
+            Ok(note) => Ok(Some(note)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(format!("查询笔记失败: {}", e)),
+        }
     }
 
     // ==================== 数据迁移（从旧JSON文件） ====================
