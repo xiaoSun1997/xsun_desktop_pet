@@ -39,29 +39,36 @@ XSUN Desktop Pet（桌宠）是一个基于 Rust 和 Tauri 2 开发的桌面应�
 - 托盘图标支持（右键菜单）
 
 ### 2. 功能菜单 (MenuPanel)
+**双击tab可以唤醒**
 
 点击桌宠会弹出一个九宫格菜单，提供对各种功能的快速访问：
 
-1. 剪贴板历史
+1. 剪贴板
 2. 系统信息
 3. AI 对话
 4. 有道翻译
 5. 日历 TODO
 6. JSON 对比
-7. 关闭桌宠
-8. 最小化到托盘
+7. JIRA 工作流助手
+8. 地图绘制
+9. 记事本(Obsidian)
+10. 文件搜索
+11. 番茄钟
+12. 关闭桌宠
+13. 最小化到托盘
 
 ### 3. 剪贴板管理器 (ClipboardComponent)
 
-剪贴板管理器记录用户的复制历史，支持查看和管理剪贴板内容。
+剪贴板管理器记录用户的复制内容，支持查看和管理剪贴板。
 
 主要特性：
-- 自动记录剪贴板最近5条内容
-- 支持文本和富文本格式
-- 可以展开查看长内容
-- 支持手动检查剪贴板
-- 清空剪贴板历史功能
-- 复制json,展开格式化
+- 自动监控剪贴板变更并记录
+- 分页加载历史记录
+- 支持文本和图片格式
+- 可以展开查看/编辑长内容
+- 一键复制回剪贴板
+- 清空剪贴板功能
+- 复制JSON自动展开格式化
 
 ### 4. 系统信息监控 (SystemInfoComponent)
 
@@ -115,22 +122,62 @@ XSUN Desktop Pet（桌宠）是一个基于 Rust 和 Tauri 2 开发的桌面应�
 - 待对比项对比内容格式化（key顺序自动调整一致）
 - 友好的可视化界面
 
-### 8. JIRA 填写工具
+### 9. JIRA 工作流助手 (JiraComponent)
 
-用于填写每日jira
+集成 JIRA 与 Git，辅助日常工时记录与工作日志管理。
 
 主要特性：
-- 配置git地址
-- 配置jira地址
-- 配置ai配置
-- ai自动根据git填jira
-- 无提交时，ai自动拉取最近的jira填写记录编造jira
+- 左右分栏布局：左侧日期选择器（前后各15天），右侧内容区
+- 连接 JIRA 查看未完成任务、按日期拉取已填写工单
+- 连接 Git 仓库拉取当日提交记录
+- AI 智能生成工时建议（基于选定 Issue 与 Git 提交）
+- 多日工单汇总（选中多个日期，聚合查看工作日志）
+- 底部 Tab 导航：仪表板 / 历史总结 / 配置 / 手动填写
+- Jira / Git / AI 三合一配置面板，配置持久化到 SQLite
+
+### 10. 地图绘制 (MapDrawingComponent)
+
+基于 Canvas 的地图标注与绘制工具。
+
+主要特性：
+- 支持绘制点、线、多边形等图形
+- 图层管理与数据导入导出
+- 拖拽缩放交互
+
+### 11. 记事本 (NotepadComponent)
+
+类 Obsidian 的本地 Markdown 笔记管理。
+
+主要特性：
+- Markdown 编辑与实时预览
+- 文件树目录管理
+- 数据持久化存储
+
+### 12. 文件搜索 (QuickFileSearch / FileSearchComponent)
+**双击control可以唤醒**
+
+基于 FTS5 全文索引的快速文件搜索。
+
+主要特性：
+- 全盘文件索引与快速检索
+- 支持文件名和内容搜索
+- 结果实时过滤
+
+### 13. 番茄钟 (PomodoroTimerComponent)
+
+番茄工作法计时器，支持工作/休息周期切换与通知提醒。
 
 ## 项目架构
 
 ### 前端架构
 
 前端采用 React + TypeScript 技术栈，每个功能模块对应一个独立的组件：
+
+### 14：快进方式
+1. control+tab唤醒菜单
+2. control+space 唤醒搜索
+3. 双击·（tab上面那个键）唤醒记事本
+4. 选择目标，点击鼠标滚轮，唤醒小窗（翻译/json序列化/唤醒默认游览器打开URL）
 
 ```
 src/
@@ -142,9 +189,16 @@ src/
 │   ├── AIChatComponent.tsx   # AI 对话
 │   ├── TranslatorComponent.tsx # 翻译器
 │   ├── CalendarComponent.tsx # 日历
-│   ├── TodoWindow.tsx        # 待办事项窗口
-│   ├── JsonCompareComponent.tsx # JSON 对比
-│   └── ExpandWindow.tsx      # 内容展开窗口
+│   ├── JiraComponent.tsx    # JIRA 工作流助手
+│   ├── MapDrawingComponent.tsx # 地图绘制
+│   ├── NotepadComponent.tsx   # 记事本
+│   ├── QuickFileSearch.tsx    # 文件快速搜索
+│   ├── FileSearchComponent.tsx # 文件搜索详情
+│   ├── PomodoroTimerComponent.tsx # 番茄钟
+│   ├── PomodoroNotification.tsx # 番茄钟通知
+│   ├── SelectionMenu.tsx      # 选中文本快捷菜单
+│   ├── TodoWindow.tsx         # 待办事项窗口
+│   └── ExpandWindow.tsx       # 内容展开窗口
 ├── utils/               # 工具函数
 │   └── lunarUtils.ts         # 农历工具
 └── App.tsx              # 应用入口
@@ -161,7 +215,13 @@ src-tauri/
 │   ├── main.rs         # 应用入口
 │   ├── clipboard.rs     # 剪贴板相关功能
 │   ├── calendar.rs      # 日历相关功能
-│   └── window_utils.rs  # 窗口工具函数
+│   ├── json_compare.rs
+│   ├── jira_tools.rs     # JIRA 集成与Git操作
+│   ├── task_scheduler.rs  # 定时任务调度
+│   ├── file_index.rs      # 文件索引
+│   ├── file_search.rs     # 文件搜索
+│   ├── global_mouse.rs    # 全局鼠标钩子
+│   └── global_keyboard.rs # 全局键盘钩子
 ├── config/             # 配置文件
 │   └── deepseek.json   # AI 配置示例
 └── capabilities/       # 权限配置
@@ -205,27 +265,33 @@ src-tauri/
 
 ### 数据持久化
 
-应用使用以下方式实现数据持久化：
+应用使用 SQLite 数据库（通过 Tauri 资源目录管理）实现数据持久化：
 
-1. 剪贴板历史 - 存储在内存中，应用重启后丢失
-2. AI 配置 - 保存在用户应用数据目录的 [deepseek_config.json]( xsun_desktop_pet/src-tauri/src/lib.rs#L252-L252)
-3. 翻译配置 - 保存在用户应用数据目录的 youdao_config.json
-4. 日历待办事项 - 保存在用户应用数据目录的 todos.json
-5. 日历设置 - 保存在用户应用数据目录的 calendar_settings.json
+1. 剪贴板历史 - SQLite 持久化
+2. AI 配置 - SQLite 持久化（ai_config 键，AI对话与Jira助手共享）
+3. JIRA 配置 - SQLite 持久化
+4. Git 配置 - SQLite 持久化
+5. 翻译配置 - SQLite 持久化
+6. 日历待办事项 - SQLite 持久化
+7. 日历设置 - SQLite 持久化
+8. AI 对话历史 - SQLite 持久化（支持多会话）
+9. 地图绘制数据 - SQLite 持久化
+10. 番茄钟设置 - SQLite 持久化
 
 ### 托盘功能
 
 应用在系统托盘中提供快捷访问：
 
 - 左键点击：显示/隐藏桌宠
-- 右键点击：打开功能菜单
-    - 显示桌宠
-    - 剪贴板
-    - 系统信息
-    - AI 对话
-    - 有道翻译
-    - 日历 TODO
-    - 退出
+- 右键点击：打开托盘菜单
+  - 显示桌宠
+  - 剪贴板
+  - 系统信息
+  - AI 对话
+  - 有道翻译
+  - 日历 TODO
+  - 文件搜索
+  - 退出
 
 ## 开发说明
 
@@ -270,6 +336,4 @@ cargo tauri build
 
 XSUN Desktop Pet 是一个功能丰富的桌面应用程序，集成了多种实用工具。其模块化的设计使得添加新功能变得简单，而 Tauri 的跨平台特性保证了良好的兼容性。该应用展示了如何利用现代 Web 技术和系统编程语言构建高效的桌面应用。
 
-## 效果预览
-![image](https://gitee.com/sunlinglei/xsun_desktop_pet/blob/dev/public/pet/rich_cat.gif)
 
