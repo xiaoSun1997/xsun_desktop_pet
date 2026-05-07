@@ -1,8 +1,9 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { listen, UnlistenFn } from "@tauri-apps/api/event";
+import { getCurrentWindow, getAllWindows } from "@tauri-apps/api/window";
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { marked } from "marked";
+import mermaid from 'mermaid';
 import "./NotepadComponent.css";
 
 type NoteRecord = {
@@ -25,11 +26,7 @@ type TreeNode = {
     content?: string;
 };
 
-type AiMessage = {
-    role: 'user' | 'assistant';
-    content: string;
-    isStreaming?: boolean;
-};
+
 
 export default function NotepadComponent() {
     // ---- 窗口控制 ----
@@ -44,25 +41,19 @@ export default function NotepadComponent() {
 
     // ---- 编辑器 ----
     const [editorContent, setEditorContent] = useState<string>('');
-    const [isPreviewMode, setIsPreviewMode] = useState(false);
+    const [editorMode, setEditorMode] = useState<0 | 1 | 2>(1); // 0=全编辑, 1=分屏, 2=全预览
     const [isLoadingContent, setIsLoadingContent] = useState(false);
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+    const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
 
-    // ---- AI 面板 ----
-    const [isAIPanelOpen, setIsAIPanelOpen] = useState(false);
-    const [aiMessages, setAiMessages] = useState<AiMessage[]>([]);
-    const [aiInputValue, setAiInputValue] = useState('');
-    const [isAiLoading, setIsAiLoading] = useState(false);
-    const [aiSessionId, setAiSessionId] = useState<string | null>(null);
-    const streamingContentRef = useRef("");
-    const unlistenRef = useRef<UnlistenFn[]>([]);
+    // ---- Markdown 语法参考 ----
+    const [isShowMdRef, setIsShowMdRef] = useState(false);
 
     // ---- 添加菜单 ----
     const [addMenuPos, setAddMenuPos] = useState<{ x: number; y: number; parentId: string } | null>(null);
 
     const textareaRef = useRef<HTMLTextAreaElement>(null);
-    const aiMessagesEndRef = useRef<HTMLDivElement>(null);
-    const aiInputRef = useRef<HTMLTextAreaElement>(null);
+    const aiOpeningRef = useRef(false);
 
     // ========== 构建文件树 ==========
     const buildTree = useCallback((notes: NoteRecord[]): TreeNode[] => {
@@ -127,12 +118,19 @@ export default function NotepadComponent() {
         loadNotes();
     }, [loadNotes]);
 
-    // AI 消息滚动到底部
+    // ========== 初始化 Mermaid ==========
     useEffect(() => {
-        setTimeout(() => {
-            aiMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        mermaid.initialize({ startOnLoad: false, theme: 'dark' });
+    }, []);
+
+    // ========== 渲染 Mermaid 图表 ==========
+    useEffect(() => {
+        if (editorMode === 0) return;
+        const timer = setTimeout(() => {
+            mermaid.run({ querySelector: '.markdown-body pre.mermaid' }).catch(() => {});
         }, 50);
-    }, [aiMessages]);
+        return () => clearTimeout(timer);
+    }, [editorContent, editorMode]);
 
     // ========== 文件树操作 ==========
     const toggleFolder = (id: string) => {
@@ -161,7 +159,7 @@ export default function NotepadComponent() {
 
         setSelectedNoteId(note.id);
         setSelectedNoteName(note.name);
-        setIsPreviewMode(false);
+        setEditorMode(1);
         setIsLoadingContent(true);
         try {
             const content = await invoke<string>('get_note_content', { id: note.id });
@@ -176,11 +174,15 @@ export default function NotepadComponent() {
 
     const handleSaveContent = async () => {
         if (!selectedNoteId) return;
+        setSaveStatus('saving');
         try {
             await invoke('update_note_content', { id: selectedNoteId, content: editorContent });
             setHasUnsavedChanges(false);
+            setSaveStatus('saved');
+            setTimeout(() => setSaveStatus('idle'), 1500);
         } catch (error) {
             console.error('保存失败:', error);
+            setSaveStatus('idle');
         }
     };
 
@@ -205,7 +207,7 @@ export default function NotepadComponent() {
                 setSelectedNoteId(null);
                 setSelectedNoteName('');
                 setEditorContent('');
-                setIsPreviewMode(false);
+                setEditorMode(1);
             }
             await loadNotes();
         } catch (error) {
@@ -335,178 +337,72 @@ export default function NotepadComponent() {
         setIsFullscreen(!fs);
     };
 
-    // ========== AI 面板 ==========
-    const setupStreamListeners = useCallback((
-        onToken: (token: string) => void,
-        onDone: (content: string) => void,
-        onError: (error: string) => void,
-    ) => {
-        const setup = async () => {
-            const unlistenToken = await listen<{ token: string }>("chat://stream-token", (event) => {
-                onToken(event.payload.token);
-            });
-            const unlistenDone = await listen<{ content: string }>("chat://stream-done", (event) => {
-                onDone(event.payload.content);
-            });
-            const unlistenError = await listen<{ error: string }>("chat://stream-error", (event) => {
-                onError(event.payload.error);
-            });
-            unlistenRef.current = [unlistenToken, unlistenDone, unlistenError];
-        };
-        setup();
-    }, []);
-
-    const handleOpenAI = async () => {
+    // ========== 打开外部 AI 对话窗口 ==========
+    const openAIChatWindow = async () => {
         if (!selectedNoteId) return;
-
-        setIsAIPanelOpen(true);
-        setIsAiLoading(true);
-
+        if (aiOpeningRef.current) return;
+        aiOpeningRef.current = true;
+        
         try {
-            // 创建新的 AI 对话会话
-            const session = await invoke<{ id: string; title: string }>('create_chat_session');
-            setAiSessionId(session.id);
-
-            // 准备 AI 分析消息
-            const summaryPrompt = `请对以下内容进行总结：\n\n${editorContent}`;
-
-            // 添加到本地消息列表
-            const userMsg: AiMessage = { role: 'user', content: summaryPrompt };
-            setAiMessages([userMsg]);
-
-            // 添加占位 assistant 消息用于流式输出
-            const placeholderMsg: AiMessage = { role: 'assistant', content: '', isStreaming: true };
-            setAiMessages(prev => [...prev, placeholderMsg]);
-            streamingContentRef.current = "";
-
-            // 注册事件监听
-            setupStreamListeners(
-                (token) => {
-                    streamingContentRef.current += token;
-                    setAiMessages(prev => {
-                        const msgs = [...prev];
-                        const last = msgs[msgs.length - 1];
-                        if (last && last.role === 'assistant') {
-                            msgs[msgs.length - 1] = { ...last, content: streamingContentRef.current, isStreaming: true };
-                        }
-                        return msgs;
-                    });
-                },
-                (content) => {
-                    setIsAiLoading(false);
-                    setAiMessages(prev => {
-                        const msgs = [...prev];
-                        const last = msgs[msgs.length - 1];
-                        if (last && last.role === 'assistant') {
-                            msgs[msgs.length - 1] = { ...last, content, isStreaming: false };
-                        }
-                        return msgs;
-                    });
-                },
-                (error) => {
-                    setIsAiLoading(false);
-                    setAiMessages(prev => {
-                        const msgs = [...prev];
-                        const last = msgs[msgs.length - 1];
-                        if (last && last.role === 'assistant') {
-                            msgs[msgs.length - 1] = { ...last, content: `错误: ${error}`, isStreaming: false };
-                        }
-                        return msgs;
-                    });
-                },
-            );
-
-            // 发送消息给 AI
-            await invoke('send_chat_message', {
-                sessionId: session.id,
-                message: summaryPrompt,
+            const windows = await getAllWindows();
+            const existing = windows.find(w => w.label === 'ai-chat');
+            
+            if (existing) {
+                await existing.show();
+                await existing.setFocus();
+                await existing.emit('notepad://ai-summarize', {
+                    content: editorContent,
+                    title: selectedNoteName,
+                });
+                return;
+            }
+            
+            const url = import.meta.env.DEV ? 'http://localhost:1420' : 'index.html';
+            
+            const webview = new WebviewWindow('ai-chat', {
+                url,
+                title: 'AI对话助手',
+                width: 800,
+                height: 600,
+                visible: true,
+                transparent: true,
+                decorations: false,
+                resizable: true,
+                minWidth: 600,
+                minHeight: 500,
+                center: true,
+            });
+            
+            await new Promise<void>((resolve, reject) => {
+                const timeout = setTimeout(() => {
+                    reject(new Error('等待AI对话窗口创建超时'));
+                }, 5000);
+                webview.once('tauri://created', () => {
+                    clearTimeout(timeout);
+                    resolve();
+                });
+                webview.once('tauri://error', (e) => {
+                    clearTimeout(timeout);
+                    reject(new Error('创建AI对话窗口出错: ' + JSON.stringify(e)));
+                });
+            });
+            
+            await webview.show();
+            await webview.setFocus();
+            
+            // 等待窗口加载完成
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            await webview.emit('notepad://ai-summarize', {
+                content: editorContent,
+                title: selectedNoteName,
             });
         } catch (error) {
-            console.error('AI 对话失败:', error);
-            setIsAiLoading(false);
-            setAiMessages([{ role: 'assistant', content: `对话失败: ${error}`, isStreaming: false }]);
+            console.error('打开AI对话窗口失败:', error);
+        } finally {
+            aiOpeningRef.current = false;
         }
     };
-
-    const handleSendAiMessage = async () => {
-        if (!aiInputValue.trim() || isAiLoading || !aiSessionId) return;
-
-        const userMessage = aiInputValue.trim();
-        setAiInputValue('');
-        setAiMessages(prev => [...prev, { role: 'user', content: userMessage }]);
-
-        // 添加占位
-        setIsAiLoading(true);
-        setAiMessages(prev => [...prev, { role: 'assistant', content: '', isStreaming: true }]);
-        streamingContentRef.current = "";
-
-        setupStreamListeners(
-            (token) => {
-                streamingContentRef.current += token;
-                setAiMessages(prev => {
-                    const msgs = [...prev];
-                    const last = msgs[msgs.length - 1];
-                    if (last && last.role === 'assistant') {
-                        msgs[msgs.length - 1] = { ...last, content: streamingContentRef.current, isStreaming: true };
-                    }
-                    return msgs;
-                });
-            },
-            (content) => {
-                setIsAiLoading(false);
-                setAiMessages(prev => {
-                    const msgs = [...prev];
-                    const last = msgs[msgs.length - 1];
-                    if (last && last.role === 'assistant') {
-                        msgs[msgs.length - 1] = { ...last, content, isStreaming: false };
-                    }
-                    return msgs;
-                });
-            },
-            (error) => {
-                setIsAiLoading(false);
-                setAiMessages(prev => {
-                    const msgs = [...prev];
-                    const last = msgs[msgs.length - 1];
-                    if (last && last.role === 'assistant') {
-                        msgs[msgs.length - 1] = { ...last, content: `错误: ${error}`, isStreaming: false };
-                    }
-                    return msgs;
-                });
-            },
-        );
-
-        try {
-            await invoke('send_chat_message', {
-                sessionId: aiSessionId,
-                message: userMessage,
-            });
-        } catch (error) {
-            console.error('发送消息失败:', error);
-            setIsAiLoading(false);
-        }
-    };
-
-    const handleAiKeyPress = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            handleSendAiMessage();
-        }
-    };
-
-    const closeAIPanel = () => {
-        setIsAIPanelOpen(false);
-        // 清理监听器
-        unlistenRef.current.forEach(fn => fn());
-        unlistenRef.current = [];
-    };
-
-    // 清理监听器
-    useEffect(() => {
-        return () => {
-            unlistenRef.current.forEach(fn => fn());
-        };
-    }, []);
 
     // ========== 编辑器 KeyPress ==========
     const handleEditorKeyPress = (e: React.KeyboardEvent) => {
@@ -516,7 +412,151 @@ export default function NotepadComponent() {
         }
     };
 
-    // ========== Markdown 渲染 ==========
+    // ========== 提取内容中的图片用于编辑模式预览 ==========
+    const extractImages = (content: string): string[] => {
+        const urls: string[] = [];
+        const regex = /<img\s+[^>]*src="([^"]+)"[^>]*\/?>/g;
+        let match;
+        while ((match = regex.exec(content)) !== null) {
+            if (!urls.includes(match[1])) {
+                urls.push(match[1]);
+            }
+        }
+        return urls;
+    };
+    const extractedImages = extractImages(editorContent);
+
+    const markdownRefItems = [
+        {
+            title: '标题 (Headings)',
+            demo: (
+                <>
+                    <code># 一级标题</code><br />
+                    <code>## 二级标题</code><br />
+                    <code>### 三级标题</code>
+                    <span className="mdref-result">使用 # 号数量控制级别，最多 ######</span>
+                </>
+            ),
+        },
+        {
+            title: '粗体 & 斜体',
+            demo: (
+                <>
+                    <code>**粗体文字**</code> 或 <code>__粗体__</code><br />
+                    <code>*斜体文字*</code> 或 <code>_斜体_</code><br />
+                    <code>***粗斜体***</code>
+                    <span className="mdref-result">使用 * 或 _ 包裹文字</span>
+                </>
+            ),
+        },
+        {
+            title: '链接',
+            demo: (
+                <>
+                    <code>[显示文字](https://链接)</code><br />
+                    <code>[带标题](链接 "鼠标悬停提示")</code>
+                    <span className="mdref-result">方括号放文字，圆括号放 URL</span>
+                </>
+            ),
+        },
+        {
+            title: '图片',
+            demo: (
+                <>
+                    <code>![替代文字](图片URL)</code><br />
+                    <code>[![点击图片](img.jpg)](链接)</code>
+                    <span className="mdref-result">前面加 ! 号表示图片</span>
+                </>
+            ),
+        },
+        {
+            title: '无序列表',
+            demo: (
+                <>
+                    <code>- 项目一</code><br />
+                    <code>* 项目二</code><br />
+                    <code>  - 嵌套项目</code>
+                    <span className="mdref-result">使用 -、* 或 +</span>
+                </>
+            ),
+        },
+        {
+            title: '有序列表',
+            demo: (
+                <>
+                    <code>1. 第一项</code><br />
+                    <code>2. 第二项</code><br />
+                    <code>   1. 子项（缩进）</code>
+                    <span className="mdref-result">数字加点号，自动排序</span>
+                </>
+            ),
+        },
+        {
+            title: '代码',
+            demo: (
+                <>
+                    <code>\`行内代码\`</code><br />
+                    <code>\`\`\`语言</code><br />
+                    <code>代码块</code><br />
+                    <code>\`\`\`</code>
+                    <span className="mdref-result">三个反引号包裹多行代码块</span>
+                </>
+            ),
+        },
+        {
+            title: '表格',
+            demo: (
+                <>
+                    <code>| 列1 | 列2 |</code><br />
+                    <code>| --- | --- |</code><br />
+                    <code>| A | B |</code>
+                    <span className="mdref-result">对齐：:---（左）:---:（中）---:（右）</span>
+                </>
+            ),
+        },
+        {
+            title: '引用',
+            demo: (
+                <>
+                    <code>&gt; 这是一段引用</code><br />
+                    <code>&gt;&gt; 嵌套引用</code><br />
+                    <code>&gt; **引号内可放其他语法**</code>
+                    <span className="mdref-result">使用 &gt; 符号</span>
+                </>
+            ),
+        },
+        {
+            title: '分割线',
+            demo: (
+                <>
+                    <code>---</code><br />
+                    <code>***</code><br />
+                    <code>___</code>
+                    <span className="mdref-result">三个或以上的符号</span>
+                </>
+            ),
+        },
+        {
+            title: '删除线',
+            demo: (
+                <>
+                    <code>~~被删除的文字~~</code>
+                    <span className="mdref-result">两个波浪线包裹文字</span>
+                </>
+            ),
+        },
+        {
+            title: '任务列表',
+            demo: (
+                <>
+                    <code>- [ ] 待办事项</code><br />
+                    <code>- [x] 已完成</code>
+                    <span className="mdref-result">- 后跟空格和方括号</span>
+                </>
+            ),
+        },
+    ];
+
     const renderMarkdown = (content: string): string => {
         // 兼容已有数据：将绝对路径转换为 asset protocol URL
         const processed = content.replace(
@@ -536,7 +576,13 @@ export default function NotepadComponent() {
             }
         );
         try {
-            return marked(processed) as string;
+            let html = marked(processed) as string;
+            // 将 mermaid 代码块转换为 mermaid 可识别的格式
+            html = html.replace(
+                /<pre><code class="[^"]*language-mermaid[^"]*">([\s\S]*?)<\/code><\/pre>/g,
+                '<pre class="mermaid">$1</pre>'
+            );
+            return html;
         } catch {
             return processed;
         }
@@ -639,7 +685,7 @@ export default function NotepadComponent() {
                 </div>
 
                 {/* 右侧编辑器 */}
-                <div className={`notepad-editor-area ${isAIPanelOpen ? 'with-ai-panel' : ''}`}>
+                <div className={`notepad-editor-area${isShowMdRef ? ' with-mdref-panel' : ''}`}>
                     {selectedNoteId ? (
                         <div className="notepad-editor-container">
                             <div className="notepad-editor-header">
@@ -649,20 +695,35 @@ export default function NotepadComponent() {
                                 </div>
                                 <div className="notepad-editor-actions">
                                     <button
-                                        className={`notepad-editor-btn ${isPreviewMode ? 'notepad-edit-btn' : 'notepad-preview-btn'}`}
-                                        onClick={() => setIsPreviewMode(!isPreviewMode)}
-                                        title={isPreviewMode ? '编辑模式' : '预览'}
+                                        className={`notepad-editor-btn ${editorMode === 0 ? 'notepad-edit-btn' : editorMode === 2 ? 'notepad-preview-btn' : 'notepad-split-btn'}`}
+                                        onClick={() => setEditorMode(((editorMode + 1) % 3) as 0 | 1 | 2)}
+                                        title={
+                                            editorMode === 0 ? '全编辑模式' :
+                                            editorMode === 1 ? '分屏模式' : '全预览模式'
+                                        }
                                     >
-                                        <span className="btn-icon">{isPreviewMode ? '✏️' : '👁️'}</span>
-                                        <span className="btn-text">{isPreviewMode ? '编辑' : '预览'}</span>
+                                        <span className="btn-icon">
+                                            {editorMode === 0 ? '✏️' : editorMode === 1 ? '📝/👁️' : '👁️'}
+                                        </span>
+                                        <span className="btn-text">
+                                            {editorMode === 0 ? '全编辑' : editorMode === 1 ? '分屏' : '全预览'}
+                                        </span>
                                     </button>
                                     <button
-                                        className="notepad-editor-btn notepad-save-btn"
+                                        className={`notepad-mdref-btn ${isShowMdRef ? 'active' : ''}`}
+                                        onClick={() => setIsShowMdRef(!isShowMdRef)}
+                                        title={isShowMdRef ? '关闭语法参考' : 'Markdown 语法参考'}
+                                    >
+                                        📘 语法
+                                    </button>
+                                    <button
+                                        className={`notepad-editor-btn notepad-save-btn ${saveStatus === 'saved' ? 'saved' : ''}`}
                                         onClick={handleSaveContent}
                                         title="保存 (Ctrl+S)"
+                                        disabled={saveStatus === 'saving'}
                                     >
-                                        <span className="btn-icon">💾</span>
-                                        <span className="btn-text">保存</span>
+                                        <span className="btn-icon">{saveStatus === 'saved' ? '✅' : saveStatus === 'saving' ? '⏳' : '💾'}</span>
+                                        <span className="btn-text">{saveStatus === 'saved' ? '已保存' : saveStatus === 'saving' ? '保存中' : '保存'}</span>
                                     </button>
                                     <button
                                         className="notepad-editor-btn notepad-close-editor-btn"
@@ -670,7 +731,7 @@ export default function NotepadComponent() {
                                             setSelectedNoteId(null);
                                             setSelectedNoteName('');
                                             setEditorContent('');
-                                            setIsPreviewMode(false);
+                                            setEditorMode(1);
                                         }}
                                         title="关闭"
                                     >
@@ -682,24 +743,57 @@ export default function NotepadComponent() {
                             <div className="notepad-editor-body">
                                 {isLoadingContent ? (
                                     <div className="notepad-loading">加载中...</div>
-                                ) : isPreviewMode ? (
+                                ) : editorMode === 2 ? (
                                     <div
                                         className="notepad-editor-preview markdown-body"
                                         dangerouslySetInnerHTML={{ __html: renderMarkdown(editorContent) }}
                                     />
+                                ) : editorMode === 1 ? (
+                                    <div className="notepad-editor-split">
+                                        <div className="notepad-editor-split-edit">
+                                            <textarea
+                                                ref={textareaRef}
+                                                className="notepad-editor-textarea"
+                                                value={editorContent}
+                                                onChange={(e) => {
+                                                    setEditorContent(e.target.value);
+                                                    setHasUnsavedChanges(true);
+                                                }}
+                                                onKeyDown={handleEditorKeyPress}
+                                                onPaste={handlePaste}
+                                                placeholder="开始编写 Markdown 内容... (可粘贴图片)"
+                                            />
+                                        </div>
+                                        <div
+                                            className="notepad-editor-split-preview markdown-body"
+                                            dangerouslySetInnerHTML={{ __html: renderMarkdown(editorContent) }}
+                                        />
+                                    </div>
                                 ) : (
-                                    <textarea
-                                        ref={textareaRef}
-                                        className="notepad-editor-textarea"
-                                        value={editorContent}
-                                        onChange={(e) => {
-                                            setEditorContent(e.target.value);
-                                            setHasUnsavedChanges(true);
-                                        }}
-                                        onKeyDown={handleEditorKeyPress}
-                                        onPaste={handlePaste}
-                                        placeholder="开始编写 Markdown 内容... (可粘贴图片)"
-                                    />
+                                    <div className="notepad-editor-edit-wrap">
+                                        <textarea
+                                            ref={textareaRef}
+                                            className="notepad-editor-textarea"
+                                            value={editorContent}
+                                            onChange={(e) => {
+                                                setEditorContent(e.target.value);
+                                                setHasUnsavedChanges(true);
+                                            }}
+                                            onKeyDown={handleEditorKeyPress}
+                                            onPaste={handlePaste}
+                                            placeholder="开始编写 Markdown 内容... (可粘贴图片)"
+                                        />
+                                        {extractedImages.length > 0 && (
+                                            <div className="notepad-editor-images">
+                                                {extractedImages.map((src, idx) => (
+                                                    <div key={idx} className="notepad-editor-image-item">
+                                                        <img src={src} alt={`paste-image-${idx}`}
+                                                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
                                 )}
                             </div>
                         </div>
@@ -712,55 +806,20 @@ export default function NotepadComponent() {
                     )}
                 </div>
 
-                {/* AI 面板 */}
-                {isAIPanelOpen && (
-                    <div className="notepad-ai-panel-overlay">
-                        <div className="notepad-ai-panel-header">
-                            <span className="notepad-ai-panel-title">
-                                🤖 {selectedNoteName ? `${selectedNoteName} 总结` : 'AI 对话'}
-                            </span>
-                            <button className="notepad-ai-panel-close" onClick={closeAIPanel}>
-                                ✕
-                            </button>
+                {/* Markdown 语法参考面板 */}
+                {isShowMdRef && (
+                    <div className="notepad-mdref-panel">
+                        <div className="notepad-mdref-header">
+                            <span className="notepad-mdref-title">📘 Markdown 语法参考</span>
+                            <button className="notepad-mdref-close" onClick={() => setIsShowMdRef(false)}>✕</button>
                         </div>
-                        <div className="notepad-ai-messages">
-                            {aiMessages.map((msg, idx) => (
-                                <div
-                                    key={idx}
-                                    className={`notepad-ai-message ${msg.role} ${msg.isStreaming ? 'notepad-ai-streaming' : ''}`}
-                                >
-                                    <div className="message-text">{msg.content}</div>
+                        <div className="notepad-mdref-body">
+                            {markdownRefItems.map((item, idx) => (
+                                <div key={idx} className="notepad-mdref-item">
+                                    <div className="notepad-mdref-item-title">{item.title}</div>
+                                    <div className="notepad-mdref-item-demo">{item.demo}</div>
                                 </div>
                             ))}
-                            {isAiLoading && aiMessages.length === 0 && (
-                                <div className="notepad-ai-typing">
-                                    <span></span>
-                                    <span></span>
-                                    <span></span>
-                                </div>
-                            )}
-                            <div ref={aiMessagesEndRef} />
-                        </div>
-                        <div className="notepad-ai-input-area">
-                            <div className="notepad-ai-input-wrapper">
-                                <textarea
-                                    ref={aiInputRef}
-                                    className="notepad-ai-input"
-                                    value={aiInputValue}
-                                    onChange={(e) => setAiInputValue(e.target.value)}
-                                    onKeyDown={handleAiKeyPress}
-                                    placeholder="输入问题... (Enter发送, Shift+Enter换行)"
-                                    rows={1}
-                                    disabled={isAiLoading}
-                                />
-                                <button
-                                    className="notepad-ai-send-btn"
-                                    onClick={handleSendAiMessage}
-                                    disabled={!aiInputValue.trim() || isAiLoading}
-                                >
-                                    ▶
-                                </button>
-                            </div>
                         </div>
                     </div>
                 )}
@@ -769,11 +828,11 @@ export default function NotepadComponent() {
             {/* 右下角 AI 浮动按钮 */}
             {selectedNoteId && (
                 <button
-                    className={`notepad-ai-fab ${isAIPanelOpen ? 'active' : ''}`}
-                    onClick={isAIPanelOpen ? closeAIPanel : handleOpenAI}
-                    title={isAIPanelOpen ? '关闭 AI' : 'AI 总结'}
+                    className="notepad-ai-fab"
+                    onClick={openAIChatWindow}
+                    title="AI 总结"
                 >
-                    {isAIPanelOpen ? '✕' : '🤖'}
+                    <img src="/menu/ai.png" alt="AI" />
                 </button>
             )}
 

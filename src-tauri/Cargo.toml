@@ -35,6 +35,7 @@ cron = "0.12"
 tokio-cron-scheduler = { version = "0.10" }
 rusqlite = { version = "0.31", features = ["bundled"] }
 tokio-stream = "0.1"
+walkdir = "2"
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.58", features = [

@@ -234,9 +234,11 @@
 
 .message-content {
     max-width: 70%;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     gap: 4px;
+    overflow: hidden;
 }
 
 .user-message .message-content {
@@ -252,6 +254,9 @@
     font-size: 14px;
     line-height: 1.4;
     word-wrap: break-word;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    overflow: hidden;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     border: 1px solid rgba(225, 232, 237, 0.8);
 }
@@ -1328,42 +1333,47 @@
     box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15);
 }
 
-.save-btn {
+.skill-save-btn {
     background: #059669;
     box-shadow: 0 1px 4px rgba(5, 150, 105, 0.3);
 }
 
-.save-btn:hover {
+.skill-save-btn:hover {
     background: #047857;
     box-shadow: 0 3px 8px rgba(5, 150, 105, 0.4);
 }
 
-.preview-btn {
+.skill-preview-btn {
     background: #8b5cf6;
     box-shadow: 0 1px 4px rgba(139, 92, 246, 0.3);
 }
-
-.preview-btn:hover {
+.skill-preview-btn:hover {
     background: #7c3aed;
     box-shadow: 0 3px 8px rgba(139, 92, 246, 0.4);
 }
 
-.edit-btn {
+.skill-edit-btn {
     background: #3b82f6;
     box-shadow: 0 1px 4px rgba(59, 130, 246, 0.3);
 }
-
-.edit-btn:hover {
+.skill-edit-btn:hover {
     background: #2563eb;
     box-shadow: 0 3px 8px rgba(59, 130, 246, 0.4);
 }
 
-.delete-editor-btn {
+.skill-split-btn {
+    background: #8b5cf6;
+    box-shadow: 0 1px 4px rgba(139, 92, 246, 0.3);
+}
+.skill-split-btn:hover {
+    background: #7c3aed;
+}
+
+.skill-close-editor-btn {
     background: #f43f5e;
     box-shadow: 0 1px 4px rgba(244, 63, 94, 0.3);
 }
-
-.delete-editor-btn:hover {
+.skill-close-editor-btn:hover {
     background: #e11d48;
     box-shadow: 0 3px 8px rgba(244, 63, 94, 0.4);
 }
@@ -1371,20 +1381,22 @@
 .skill-editor-body {
     flex: 1;
     overflow: hidden;
+    position: relative;
+    display: flex;
 }
 
 .skill-editor-textarea {
+    flex: 1;
     width: 100%;
-    height: 100%;
     padding: 16px;
     border: none;
     outline: none;
     resize: none;
     font-size: 13px;
     line-height: 1.6;
-    font-family: 'SF Mono', 'Fira Code', 'Consolas', 'Courier New', monospace;
-    color: #1a202c;
-    background: rgba(255, 255, 255, 0.98);
+    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    color: rgba(255, 255, 255, 0.85);
+    background: #1e2034;
     tab-size: 4;
     white-space: pre;
     word-wrap: normal;
@@ -1392,33 +1404,41 @@
     box-sizing: border-box;
 }
 
-.markdown-editor .skill-editor-textarea {
-    /* Markdown编辑模式下更舒适的间距 */
-    line-height: 1.7;
-    white-space: pre-wrap;
-    word-wrap: break-word;
+.skill-editor-textarea::-webkit-scrollbar {
+    width: 4px;
+}
+.skill-editor-textarea::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
 }
 
-/* ===== Skill 编辑器预览 ===== */
+.skill-editor-textarea::-webkit-scrollbar-corner {
+    background: transparent;
+}
+
+.skill-editor-textarea::placeholder {
+    color: rgba(255, 255, 255, 0.25);
+}
+/* ===== Skill 编辑器预览 (暗色主题，与记事本一致) ===== */
 .skill-editor-preview {
+    flex: 1;
     width: 100%;
-    height: 100%;
-    padding: 20px 24px;
+    padding: 24px;
     overflow-y: auto;
-    background: rgba(255, 255, 255, 0.98);
+    background: #1e2034;
     box-sizing: border-box;
-    line-height: 1.7;
+    color: rgba(255, 255, 255, 0.85);
     font-size: 14px;
-    color: #1a202c;
+    line-height: 1.7;
 }
 
 .skill-editor-preview::-webkit-scrollbar {
-    width: 6px;
+    width: 4px;
 }
 
 .skill-editor-preview::-webkit-scrollbar-thumb {
-    background: rgba(203, 210, 217, 0.8);
-    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
 }
 
 .skill-editor-preview h1,
@@ -1429,51 +1449,54 @@
     margin-bottom: 10px;
     font-weight: 600;
     line-height: 1.3;
-    color: #1a202c;
+    color: rgba(255, 255, 255, 0.95) !important;
 }
 
-.skill-editor-preview h1 { font-size: 22px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; }
-.skill-editor-preview h2 { font-size: 18px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; }
+.skill-editor-preview h1 { font-size: 22px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 8px; }
+.skill-editor-preview h2 { font-size: 18px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 6px; }
 .skill-editor-preview h3 { font-size: 16px; }
 .skill-editor-preview h4 { font-size: 14px; }
 
 .skill-editor-preview p {
     margin: 0 0 12px 0;
+    color: rgba(255, 255, 255, 0.85) !important;
 }
 
 .skill-editor-preview ul,
 .skill-editor-preview ol {
     margin: 8px 0;
     padding-left: 24px;
+    color: rgba(255, 255, 255, 0.85) !important;
 }
 
 .skill-editor-preview li {
     margin: 4px 0;
+    color: rgba(255, 255, 255, 0.85) !important;
 }
 
 .skill-editor-preview code {
-    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
     font-size: 13px;
-    background: rgba(0, 0, 0, 0.06);
+    background: rgba(255, 255, 255, 0.08) !important;
     padding: 2px 6px;
     border-radius: 4px;
-    color: #e11d48;
+    color: #fbbf24 !important;
 }
 
 .skill-editor-preview.markdown-body pre {
     margin: 12px 0;
     padding: 14px 16px;
     padding-top: 40px;
-    background: #1e293b;
+    background: rgba(0, 0, 0, 0.3) !important;
     border-radius: 8px;
     overflow-x: auto;
     position: relative;
 }
 
 .skill-editor-preview.markdown-body pre code {
-    background: none;
+    background: none !important;
     padding: 0;
-    color: #e2e8f0;
+    color: #e2e8f0 !important;
     font-size: 13px;
     line-height: 1.6;
     white-space: pre;
@@ -1517,10 +1540,10 @@
 .skill-editor-preview blockquote {
     margin: 12px 0;
     padding: 8px 16px;
-    border-left: 4px solid #8b5cf6;
-    background: rgba(139, 92, 246, 0.06);
+    border-left: 4px solid rgba(139, 92, 246, 0.5);
+    background: rgba(139, 92, 246, 0.06) !important;
     border-radius: 0 8px 8px 0;
-    color: #4a5568;
+    color: rgba(255, 255, 255, 0.75) !important;
 }
 
 .skill-editor-preview.markdown-body table {
@@ -1528,34 +1551,36 @@
     margin: 12px 0;
     width: 100%;
     font-size: 13px;
-    border: 1px solid #cbd5e1;
+    border: 1px solid rgba(255, 255, 255, 0.15);
 }
 
 .skill-editor-preview.markdown-body th,
 .skill-editor-preview.markdown-body td {
-    border: 1px solid #cbd5e1;
+    border: 1px solid rgba(255, 255, 255, 0.15) !important;
     padding: 8px 12px;
     text-align: left;
-    color: #1a202c !important;
+    color: rgba(255, 255, 255, 0.9) !important;
+    background: rgba(255, 255, 255, 0.04) !important;
 }
 
 .skill-editor-preview.markdown-body th {
     font-weight: 600;
-    background: #f1f5f9;
+    color: rgba(255, 255, 255, 0.95) !important;
+    background: rgba(255, 255, 255, 0.08) !important;
 }
 
 .skill-editor-preview.markdown-body tr:last-child td {
-    border-bottom: 1px solid #cbd5e1;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.15);
 }
 
 .skill-editor-preview hr {
     border: none;
-    border-top: 1px solid #e2e8f0;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
     margin: 16px 0;
 }
 
 .skill-editor-preview a {
-    color: #8b5cf6;
+    color: #60a5fa !important;
     text-decoration: none;
 }
 
@@ -1564,14 +1589,20 @@
 }
 
 .skill-editor-preview img {
-    max-width: 100%;
+    display: block;
+    margin: 12px auto;
+    max-width: 80%;
     border-radius: 8px;
-    margin: 12px 0;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .skill-editor-preview strong {
     font-weight: 600;
+    color: rgba(255, 255, 255, 0.95) !important;
+}
+
+.skill-editor-preview em {
+    color: rgba(255, 255, 255, 0.85) !important;
 }
 
 .skill-editor-loading {
@@ -1579,8 +1610,311 @@
     align-items: center;
     justify-content: center;
     height: 100%;
-    color: #657786;
+    color: rgba(255, 255, 255, 0.4);
     font-size: 14px;
+}
+
+/* ===== Skill 分屏模式 ===== */
+.skill-editor-split {
+    display: flex;
+    flex-direction: row;
+    flex: 1;
+    overflow: hidden;
+}
+
+.skill-editor-split-edit {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-right: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.skill-editor-split-edit .skill-editor-textarea {
+    flex: 1;
+    min-height: 100px;
+}
+
+.skill-editor-split-preview {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 20px;
+    background: #1e2034;
+    box-sizing: border-box;
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 14px;
+    line-height: 1.7;
+}
+
+.skill-editor-split-preview::-webkit-scrollbar {
+    width: 4px;
+}
+
+.skill-editor-split-preview::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+}
+
+.skill-editor-split-preview::-webkit-scrollbar-corner {
+    background: transparent;
+}
+
+.skill-editor-split-preview.markdown-body h1,
+.skill-editor-split-preview.markdown-body h2,
+.skill-editor-split-preview.markdown-body h3,
+.skill-editor-split-preview.markdown-body h4 {
+    color: rgba(255, 255, 255, 0.95) !important;
+    margin: 16px 0 8px;
+    font-weight: 600;
+}
+
+.skill-editor-split-preview.markdown-body h1 { font-size: 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 4px; }
+.skill-editor-split-preview.markdown-body h2 { font-size: 17px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); padding-bottom: 3px; }
+.skill-editor-split-preview.markdown-body h3 { font-size: 15px; }
+
+.skill-editor-split-preview.markdown-body p {
+    margin: 8px 0;
+    color: rgba(255, 255, 255, 0.85) !important;
+}
+
+.skill-editor-split-preview.markdown-body code {
+    background: rgba(255, 255, 255, 0.08) !important;
+    border-radius: 3px;
+    padding: 2px 6px;
+    font-size: 13px;
+    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    color: #fbbf24 !important;
+}
+
+.skill-editor-split-preview.markdown-body pre {
+    background: rgba(0, 0, 0, 0.3) !important;
+    border-radius: 6px;
+    padding: 12px;
+    overflow-x: auto;
+}
+
+.skill-editor-split-preview.markdown-body pre code {
+    background: none !important;
+    padding: 0;
+    color: #e2e8f0 !important;
+}
+
+.skill-editor-split-preview.markdown-body blockquote {
+    border-left: 3px solid rgba(59, 130, 246, 0.5);
+    padding-left: 12px;
+    margin: 8px 0;
+    color: rgba(255, 255, 255, 0.75) !important;
+    background: rgba(59, 130, 246, 0.06) !important;
+}
+
+.skill-editor-split-preview.markdown-body table {
+    border-collapse: collapse;
+    margin: 8px 0;
+    width: 100%;
+    font-size: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.skill-editor-split-preview.markdown-body th,
+.skill-editor-split-preview.markdown-body td {
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    padding: 6px 10px;
+    text-align: left;
+    color: rgba(255, 255, 255, 0.9) !important;
+    background: rgba(255, 255, 255, 0.04) !important;
+}
+
+.skill-editor-split-preview.markdown-body th {
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.95) !important;
+    background: rgba(255, 255, 255, 0.08) !important;
+}
+
+.skill-editor-split-preview.markdown-body ul,
+.skill-editor-split-preview.markdown-body ol {
+    padding-left: 20px;
+    margin: 8px 0;
+    color: rgba(255, 255, 255, 0.85) !important;
+}
+
+.skill-editor-split-preview.markdown-body li {
+    margin: 4px 0;
+    color: rgba(255, 255, 255, 0.85) !important;
+}
+
+.skill-editor-split-preview.markdown-body a {
+    color: #60a5fa !important;
+    text-decoration: none;
+}
+
+.skill-editor-split-preview.markdown-body img {
+    max-width: 100%;
+    border-radius: 6px;
+    margin: 8px 0;
+}
+
+.skill-editor-split-preview.markdown-body strong {
+    color: rgba(255, 255, 255, 0.95) !important;
+}
+
+.skill-editor-split-preview.markdown-body em {
+    color: rgba(255, 255, 255, 0.85) !important;
+}
+
+/* ===== Markdown 语法参考按钮 ===== */
+.skill-mdref-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 10px;
+    border: 1px solid rgba(251, 191, 36, 0.4);
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    height: 28px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: inherit;
+    white-space: nowrap;
+    background: rgba(251, 191, 36, 0.1);
+    color: #fbbf24;
+}
+
+.skill-mdref-btn:hover {
+    background: rgba(251, 191, 36, 0.2);
+    border-color: rgba(251, 191, 36, 0.6);
+    transform: translateY(-1px);
+}
+
+.skill-mdref-btn.active {
+    background: rgba(251, 191, 36, 0.2);
+    border-color: #fbbf24;
+}
+
+/* ===== Markdown 语法参考面板 ===== */
+.skill-editor-body.with-mdref-panel {
+    position: relative;
+}
+
+.skill-mdref-panel {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 320px;
+    background: rgba(26, 28, 46, 0.98);
+    border-left: 1px solid rgba(255, 255, 255, 0.08);
+    display: flex;
+    flex-direction: column;
+    animation: slideInRight 0.25s ease;
+    z-index: 10;
+    box-shadow: -4px 0 20px rgba(0, 0, 0, 0.3);
+}
+
+@keyframes slideInRight {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+
+.skill-mdref-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    flex-shrink: 0;
+}
+
+.skill-mdref-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.85);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.skill-mdref-close {
+    width: 24px;
+    height: 24px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+}
+
+.skill-mdref-close:hover {
+    background: rgba(239, 68, 68, 0.2);
+    color: #ef4444;
+}
+
+.skill-mdref-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 16px;
+}
+
+.skill-mdref-body::-webkit-scrollbar {
+    width: 4px;
+}
+
+.skill-mdref-body::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+}
+
+.skill-mdref-item {
+    margin-bottom: 12px;
+    padding: 10px 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 6px;
+    border-left: 3px solid rgba(251, 191, 36, 0.5);
+}
+
+.skill-mdref-item-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: #fbbf24;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.skill-mdref-item-demo {
+    font-size: 12px;
+    line-height: 1.6;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.skill-mdref-item-demo code {
+    font-size: 11px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 3px;
+    padding: 1px 5px;
+    color: #a5b4fc;
+    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+}
+
+.skill-mdref-item-demo .mdref-result {
+    display: block;
+    margin-top: 4px;
+    padding: 4px 8px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.6);
+    font-style: italic;
+}
+
+.skill-mdref-item-demo .mdref-result::before {
+    content: "→ ";
+    color: #fbbf24;
 }
 
 /* ===== Skill 空状态 ===== */
@@ -1713,6 +2047,9 @@
     line-height: 1.7;
     color: inherit;
     word-wrap: break-word;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    overflow: hidden;
 }
 
 .markdown-body p {
@@ -1761,6 +2098,7 @@
     background: rgba(0, 0, 0, 0.06);
     border-radius: 8px;
     overflow-x: auto;
+    max-width: 100%;
 }
 
 .assistant-message .markdown-body pre {
@@ -1792,6 +2130,9 @@
     margin: 8px 0;
     width: 100%;
     font-size: 12px;
+    display: block;
+    overflow-x: auto;
+    max-width: 100%;
 }
 
 .markdown-body th, .markdown-body td {
@@ -1802,11 +2143,24 @@
 
 .assistant-message .markdown-body th, .assistant-message .markdown-body td {
     border-color: rgba(0, 0, 0, 0.15);
+    color: #14171a;
 }
 
 .markdown-body th {
     font-weight: 600;
-    background: rgba(0, 0, 0, 0.03);
+    background: rgba(0, 0, 0, 0.06);
+}
+
+.markdown-body td {
+    background: rgba(255, 255, 255, 0.6);
+}
+
+.assistant-message .markdown-body th {
+    background: rgba(0, 0, 0, 0.08);
+}
+
+.assistant-message .markdown-body td {
+    background: rgba(255, 255, 255, 0.7);
 }
 
 .markdown-body hr {
@@ -1834,8 +2188,8 @@
     font-weight: 600;
 }
 
-/* 流式消息底部光标动画 */
-.message.streaming .message-content::after {
+/* 流式消息底部光标动画 - 显示在气泡内部 */
+.message.streaming .message-text::after {
     content: '▊';
     display: inline-block;
     animation: cursorBlink 0.8s step-end infinite;

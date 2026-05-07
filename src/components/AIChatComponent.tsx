@@ -72,6 +72,9 @@ export default function AIChatComponent() {
     const [editingSessionTitle, setEditingSessionTitle] = useState('');
     const streamingContent = useRef("");
     const unlistenRef = useRef<UnlistenFn[]>([]);
+    const notepadUnlistenRef = useRef<UnlistenFn | null>(null);
+    const isProcessingSummaryRef = useRef(false);
+    const lastSummaryRequestRef = useRef<{ content: string; title: string; time: number } | null>(null);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -85,9 +88,10 @@ export default function AIChatComponent() {
     const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
     const [selectedFileName, setSelectedFileName] = useState<string>('');
     const [editorContent, setEditorContent] = useState<string>('');
+    const [editorMode, setEditorMode] = useState<0 | 1 | 2>(1); // 0=全编辑, 1=分屏, 2=全预览
     const [isFileLoading, setIsFileLoading] = useState(false);
     const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
-    const [isPreviewMode, setIsPreviewMode] = useState(false);
+    const [isShowMdRef, setIsShowMdRef] = useState(false); // Markdown 语法参考
     const [addMenuPos, setAddMenuPos] = useState<{x: number; y: number; folderPath: string} | null>(null);
     const previewRef = useRef<HTMLDivElement>(null);
 
@@ -96,8 +100,31 @@ export default function AIChatComponent() {
         checkConfig();
         loadSessions();
 
+        // 监听来自记事本的总结请求
+        const setupNotepadListener = async () => {
+            // 先清理之前的监听器，防止 Strict Mode 下重复注册
+            if (notepadUnlistenRef.current) {
+                notepadUnlistenRef.current();
+                notepadUnlistenRef.current = null;
+            }
+            try {
+                const unlisten = await listen<{ content: string; title: string }>('notepad://ai-summarize', async (event) => {
+                    const { content, title } = event.payload;
+                    await sendSummaryRequest(content, title);
+                });
+                notepadUnlistenRef.current = unlisten;
+            } catch (error) {
+                console.error('设置记事本监听失败:', error);
+            }
+        };
+        setupNotepadListener();
+
         // 清理监听器
         return () => {
+            if (notepadUnlistenRef.current) {
+                notepadUnlistenRef.current();
+                notepadUnlistenRef.current = null;
+            }
             unlistenRef.current.forEach(fn => fn());
         };
     }, []);
@@ -363,6 +390,107 @@ export default function AIChatComponent() {
         }
     };
 
+    // ===== 处理来自记事本的总结请求 =====
+    const sendSummaryRequest = async (content: string, title: string) => {
+        // 防止并发重复创建会话
+        if (isProcessingSummaryRef.current) return;
+
+        // 去重：相同内容+标题在 5 秒内不重复处理
+        const now = Date.now();
+        const lastReq = lastSummaryRequestRef.current;
+        if (lastReq && lastReq.content === content && lastReq.title === title && (now - lastReq.time) < 5000) {
+            return;
+        }
+        lastSummaryRequestRef.current = { content, title, time: now };
+
+        isProcessingSummaryRef.current = true;
+        try {
+            // 创建新会话
+            const session = await invoke<Session>('create_chat_session');
+            await invoke('update_chat_session_title', { sessionId: session.id, title: `${title} 总结` });
+
+            setSessions(prev => [session, ...prev]);
+            setCurrentSessionId(session.id);
+
+            // 准备消息
+            const userMessage: Message = {
+                role: 'user',
+                content: `${content}\n\n帮我总结一下上述内容`,
+                timestamp: Date.now(),
+            };
+            const assistantMessage: Message = {
+                role: 'assistant',
+                content: '',
+                timestamp: Date.now(),
+                isStreaming: true,
+            };
+
+            setMessages([userMessage, assistantMessage]);
+            streamingContent.current = '';
+            setIsLoading(true);
+
+            let streamComplete = false;
+            const tokenHandler = (token: string) => {
+                streamingContent.current += token;
+                setMessages(prev => {
+                    const newMsgs = [...prev];
+                    const lastMsg = newMsgs[newMsgs.length - 1];
+                    if (lastMsg && lastMsg.role === 'assistant' && lastMsg.isStreaming) {
+                        newMsgs[newMsgs.length - 1] = { ...lastMsg, content: streamingContent.current };
+                    }
+                    return newMsgs;
+                });
+            };
+            const doneHandler = (_content: string) => {
+                streamComplete = true;
+                setMessages(prev => {
+                    const newMsgs = [...prev];
+                    const lastMsg = newMsgs[newMsgs.length - 1];
+                    if (lastMsg && lastMsg.role === 'assistant' && lastMsg.isStreaming) {
+                        newMsgs[newMsgs.length - 1] = { ...lastMsg, isStreaming: false, timestamp: Date.now() };
+                    }
+                    return newMsgs;
+                });
+                setIsLoading(false);
+                loadSessions();
+            };
+            const errorHandler = (error: string) => {
+                if (!streamComplete) {
+                    setMessages(prev => {
+                        const newMsgs = [...prev];
+                        const lastMsg = newMsgs[newMsgs.length - 1];
+                        if (lastMsg && lastMsg.role === 'assistant' && lastMsg.isStreaming) {
+                            newMsgs[newMsgs.length - 1] = {
+                                role: 'assistant',
+                                content: `抱歉，发生了错误：${error}`,
+                                timestamp: Date.now(),
+                                isStreaming: false,
+                            };
+                        }
+                        return newMsgs;
+                    });
+                }
+                setIsLoading(false);
+            };
+
+            // 清理旧监听器
+            unlistenRef.current.forEach(fn => fn());
+            unlistenRef.current = [];
+
+            await setupStreamListeners(tokenHandler, doneHandler, errorHandler);
+
+            await invoke('stream_chat_message', {
+                messages: [{ role: 'user', content: userMessage.content }],
+                sessionId: session.id,
+            });
+        } catch (error) {
+            console.error('处理记事本总结请求失败:', error);
+            setIsLoading(false);
+        } finally {
+            isProcessingSummaryRef.current = false;
+        }
+    };
+
     const handleKeyPress = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
@@ -520,9 +648,120 @@ export default function AIChatComponent() {
         }
     };
 
-    const handleTogglePreview = () => {
-        setIsPreviewMode(prev => !prev);
+    const handleToggleEditorMode = () => {
+        setEditorMode(((editorMode + 1) % 3) as 0 | 1 | 2);
     };
+
+    // ========== Markdown 语法参考数据 ==========
+    const markdownRefItems = [
+        {
+            title: '标题 (Headings)',
+            demo: (
+                <>
+                    <code># 一级标题</code><br />
+                    <code>## 二级标题</code><br />
+                    <code>### 三级标题</code>
+                    <span className="mdref-result">使用 # 号数量控制级别，最多 ######</span>
+                </>
+            ),
+        },
+        {
+            title: '粗体 & 斜体',
+            demo: (
+                <>
+                    <code>**粗体文字**</code> 或 <code>__粗体__</code><br />
+                    <code>*斜体文字*</code> 或 <code>_斜体_</code><br />
+                    <code>***粗斜体***</code>
+                    <span className="mdref-result">使用 * 或 _ 包裹文字</span>
+                </>
+            ),
+        },
+        {
+            title: '链接',
+            demo: (
+                <>
+                    <code>[显示文字](https://链接)</code><br />
+                    <code>[带标题](链接 "鼠标悬停提示")</code>
+                    <span className="mdref-result">方括号放文字，圆括号放 URL</span>
+                </>
+            ),
+        },
+        {
+            title: '图片',
+            demo: (
+                <>
+                    <code>![替代文字](图片URL)</code><br />
+                    <code>[![点击图片](img.jpg)](链接)</code>
+                    <span className="mdref-result">前面加 ! 号表示图片</span>
+                </>
+            ),
+        },
+        {
+            title: '无序列表',
+            demo: (
+                <>
+                    <code>- 项目一</code><br />
+                    <code>* 项目二</code><br />
+                    <code>  - 嵌套项目</code>
+                    <span className="mdref-result">使用 -、* 或 +</span>
+                </>
+            ),
+        },
+        {
+            title: '有序列表',
+            demo: (
+                <>
+                    <code>1. 第一项</code><br />
+                    <code>2. 第二项</code><br />
+                    <code>   1. 子项（缩进）</code>
+                    <span className="mdref-result">数字加点号，自动排序</span>
+                </>
+            ),
+        },
+        {
+            title: '代码',
+            demo: (
+                <>
+                    <code>`行内代码`</code><br />
+                    <code>```语言</code><br />
+                    <code>代码块</code><br />
+                    <code>```</code>
+                    <span className="mdref-result">三个反引号包裹多行代码块</span>
+                </>
+            ),
+        },
+        {
+            title: '表格',
+            demo: (
+                <>
+                    <code>| 列1 | 列2 |</code><br />
+                    <code>| --- | --- |</code><br />
+                    <code>| A | B |</code>
+                    <span className="mdref-result">对齐：:---（左）:---:（中）---:（右）</span>
+                </>
+            ),
+        },
+        {
+            title: '引用',
+            demo: (
+                <>
+                    <code>&gt; 这是一段引用</code><br />
+                    <code>&gt;&gt; 嵌套引用</code><br />
+                    <code>&gt; **引号内可放其他语法**</code>
+                    <span className="mdref-result">使用 &gt; 符号</span>
+                </>
+            ),
+        },
+        {
+            title: '分割线',
+            demo: (
+                <>
+                    <code>---</code> 或 <code>***</code> 或 <code>___</code>
+                    <span className="mdref-result">三个或更多星号/短横线/下划线</span>
+                </>
+            ),
+        },
+    ];
 
     const handleUploadFolder = async () => {
         try {
@@ -608,17 +847,17 @@ export default function AIChatComponent() {
         if (activeTab === 'skill') {
             loadSkillTree();
         }
-        setIsPreviewMode(false);
+        setEditorMode(1);
     }, [activeTab]);
 
     // 切换文件时重置预览状态
     useEffect(() => {
-        setIsPreviewMode(false);
+        setEditorMode(1);
     }, [selectedFilePath]);
 
     // Markdown预览代码块添加复制按钮
     useEffect(() => {
-        if (!isPreviewMode || !previewRef.current) return;
+        if (editorMode === 0 || !previewRef.current) return;
         const preElements = previewRef.current.querySelectorAll('pre');
         preElements.forEach((pre) => {
             if (pre.querySelector('.copy-code-btn')) return;
@@ -646,7 +885,7 @@ export default function AIChatComponent() {
             });
             pre.appendChild(btn);
         });
-    }, [isPreviewMode, editorContent]);
+    }, [editorMode, editorContent]);
 
     const formatTime = (timestamp: number): string => {
         return new Date(timestamp).toLocaleTimeString('zh-CN', {
@@ -985,9 +1224,7 @@ export default function AIChatComponent() {
                                         <div
                                             className="message-text markdown-body"
                                             dangerouslySetInnerHTML={{
-                                                __html: message.role === 'assistant'
-                                                    ? renderMarkdown(message.content)
-                                                    : escapeHtml(message.content)
+                                                __html: renderMarkdown(message.content)
                                             }}
                                         />
                                         <div className="message-time">{formatTime(message.timestamp)}</div>
@@ -1067,36 +1304,99 @@ export default function AIChatComponent() {
                                         </div>
                                         <div className="skill-editor-actions">
                                             {getEditorMode(selectedFileName) === 'markdown' && (
-                                                <button
-                                                    className={`skill-editor-btn ${isPreviewMode ? 'edit-btn' : 'preview-btn'}`}
-                                                    onClick={handleTogglePreview}
-                                                    title={isPreviewMode ? '编辑模式' : '预览'}
-                                                >
-                                                    <span className="btn-text">{isPreviewMode ? '编辑' : '预览'}</span>
-                                                </button>
+                                                <>
+                                                    <button
+                                                        className={`skill-editor-btn ${
+                                                            editorMode === 0 ? 'skill-edit-btn' :
+                                                            editorMode === 2 ? 'skill-preview-btn' : 'skill-split-btn'
+                                                        }`}
+                                                        onClick={handleToggleEditorMode}
+                                                        title={
+                                                            editorMode === 0 ? '全编辑模式' :
+                                                            editorMode === 1 ? '分屏模式' : '全预览模式'
+                                                        }
+                                                    >
+                                                        <span className="btn-text">
+                                                            {editorMode === 0 ? '全编辑' : editorMode === 1 ? '分屏' : '全预览'}
+                                                        </span>
+                                                    </button>
+                                                    <button
+                                                        className={`skill-mdref-btn ${isShowMdRef ? 'active' : ''}`}
+                                                        onClick={() => setIsShowMdRef(!isShowMdRef)}
+                                                        title={isShowMdRef ? '关闭语法参考' : 'Markdown 语法参考'}
+                                                    >
+                                                        📘 语法
+                                                    </button>
+                                                </>
                                             )}
-                                            <button className="skill-editor-btn save-btn" onClick={handleSaveSkillFile} title="保存文件">
+                                            <button className="skill-editor-btn skill-save-btn" onClick={handleSaveSkillFile} title="保存文件">
                                                 <span className="btn-text">保存</span>
                                             </button>
-                                            <button className="skill-editor-btn delete-editor-btn" onClick={() => {
+                                            <button className="skill-editor-btn skill-close-editor-btn" onClick={() => {
                                                 setSelectedFilePath(null);
                                                 setSelectedFileName('');
                                                 setEditorContent('');
-                                                setIsPreviewMode(false);
+                                                setEditorMode(1);
+                                                setIsShowMdRef(false);
                                             }} title="关闭编辑器">
-                                                <span className="btn-text">删除</span>
+                                                <span className="btn-text">关闭</span>
                                             </button>
                                         </div>
                                     </div>
-                                    <div className={`skill-editor-body ${getEditorMode(selectedFileName)}-editor`}>
+                                    <div className={`skill-editor-body${isShowMdRef ? ' with-mdref-panel' : ''}`}>
                                         {isFileLoading ? (
                                             <div className="skill-editor-loading">加载中...</div>
-                                        ) : isPreviewMode && getEditorMode(selectedFileName) === 'markdown' ? (
-                                            <div
-                                                ref={previewRef}
-                                                className="skill-editor-preview markdown-body"
-                                                dangerouslySetInnerHTML={{ __html: renderMarkdown(editorContent) }}
-                                            />
+                                        ) : getEditorMode(selectedFileName) === 'markdown' ? (
+                                            <>
+                                                {editorMode === 2 ? (
+                                                    <div
+                                                        ref={previewRef}
+                                                        className="skill-editor-preview markdown-body"
+                                                        dangerouslySetInnerHTML={{ __html: renderMarkdown(editorContent) }}
+                                                    />
+                                                ) : editorMode === 1 ? (
+                                                    <div className="skill-editor-split">
+                                                        <div className="skill-editor-split-edit">
+                                                            <textarea
+                                                                className="skill-editor-textarea"
+                                                                value={editorContent}
+                                                                onChange={(e) => setEditorContent(e.target.value)}
+                                                                spellCheck={false}
+                                                                placeholder="开始编写 Markdown 内容..."
+                                                            />
+                                                        </div>
+                                                        <div
+                                                            className="skill-editor-split-preview markdown-body"
+                                                            dangerouslySetInnerHTML={{ __html: renderMarkdown(editorContent) }}
+                                                        />
+                                                    </div>
+                                                ) : (
+                                                    <textarea
+                                                        className="skill-editor-textarea"
+                                                        value={editorContent}
+                                                        onChange={(e) => setEditorContent(e.target.value)}
+                                                        spellCheck={false}
+                                                        placeholder="开始编写 Markdown 内容..."
+                                                    />
+                                                )}
+                                                {/* Markdown 语法参考面板 */}
+                                                {isShowMdRef && (
+                                                    <div className="skill-mdref-panel">
+                                                        <div className="skill-mdref-header">
+                                                            <span className="skill-mdref-title">📘 Markdown 语法参考</span>
+                                                            <button className="skill-mdref-close" onClick={() => setIsShowMdRef(false)}>✕</button>
+                                                        </div>
+                                                        <div className="skill-mdref-body">
+                                                            {markdownRefItems.map((item, idx) => (
+                                                                <div key={idx} className="skill-mdref-item">
+                                                                    <div className="skill-mdref-item-title">{item.title}</div>
+                                                                    <div className="skill-mdref-item-demo">{item.demo}</div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </>
                                         ) : (
                                             <textarea
                                                 className="skill-editor-textarea"
@@ -1227,9 +1527,4 @@ export default function AIChatComponent() {
     );
 }
 
-// HTML转义工具函数
-function escapeHtml(text: string): string {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
+

@@ -362,7 +362,7 @@
 
 .canvas-area {
     flex: 1; display: flex; align-items: center; justify-content: center;
-    overflow: hidden; padding: 12px;
+    overflow: hidden; padding: 8px;
 }
 
 .canvas-empty-hint { text-align: center; color: #bbb; }

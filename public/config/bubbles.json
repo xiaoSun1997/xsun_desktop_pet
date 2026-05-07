@@ -45,6 +45,16 @@
     "icon": "/menu/map.png"
   },
   {
+    "label": "记事本",
+    "action": "notepad",
+    "icon": "/menu/notebook.png"
+  },
+  {
+    "label": "文件搜索",
+    "action": "file-search",
+    "icon": "/menu/search.png"
+  },
+  {
     "label": "关闭桌宠",
     "action": "close-pet",
     "icon": "/menu/close_512.png"

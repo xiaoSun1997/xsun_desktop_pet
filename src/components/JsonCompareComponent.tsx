@@ -2,6 +2,32 @@ import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
+import CodeMirror from "@uiw/react-codemirror";
+import { json } from "@codemirror/lang-json";
+import {
+    EditorView,
+    lineNumbers,
+    highlightActiveLine,
+    keymap,
+    Decoration,
+} from "@codemirror/view";
+import {
+    bracketMatching,
+    foldGutter,
+    foldKeymap,
+    syntaxHighlighting,
+    HighlightStyle,
+} from "@codemirror/language";
+import { tags } from "@lezer/highlight";
+import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
+import {
+    search,
+    openSearchPanel,
+    searchKeymap,
+} from "@codemirror/search";
+import { StateEffect, StateField } from "@codemirror/state";
+
+import type { ReactCodeMirrorRef } from "@uiw/react-codemirror";
 import "./JsonCompareComponent.css";
 
 // ===== JSON 对比结果类型 =====
@@ -20,25 +46,17 @@ export default function JsonCompareComponent() {
     const [errorLines, setErrorLines] = useState<number[]>([]);
     const [formattedInfo, setFormattedInfo] = useState("");
 
-    const [showSearch, setShowSearch] = useState(false);
-    const [searchQuery, setSearchQuery] = useState("");
-    const [searchMatches, setSearchMatches] = useState<number[]>([]);
-    const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
-    const [showReplace, setShowReplace] = useState(false);
-    const [replaceQuery, setReplaceQuery] = useState("");
 
-    // ===== JSON 对比模式状态 =====
     const [compareMode, setCompareMode] = useState(false);
     const [leftText, setLeftText] = useState("");
     const [rightText, setRightText] = useState("");
     const [diffResult, setDiffResult] = useState<DiffEntry[] | null>(null);
     const [diffSummary, setDiffSummary] = useState<string>("");
 
-    const textareaRef = useRef<HTMLTextAreaElement>(null);
-    const highlightRef = useRef<HTMLPreElement>(null);
-    const searchInputRef = useRef<HTMLInputElement>(null);
-    const leftTextareaRef = useRef<HTMLTextAreaElement>(null);
-    const rightTextareaRef = useRef<HTMLTextAreaElement>(null);
+    const codemirrorRef = useRef<ReactCodeMirrorRef>(null);
+    const leftCmRef = useRef<ReactCodeMirrorRef>(null);
+    const rightCmRef = useRef<ReactCodeMirrorRef>(null);
+    const [isFullscreen, setIsFullscreen] = useState(false);
 
     // 窗口初始化：自动注入选中文本
     useEffect(() => {
@@ -69,91 +87,80 @@ export default function JsonCompareComponent() {
         }
     }, [text]);
 
-    // 同步 textarea 滚动到 pre 高亮层
-    const handleScroll = () => {
-        if (textareaRef.current && highlightRef.current) {
-            highlightRef.current.scrollTop = textareaRef.current.scrollTop;
-            highlightRef.current.scrollLeft = textareaRef.current.scrollLeft;
-        }
-    };
-
-    // HTML 转义
-    const escapeHtml = (str: string): string => {
-        return str
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/"/g, "&quot;")
-            .replace(/'/g, "&#039;");
-    };
-
-    // ===== 渲染高亮层 HTML =====
-    const highlightedHtml = useMemo(() => {
-        if (!text) return '<div class="hl-line">&nbsp;</div>';
-
-        const lines = text.split("\n");
-        const hasSearch = searchQuery.length > 0;
-
-        // 预计算搜索匹配位置
-        const matchPositions: { start: number; end: number; isCurrent: boolean }[] = [];
-        if (hasSearch) {
-            let idx = 0;
-            let matchIdx = 0;
-            while ((idx = text.indexOf(searchQuery, idx)) !== -1) {
-                matchPositions.push({
-                    start: idx,
-                    end: idx + searchQuery.length,
-                    isCurrent: matchIdx === currentMatchIndex,
-                });
-                idx += searchQuery.length;
-                matchIdx++;
-            }
-        }
-
-        const fragments: string[] = [];
-        let globalPos = 0;
-
-        for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
-            const line = lines[lineIdx];
-            const isError = errorLines.includes(lineIdx);
-            const lineStart = globalPos;
-            const lineEnd = lineStart + line.length;
-
-            // 找出这一行内的匹配
-            const lineMatches = matchPositions.filter(
-                m => m.start >= lineStart && m.start < lineEnd
-            ).map(m => ({
-                localStart: m.start - lineStart,
-                localEnd: m.end - lineStart,
-                isCurrent: m.isCurrent,
-            }));
-
-            // 构建行 HTML
-            let lineHtml = isError
-                ? '<div class="hl-line error">'
-                : '<div class="hl-line">';
-
-            if (lineMatches.length === 0) {
-                lineHtml += escapeHtml(line) || '&nbsp;';
-            } else {
-                lineMatches.sort((a, b) => a.localStart - b.localStart);
-                let lastPos = 0;
-                for (const lm of lineMatches) {
-                    lineHtml += escapeHtml(line.substring(lastPos, lm.localStart));
-                    const cls = lm.isCurrent ? 'hl-match current' : 'hl-match';
-                    lineHtml += `<mark class="${cls}">${escapeHtml(line.substring(lm.localStart, lm.localEnd))}</mark>`;
-                    lastPos = lm.localEnd;
+    // ===== CodeMirror 扩展配置 =====
+    // 错误行高亮 effect
+    const setErrorLinesEffect = StateEffect.define<number[]>();
+    const errorLineField = StateField.define({
+        create() { return Decoration.none; },
+        update(decos, tr) {
+            for (const e of tr.effects) {
+                if (e.is(setErrorLinesEffect)) {
+                    const lines = e.value;
+                    if (lines.length === 0) return Decoration.none;
+                    const builder: any[] = [];
+                    for (const lineNum of lines) {
+                        const lineNum1 = Math.min(lineNum + 1, tr.state.doc.lines);
+                        const line = tr.state.doc.line(lineNum1);
+                        builder.push(Decoration.line({ class: 'cm-error-line' }).range(line.from));
+                    }
+                    return Decoration.set(builder);
                 }
-                lineHtml += escapeHtml(line.substring(lastPos));
             }
+            return decos;
+        },
+        provide: f => EditorView.decorations.from(f),
+    });
 
-            lineHtml += '</div>';
-            fragments.push(lineHtml);
-            globalPos += line.length + 1;
+    const editorExtensions = useMemo(() => [
+        json(),
+        syntaxHighlighting(HighlightStyle.define([
+            { tag: tags.propertyName, color: '#881391', fontWeight: 'bold' },
+            { tag: tags.string, color: '#0B7500' },
+            { tag: tags.number, color: '#1A1AA6', fontWeight: '500' },
+            { tag: tags.bool, color: '#BF3A38', fontWeight: '600' },
+            { tag: tags.null, color: '#808080', fontStyle: 'italic' },
+            { tag: tags.separator, color: '#718096' },
+            { tag: tags.bracket, fontWeight: 'bold' },
+        ])),
+        foldGutter(),
+        bracketMatching(),
+        lineNumbers(),
+        highlightActiveLine(),
+        history(),
+        keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, ...foldKeymap]),
+        search({ top: true }),
+        EditorView.lineWrapping,
+        errorLineField,
+    ], []);
+
+    // 对比模式 CodeMirror 扩展（无错误行高亮）
+    const compareExtensions = useMemo(() => [
+        json(),
+        syntaxHighlighting(HighlightStyle.define([
+            { tag: tags.propertyName, color: '#881391', fontWeight: 'bold' },
+            { tag: tags.string, color: '#0B7500' },
+            { tag: tags.number, color: '#1A1AA6', fontWeight: '500' },
+            { tag: tags.bool, color: '#BF3A38', fontWeight: '600' },
+            { tag: tags.null, color: '#808080', fontStyle: 'italic' },
+            { tag: tags.separator, color: '#718096' },
+            { tag: tags.bracket, fontWeight: 'bold' },
+        ])),
+        foldGutter(),
+        bracketMatching(),
+        lineNumbers(),
+        highlightActiveLine(),
+        history(),
+        keymap.of([...defaultKeymap, ...historyKeymap, ...foldKeymap]),
+        EditorView.lineWrapping,
+    ], []);
+
+    // 同步错误行到 CodeMirror
+    useEffect(() => {
+        const view = codemirrorRef.current?.view;
+        if (view) {
+            view.dispatch({ effects: setErrorLinesEffect.of(errorLines) });
         }
-
-        return fragments.join('\n');
-    }, [text, searchQuery, currentMatchIndex, errorLines]);
+    }, [errorLines]);
 
     // ===== JSON 工具函数：递归排序 key =====
     const sortJsonKeys = (obj: any): any => {
@@ -273,6 +280,17 @@ export default function JsonCompareComponent() {
         }
     };
 
+    const handleToggleFullscreen = async () => {
+        try {
+            const appWindow = getCurrentWindow();
+            const fs = await appWindow.isFullscreen();
+            await appWindow.setFullscreen(!fs);
+            setIsFullscreen(!fs);
+        } catch (error) {
+            console.error("切换全屏失败:", error);
+        }
+    };
+
     // ===== 格式化（完整 + 部分） =====
     const handleFormat = () => {
         if (!text.trim()) return;
@@ -281,7 +299,9 @@ export default function JsonCompareComponent() {
 
         try {
             const parsed = JSON.parse(text);
-            setText(JSON.stringify(parsed, null, 2));
+            const formatted = JSON.stringify(parsed, null, 2);
+            // 清除 KV 对之间的多余空行（连续3个以上换行 → 2个）
+            setText(formatted.replace(/\n{3,}/g, '\n\n'));
         } catch (e) {
             tryPartialFormat(e as Error);
         }
@@ -359,7 +379,6 @@ export default function JsonCompareComponent() {
         if (!text) return;
         if (confirm("确定要清空所有内容吗？")) {
             setText("");
-            setSearchMatches([]);
             setErrorLines([]);
             setFormattedInfo("");
         }
@@ -379,9 +398,7 @@ export default function JsonCompareComponent() {
     // ===== Escape 关闭搜索/替换面板 =====
     const handleEscape = useCallback((e: KeyboardEvent) => {
         if (e.key === "Escape") {
-            setShowSearch(false);
-            setShowReplace(false);
-            textareaRef.current?.focus();
+            codemirrorRef.current?.view?.focus();
         }
     }, []);
 
@@ -390,135 +407,29 @@ export default function JsonCompareComponent() {
         return () => window.removeEventListener("keydown", handleEscape);
     }, [handleEscape]);
 
-    // ===== 查找 =====
-    const findMatches = useCallback((query: string, content: string): number[] => {
-        if (!query) return [];
-        const indices: number[] = [];
-        let idx = content.indexOf(query);
-        while (idx !== -1) {
-            indices.push(idx);
-            idx = content.indexOf(query, idx + 1);
+    const handleSearchToggle = useCallback(() => {
+        const view = codemirrorRef.current?.view;
+        if (view) {
+            openSearchPanel(view);
         }
-        return indices;
     }, []);
 
-    useEffect(() => {
-        if (showSearch && searchQuery) {
-            const matches = findMatches(searchQuery, text);
-            setSearchMatches(matches);
-            setCurrentMatchIndex(matches.length > 0 ? 0 : -1);
-        } else {
-            setSearchMatches([]);
-            setCurrentMatchIndex(-1);
+    const handleReplaceToggle = useCallback(() => {
+        const view = codemirrorRef.current?.view;
+        if (view) {
+            openSearchPanel(view);
         }
-    }, [searchQuery, text, showSearch, findMatches]);
+    }, []);
 
-    // 定位到指定匹配项（滚动 + 选中）
-    const goToMatch = (index: number) => {
-        if (!textareaRef.current || searchMatches.length === 0) return;
-        const matchIndex = searchMatches[index];
-        const beforeMatch = text.substring(0, matchIndex);
-        const lineNum = beforeMatch.split("\n").length - 1;
-        const ta = textareaRef.current;
-        ta.focus();
-        ta.setSelectionRange(matchIndex, matchIndex + searchQuery.length);
-
-        // 使用 scrollHeight 比例滚动，比固定 lineHeight 更准确
-        const totalLines = text.split("\n").length;
-        const scrollable = ta.scrollHeight - ta.clientHeight;
-        const ratio = totalLines > 1 ? lineNum / (totalLines - 1) : 0;
-        ta.scrollTop = Math.max(0, Math.round(scrollable * ratio - ta.clientHeight / 4));
-
-        // 手动同步高亮层滚动（编程设置 scrollTop 不触发 onScroll）
-        if (highlightRef.current) {
-            highlightRef.current.scrollTop = ta.scrollTop;
-            highlightRef.current.scrollLeft = ta.scrollLeft;
-        }
-    };
-
-    const handleFindNext = () => {
-        if (searchMatches.length === 0) return;
-        const next = (currentMatchIndex + 1) % searchMatches.length;
-        setCurrentMatchIndex(next);
-        goToMatch(next);
-    };
-
-    const handleFindPrev = () => {
-        if (searchMatches.length === 0) return;
-        const prev = (currentMatchIndex - 1 + searchMatches.length) % searchMatches.length;
-        setCurrentMatchIndex(prev);
-        goToMatch(prev);
-    };
-
-    // ===== 替换 =====
-    const handleReplaceOne = () => {
-        if (!searchQuery || currentMatchIndex < 0 || currentMatchIndex >= searchMatches.length) return;
-        const pos = searchMatches[currentMatchIndex];
-        const newText = text.substring(0, pos) + replaceQuery + text.substring(pos + searchQuery.length);
-        setText(newText);
-        setTimeout(() => {
-            const newMatches = findMatches(searchQuery, newText);
-            setSearchMatches(newMatches);
-            setCurrentMatchIndex(Math.min(currentMatchIndex, newMatches.length - 1));
-        }, 0);
-    };
-
-    const handleReplaceAll = () => {
-        if (!searchQuery) return;
-        const newText = text.split(searchQuery).join(replaceQuery);
-        const replacedCount = text.split(searchQuery).length - 1;
-        setText(newText);
-        setSearchMatches([]);
-        setCurrentMatchIndex(-1);
-        alert(`已替换 ${replacedCount} 处`);
-    };
-
-    const handleSearchToggle = () => {
-        setShowSearch(prev => !prev);
-        setShowReplace(false);
-        if (!showSearch) {
-            setTimeout(() => searchInputRef.current?.focus(), 100);
-        }
-    };
-
-    const handleReplaceToggle = () => {
-        setShowReplace(prev => !prev);
-        setShowSearch(false);
-        if (!showReplace) {
-            setTimeout(() => searchInputRef.current?.focus(), 100);
-        }
-    };
-
-    // ===== 概览标尺标记 =====
+    // ===== 概览标尺标记（仅错误行） =====
     const rulerMarks = useMemo(() => {
-        const marks: { type: 'match' | 'error'; percent: number; matchIdx?: number }[] = [];
         const totalLines = lineCount || 1;
+        return errorLines.map(lineNum => ({
+            percent: (lineNum / totalLines) * 100,
+        }));
+    }, [errorLines, lineCount]);
 
-        for (const lineNum of errorLines) {
-            marks.push({ type: 'error', percent: (lineNum / totalLines) * 100 });
-        }
 
-        if (searchQuery) {
-            let idx = 0;
-            let matchIdx = 0;
-            while ((idx = text.indexOf(searchQuery, idx)) !== -1) {
-                const beforeMatch = text.substring(0, idx);
-                const lineNum = beforeMatch.split('\n').length - 1;
-                marks.push({ type: 'match', percent: (lineNum / totalLines) * 100, matchIdx });
-                idx += searchQuery.length;
-                matchIdx++;
-            }
-        }
-
-        return marks;
-    }, [text, searchQuery, errorLines, lineCount]);
-
-    const handleRulerClick = (matchIdx: number) => {
-        setCurrentMatchIndex(matchIdx);
-        goToMatch(matchIdx);
-    };
-
-    // ===== JSON 对比 =====
     const handleEnterCompare = () => {
         // 进入对比模式：将当前文本复制到左右两侧
         setLeftText(text);
@@ -586,6 +497,9 @@ export default function JsonCompareComponent() {
                     </h1>
                 </div>
                 <div className="header-actions">
+                    <button className="fullscreen-button" onClick={handleToggleFullscreen} title={isFullscreen ? "退出全屏" : "全屏"}>
+                        <span className="fullscreen-icon">{isFullscreen ? "⤡" : "⤢"}</span>
+                    </button>
                     <button className="close-button" onClick={handleClose}>
                         <div className="close-icon"></div>
                     </button>
@@ -637,100 +551,35 @@ export default function JsonCompareComponent() {
                 </button>
             </div>
 
-            {/* 查找栏（非对比模式） */}
-            {!compareMode && showSearch && (
-                <div className="search-bar">
-                    <input
-                        ref={searchInputRef}
-                        type="text"
-                        placeholder="查找内容..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === "Enter") handleFindNext(); }}
-                    />
-                    <span className="search-count">
-                        {searchMatches.length > 0
-                            ? `${currentMatchIndex + 1} / ${searchMatches.length}`
-                            : "无匹配"}
-                    </span>
-                    <button onClick={handleFindPrev} disabled={searchMatches.length === 0}>上一个</button>
-                    <button onClick={handleFindNext} disabled={searchMatches.length === 0}>下一个</button>
-                    <button onClick={() => setShowSearch(false)}>关闭</button>
-                </div>
-            )}
-
-            {/* 替换栏（非对比模式） */}
-            {!compareMode && showReplace && (
-                <div className="replace-bar">
-                    <input
-                        type="text"
-                        placeholder="查找内容..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                    />
-                    <input
-                        type="text"
-                        placeholder="替换为..."
-                        value={replaceQuery}
-                        onChange={(e) => setReplaceQuery(e.target.value)}
-                    />
-                    <button onClick={handleReplaceOne} disabled={searchMatches.length === 0}>替换</button>
-                    <button onClick={handleReplaceAll} disabled={!searchQuery}>全部替换</button>
-                    <button onClick={() => setShowReplace(false)}>关闭</button>
-                </div>
-            )}
-
             {/* 编辑器区域 */}
             {!compareMode ? (
                 /* ===== 单面板模式 ===== */
                 <div className="json-editor-area">
                     <div className="editor-body">
                         <div className="editor-wrapper">
-                            <pre
-                                ref={highlightRef}
-                                className="highlight-layer"
-                                dangerouslySetInnerHTML={{ __html: highlightedHtml }}
-                                aria-hidden="true"
-                            />
-                            <textarea
-                                ref={textareaRef}
-                                className="json-textarea"
+                            <CodeMirror
+                                ref={codemirrorRef}
                                 value={text}
-                                onChange={(e) => {
-                                    setText(e.target.value);
+                                height="100%"
+                                onChange={(val) => {
+                                    setText(val);
                                     setFormattedInfo("");
                                 }}
-                                onScroll={handleScroll}
+                                extensions={editorExtensions}
+                                className="json-codemirror"
                                 placeholder="在此粘贴或输入 JSON / 文本数据..."
-                                spellCheck={false}
+                                basicSetup={false}
                             />
                         </div>
                         <div className="editor-overview-ruler">
-                            {rulerMarks.map((mark, idx) => {
-                                const matchIdx = mark.matchIdx;
-                                return (
-                                    <div
-                                        key={`${mark.type}-${idx}`}
-                                        className={
-                                            `ruler-mark ${mark.type}` +
-                                            (mark.type === 'match' && mark.matchIdx === currentMatchIndex
-                                                ? ' active'
-                                                : '')
-                                        }
-                                        style={{ top: `${mark.percent}%` }}
-                                        title={
-                                            mark.type === 'error'
-                                                ? `语法错误`
-                                                : `匹配 ${(matchIdx ?? 0) + 1}`
-                                        }
-                                        onClick={() => {
-                                            if (mark.type === 'match' && mark.matchIdx !== undefined) {
-                                                handleRulerClick(mark.matchIdx);
-                                            }
-                                        }}
-                                    />
-                                );
-                            })}
+                            {rulerMarks.map((mark, idx) => (
+                                <div
+                                    key={`error-${idx}`}
+                                    className="ruler-mark error"
+                                    style={{ top: `${mark.percent}%` }}
+                                    title="语法错误"
+                                />
+                            ))}
                         </div>
                     </div>
                 </div>
@@ -744,18 +593,22 @@ export default function JsonCompareComponent() {
                                 <span className="panel-label">左侧 JSON</span>
                                 <button className="panel-copy-btn" onClick={handleCopyLeft} title="复制左侧">📋</button>
                             </div>
-                            <textarea
-                                ref={leftTextareaRef}
-                                className="compare-textarea"
-                                value={leftText}
-                                onChange={(e) => {
-                                    setLeftText(e.target.value);
-                                    setDiffResult(null);
-                                    setDiffSummary("");
-                                }}
-                                placeholder="粘贴左侧 JSON..."
-                                spellCheck={false}
-                            />
+                            <div className="compare-cm-wrapper">
+                                <CodeMirror
+                                    ref={leftCmRef}
+                                    value={leftText}
+                                    height="100%"
+                                    onChange={(val) => {
+                                        setLeftText(val);
+                                        setDiffResult(null);
+                                        setDiffSummary("");
+                                    }}
+                                    extensions={compareExtensions}
+                                    className="json-codemirror"
+                                    placeholder="粘贴左侧 JSON..."
+                                    basicSetup={false}
+                                />
+                            </div>
                         </div>
 
                         {/* 中间的对比状态指示 */}
@@ -769,18 +622,22 @@ export default function JsonCompareComponent() {
                                 <span className="panel-label">右侧 JSON</span>
                                 <button className="panel-copy-btn" onClick={handleCopyRight} title="复制右侧">📋</button>
                             </div>
-                            <textarea
-                                ref={rightTextareaRef}
-                                className="compare-textarea"
-                                value={rightText}
-                                onChange={(e) => {
-                                    setRightText(e.target.value);
-                                    setDiffResult(null);
-                                    setDiffSummary("");
-                                }}
-                                placeholder="粘贴右侧 JSON..."
-                                spellCheck={false}
-                            />
+                            <div className="compare-cm-wrapper">
+                                <CodeMirror
+                                    ref={rightCmRef}
+                                    value={rightText}
+                                    height="100%"
+                                    onChange={(val) => {
+                                        setRightText(val);
+                                        setDiffResult(null);
+                                        setDiffSummary("");
+                                    }}
+                                    extensions={compareExtensions}
+                                    className="json-codemirror"
+                                    placeholder="粘贴右侧 JSON..."
+                                    basicSetup={false}
+                                />
+                            </div>
                         </div>
                     </div>
 

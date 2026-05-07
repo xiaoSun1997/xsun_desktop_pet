@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Fragment>
+        <DirectoryRef Id="INSTALLDIR">
+            <Directory Id="DataDir" Name="data">
+                <Component Id="CreateDataDir" Guid="*">
+                    <CreateFolder />
+                </Component>
+                <Directory Id="PicDir" Name="pic">
+                    <Component Id="CreatePicDir" Guid="*">
+                        <CreateFolder />
+                    </Component>
+                </Directory>
+            </Directory>
+        </DirectoryRef>
+        <ComponentGroup Id="DataDirComponents">
+            <ComponentRef Id="CreateDataDir"/>
+            <ComponentRef Id="CreatePicDir"/>
+        </ComponentGroup>
+    </Fragment>
+</Wix>

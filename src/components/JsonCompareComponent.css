@@ -76,6 +76,32 @@
     transform: scale(1.05);
 }
 
+/* 全屏按钮 */
+.fullscreen-button {
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    background: rgba(102, 126, 234, 0.15);
+    color: #667eea;
+    font-size: 13px;
+}
+
+.fullscreen-button:hover {
+    background: rgba(102, 126, 234, 0.3);
+    transform: scale(1.08);
+}
+
+.fullscreen-icon {
+    font-size: 14px;
+    line-height: 1;
+}
+
 .close-icon {
     width: 16px;
     height: 16px;
@@ -220,104 +246,174 @@
     align-items: stretch;
 }
 
-/* 编辑器包裹层：叠加 textarea + pre */
+/* 编辑器包裹层 */
 .editor-wrapper {
     flex: 1;
     position: relative;
-    overflow: hidden;
     border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
 }
 
-/* ===== 高亮层（下层，只提供背景高亮，文字透明） ===== */
-.highlight-layer {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    padding: 16px;
-    margin: 0;
-    border: 2px solid transparent;
+/* ===== CodeMirror 编辑器主题 ===== */
+.json-codemirror {
+    flex: 1;
     border-radius: 12px;
+    height: 100%;
+    overflow: hidden;
+}
+
+.json-codemirror .cm-editor {
+    height: 100%;
+    box-sizing: border-box;
     font-size: 14px;
     font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-    line-height: 1.6;
-    white-space: pre-wrap;
-    word-wrap: break-word;
-    overflow: hidden;
-    pointer-events: none;
-    background: rgba(255, 255, 255, 0.95);
-    color: transparent;
-    z-index: 1;
-    box-sizing: border-box;
-}
-
-/* 高亮层的每一行 */
-.hl-line {
-    min-height: 1.6em;
-    white-space: pre-wrap;
-    word-wrap: break-word;
-}
-
-/* 错误行 */
-.hl-line.error {
-    background: rgba(229, 62, 62, 0.12);
-    border-radius: 2px;
-}
-
-/* 搜索匹配高亮（黄色背景） */
-.hl-match {
-    background: #fef08a;
-    color: #1a202c;
-    border-radius: 2px;
-    padding: 0 1px;
-}
-
-/* 当前匹配项（橙色背景，更显眼） */
-.hl-match.current {
-    background: #f59e0b;
-    color: #ffffff;
-    border-radius: 2px;
-    padding: 0 1px;
-    box-shadow: 0 0 4px rgba(245, 158, 11, 0.5);
-}
-
-/* ===== textarea（上层，正常文字，透明背景露出高亮层） ===== */
-.json-textarea {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    padding: 16px;
+    background: rgba(255, 255, 255, 0.92);
     border: 2px solid rgba(225, 232, 237, 0.8);
     border-radius: 12px;
-    background: transparent;
-    color: #2d3748;
-    font-size: 14px;
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-    resize: none;
     outline: none;
-    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.json-codemirror .cm-editor .cm-scroller {
+    overflow: auto !important;
+    padding: 8px 0;
     line-height: 1.6;
-    overflow: auto;
-    white-space: pre-wrap;
-    word-wrap: break-word;
-    z-index: 2;
-    box-sizing: border-box;
 }
 
-.json-textarea::selection {
-    background: rgba(102, 126, 234, 0.25);
+.json-codemirror .cm-editor.cm-focused {
+    outline: none !important;
 }
 
-.json-textarea:focus {
-    border-color: #667eea;
-    box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+.json-codemirror .cm-editor .cm-content {
+    padding: 8px 16px;
 }
 
-.json-textarea::placeholder {
-    color: #a0aec0;
+.json-codemirror .cm-editor .cm-gutters {
+    background: rgba(240, 245, 252, 0.85);
+    border-right: 1px solid rgba(203, 213, 225, 0.5);
+    color: #94a3b8;
+    font-size: 12px;
+    padding: 8px 0;
+}
+
+.json-codemirror .cm-editor .cm-lineNumbers .cm-gutterElement {
+    padding: 0 8px 0 4px;
+    min-width: 28px;
+    text-align: right;
+}
+
+.json-codemirror .cm-editor .cm-foldGutter {
+    width: 18px;
+}
+
+.json-codemirror .cm-editor .cm-foldGutter .cm-gutterElement {
+    padding: 0 2px;
+    cursor: pointer;
+}
+
+.json-codemirror .cm-editor .cm-activeLineGutter {
+    background: rgba(102, 126, 234, 0.08);
+}
+
+/* 彩虹括号匹配高亮 */
+.json-codemirror .cm-editor .cm-matchingBracket {
+    background: rgba(102, 126, 234, 0.2);
+    outline: 1px solid rgba(102, 126, 234, 0.4);
+}
+
+.json-codemirror .cm-editor .cm-nonmatchingBracket {
+    background: rgba(229, 62, 62, 0.2);
+}
+
+/* 当前行高亮 */
+.json-codemirror .cm-editor .cm-activeLine {
+    background: rgba(102, 126, 234, 0.05);
+}
+
+/* 搜索高亮 */
+.json-codemirror .cm-editor .cm-selectionMatch {
+    background: rgba(102, 126, 234, 0.15);
+}
+
+/* 错误行高亮 */
+.cm-error-line {
+    background: rgba(229, 62, 62, 0.08);
+}
+
+/* 光标颜色 */
+.json-codemirror .cm-editor .cm-cursor {
+    border-left-color: #2d3748;
+}
+
+/* 选中文本 */
+.json-codemirror .cm-editor .cm-selectionBackground {
+    background: rgba(102, 126, 234, 0.25) !important;
+}
+
+/* 搜索面板样式 */
+.json-codemirror .cm-editor .cm-panel.cm-search {
+    background: rgba(255, 255, 255, 0.97);
+    border-bottom: 1px solid rgba(225, 232, 237, 0.8);
+    padding: 6px 12px;
+}
+
+.json-codemirror .cm-editor .cm-search input {
+    border: 1px solid rgba(203, 213, 225, 0.8);
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 13px;
+    font-family: inherit;
+}
+
+.json-codemirror .cm-editor .cm-search button {
+    background: rgba(102, 126, 234, 0.1);
+    border: 1px solid rgba(203, 213, 225, 0.8);
+    border-radius: 6px;
+    padding: 3px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    color: #4a5568;
+}
+
+.json-codemirror .cm-editor .cm-search button:hover {
+    background: rgba(102, 126, 234, 0.2);
+}
+
+.json-codemirror .cm-editor .cm-search button[name="close"] {
+    background: transparent;
+    border: none;
+    font-size: 14px;
+    padding: 2px 6px;
+}
+
+/* 搜索面板固定在编辑器顶部 */
+.json-codemirror .cm-editor .cm-panel.cm-search {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+/* ===== 对比模式 CodeMirror 包裹层 ===== */
+.compare-cm-wrapper {
+    flex: 1;
+    border-radius: 0 0 8px 8px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.compare-cm-wrapper .json-codemirror {
+    border-radius: 0 0 8px 8px;
+    flex: 1;
+    height: 100%;
+    overflow: hidden;
+}
+
+.compare-cm-wrapper .cm-editor {
+    border-radius: 0 0 8px 8px;
 }
 
 /* ===== 概览标尺（右侧进度条） ===== */
@@ -340,18 +436,6 @@
     border-radius: 2px;
     cursor: pointer;
     transition: opacity 0.2s ease;
-}
-
-.ruler-mark.match {
-    background: #667eea;
-    height: 2px;
-    opacity: 0.6;
-}
-
-.ruler-mark.match.active {
-    background: #f59e0b;
-    height: 3px;
-    opacity: 1;
 }
 
 .ruler-mark.error {

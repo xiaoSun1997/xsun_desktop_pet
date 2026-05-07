@@ -122,6 +122,18 @@
     transform: translateY(-2px) scale(0.98);
 }
 
+/* ===== 拖动排序样式 ===== */
+.menu-item.dragging {
+    opacity: 0.4;
+    transform: scale(0.95);
+}
+
+.menu-item.drag-over {
+    border: 2px dashed #6366f1;
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(168, 85, 247, 0.08) 100%);
+    transform: scale(1.03);
+}
+
 .menu-item-icon {
     width: 48px;
     height: 48px;
@@ -153,22 +165,14 @@
     letter-spacing: 0.3px;
 }
 
-/* 自定义滚动条 */
+/* 隐藏滚动条，保留滚动功能 */
+.menu-panel {
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE/Edge */
+}
+
 .menu-panel::-webkit-scrollbar {
-    width: 6px;
-}
-
-.menu-panel::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-.menu-panel::-webkit-scrollbar-thumb {
-    background: rgba(0, 0, 0, 0.1);
-    border-radius: 3px;
-}
-
-.menu-panel::-webkit-scrollbar-thumb:hover {
-    background: rgba(0, 0, 0, 0.2);
+    display: none; /* Chrome/Safari */
 }
 
 /* 响应式设计 */

@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { getCurrentWindow, getAllWindows } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
-import menuItems from "../../public/config/bubbles.json";
+import defaultMenuItems from "../../public/config/bubbles.json";
 import "./MenuPanel.css";
 
 type MenuItem = {
@@ -11,8 +11,32 @@ type MenuItem = {
     icon?: string;
 };
 
+const STORAGE_KEY = "menu-panel-order";
+
+function loadMenuOrder(): MenuItem[] {
+    try {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) {
+            const savedOrder: MenuItem[] = JSON.parse(stored);
+            const defaultItems = defaultMenuItems as MenuItem[];
+            const savedActions = new Set(savedOrder.map(i => i.action));
+            const newItems = defaultItems.filter(i => !savedActions.has(i.action));
+            return [...savedOrder.filter(i => savedActions.has(i.action)), ...newItems];
+        }
+    } catch { /* ignore */ }
+    return defaultMenuItems as MenuItem[];
+}
+
+function saveMenuOrder(items: MenuItem[]) {
+    try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+    } catch { /* ignore */ }
+}
+
 export default function MenuPanel() {
-    const [items] = useState<MenuItem[]>(menuItems as MenuItem[]);
+    const [items, setItems] = useState<MenuItem[]>(loadMenuOrder);
+    const [dragIndex, setDragIndex] = useState<number | null>(null);
+    const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
     const panelRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -41,6 +65,43 @@ export default function MenuPanel() {
             console.error("关闭面板失败:", error);
         }
     };
+
+    // ===== 拖动排序 =====
+    const handleDragStart = useCallback((index: number) => {
+        setDragIndex(index);
+    }, []);
+
+    const handleDragOver = useCallback((e: React.DragEvent, index: number) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        setDragOverIndex(index);
+    }, []);
+
+    const handleDragLeave = useCallback(() => {
+        setDragOverIndex(null);
+    }, []);
+
+    const handleDrop = useCallback((e: React.DragEvent, dropIndex: number) => {
+        e.preventDefault();
+        setDragOverIndex(null);
+        if (dragIndex === null || dragIndex === dropIndex) {
+            setDragIndex(null);
+            return;
+        }
+        setItems(prev => {
+            const next = [...prev];
+            const [moved] = next.splice(dragIndex, 1);
+            next.splice(dropIndex, 0, moved);
+            saveMenuOrder(next);
+            return next;
+        });
+        setDragIndex(null);
+    }, [dragIndex]);
+
+    const handleDragEnd = useCallback(() => {
+        setDragIndex(null);
+        setDragOverIndex(null);
+    }, []);
 
     const createOrShowWindow = async (label: string, config: any) => {
         const windows = await getAllWindows();
@@ -270,6 +331,35 @@ export default function MenuPanel() {
                 }
                 break;
 
+            case "notepad":
+                await createOrShowWindow("notepad", {
+                    devUrl: "http://localhost:1420",
+                    prodUrl: "index.html",
+                    options: {
+                        title: "记事本",
+                        width: 1100,
+                        height: 750,
+                        center: true,
+                        resizable: true,
+                    }
+                });
+                break;
+
+            case "file-search":
+                await createOrShowWindow("file-search", {
+                    devUrl: "http://localhost:1420",
+                    prodUrl: "index.html",
+                    options: {
+                        title: "文件搜索",
+                        width: 700,
+                        height: 550,
+                        center: true,
+                        resizable: true,
+                        skipTaskbar: true,
+                    }
+                });
+                break;
+
             default:
                 console.warn(`未知的动作: ${item.action}`);
         }
@@ -290,8 +380,14 @@ export default function MenuPanel() {
                 <div className="menu-grid">
                     {items.map((item, index) => (
                         <div
-                            key={index}
-                            className="menu-item"
+                            key={item.action}
+                            className={`menu-item${dragIndex === index ? ' dragging' : ''}${dragOverIndex === index ? ' drag-over' : ''}`}
+                            draggable
+                            onDragStart={() => handleDragStart(index)}
+                            onDragOver={(e) => handleDragOver(e, index)}
+                            onDragLeave={handleDragLeave}
+                            onDrop={(e) => handleDrop(e, index)}
+                            onDragEnd={handleDragEnd}
                             onClick={() => handleItemClick(item)}
                         >
                             <div className="menu-item-icon">

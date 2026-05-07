@@ -11,11 +11,18 @@ use std::collections::HashMap;
 mod calendar;
 mod clipboard;
 mod global_mouse;
+mod global_keyboard;
 mod jira_tools;
 mod task_scheduler;
 mod window_utils;
 mod database;
 use database::{Database, NoteRecord};
+mod file_search;
+use file_search::{search_files, search_files_load_more, build_file_index, get_index_status};
+mod file_index;
+use file_index::FileIndex;
+mod mem_file_index;
+use mem_file_index::MemFileIndex;
 
 use clipboard::{
     add_to_clipboard_history, clear_clipboard_history, copy_to_clipboard, get_clipboard_history,
@@ -24,9 +31,10 @@ use clipboard::{
 };
 
 use global_mouse::init_global_mouse_hook;
+use global_keyboard::init_global_keyboard_hook;
 
 use jira_tools::{
-    GitCommit, JiraIssue, WorklogEntry, JiraConfig, GitConfig, GitRepository, test_jira_connection
+    GitCommit, JiraIssue, WorklogEntry, JiraConfig, GitConfig, GitRepository, test_jira_connection, test_git_connection
 };
 
 use task_scheduler::init_scheduler;
@@ -57,6 +65,28 @@ pub struct ProcessInfo {
     pub memory: u64,
     pub exe_path: String,
     pub ports: Vec<u16>,
+}
+
+/// 获取数据目录
+/// 优先使用 EXE 所在目录下的 data/ 文件夹（便携模式），
+/// 如果不可写则回退到 AppData 目录
+fn get_data_dir(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    // 尝试获取 EXE 所在目录
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            let portable_data = exe_dir.join("data");
+            // 尝试创建 data 目录（检查是否可写）
+            if std::fs::create_dir_all(&portable_data).is_ok() {
+                // 同时创建 pic 子目录
+                let _ = std::fs::create_dir_all(portable_data.join("pic"));
+                return Ok(portable_data);
+            }
+        }
+    }
+    // 回退到 AppData
+    app.path()
+        .app_data_dir()
+        .map_err(|e| format!("无法获取应用数据目录: {}", e))
 }
 
 #[tauri::command]
@@ -198,9 +228,131 @@ pub struct ProcessIconCache(Mutex<HashMap<String, String>>);
 
 #[cfg(target_os = "windows")]
 fn extract_icon_from_exe(exe_path: &str) -> Option<String> {
-    // 简单尝试：读取 exe 所在目录的 .exe 图标资源（暂未实现完整图标提取）
-    let _ = exe_path;
-    None
+    use windows::core::PCWSTR;
+    use windows::Win32::{
+        Graphics::Gdi::{
+            CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC,
+            DeleteObject, GetDC, GetDIBits,
+            ReleaseDC, SelectObject, BITMAPINFO, BITMAPINFOHEADER,
+            DIB_RGB_COLORS, RGBQUAD,
+        },
+        UI::WindowsAndMessaging::{
+            DestroyIcon, DrawIconEx, DI_NORMAL, HICON,
+        },
+        UI::Shell::{
+            ExtractIconExW,
+        },
+    };
+    use base64::{Engine as _, engine::general_purpose};
+    use image::codecs::png::PngEncoder;
+    use image::ImageEncoder;
+
+    // 使用 ExtractIconExW 提取关联图标
+    let wide_path: Vec<u16> = exe_path.encode_utf16().chain(std::iter::once(0)).collect();
+
+    unsafe {
+        let mut h_large = HICON::default();
+        let count = ExtractIconExW(
+            PCWSTR::from_raw(wide_path.as_ptr()),
+            0,
+            Some(&mut h_large),
+            None,
+            1,
+        );
+        if count == 0 || h_large.is_invalid() {
+            return None;
+        }
+
+        let width = 32i32;
+        let height = 32i32;
+
+        // 创建内存 DC 和 bitmap
+        let hdc = GetDC(None);
+        if hdc.is_invalid() {
+            let _ = DestroyIcon(h_large);
+            return None;
+        }
+
+        let mem_dc = CreateCompatibleDC(hdc);
+        if mem_dc.is_invalid() {
+            ReleaseDC(None, hdc);
+            let _ = DestroyIcon(h_large);
+            return None;
+        }
+
+        let bitmap = CreateCompatibleBitmap(hdc, width, height);
+        if bitmap.is_invalid() {
+            DeleteDC(mem_dc);
+            ReleaseDC(None, hdc);
+            let _ = DestroyIcon(h_large);
+            return None;
+        }
+
+        let old_bmp = SelectObject(mem_dc, bitmap);
+
+        // 绘制图标（不预填背景，图标自带 alpha）
+        DrawIconEx(
+            mem_dc, 0, 0, h_large, width, height,
+            0, None, DI_NORMAL,
+        );
+
+        // 读取像素
+        let bmi = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: width,
+                biHeight: -height, // 负值 = top-down
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: 0, // BI_RGB
+                biSizeImage: 0,
+                biXPelsPerMeter: 0,
+                biYPelsPerMeter: 0,
+                biClrUsed: 0,
+                biClrImportant: 0,
+            },
+            bmiColors: [RGBQUAD::default(); 1],
+        };
+
+        let data_size = (width * height * 4) as usize;
+        let mut pixels: Vec<u8> = vec![0u8; data_size];
+
+        let copied = GetDIBits(
+            mem_dc,
+            bitmap,
+            0,
+            height as u32,
+            Some(pixels.as_mut_ptr() as *mut _),
+            &bmi as *const _ as *mut _,
+            DIB_RGB_COLORS,
+        );
+
+        // 清理 GDI 资源
+        SelectObject(mem_dc, old_bmp);
+        DeleteObject(bitmap);
+        DeleteDC(mem_dc);
+        ReleaseDC(None, hdc);
+        let _ = DestroyIcon(h_large);
+
+        if copied == 0 {
+            return None;
+        }
+
+        // BGRA → RGBA
+        for chunk in pixels.chunks_exact_mut(4) {
+            chunk.swap(0, 2);
+        }
+
+        // 编码 PNG
+        let mut png_bytes = Vec::new();
+        let encoder = PngEncoder::new(&mut png_bytes);
+        if encoder.write_image(&pixels, width as u32, height as u32, image::ColorType::Rgba8).is_err() {
+            return None;
+        }
+
+        let b64 = general_purpose::STANDARD.encode(&png_bytes);
+        Some(format!("data:image/png;base64,{}", b64))
+    }
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -222,6 +374,27 @@ fn get_process_icon(
     }
     if let Some(icon) = extract_icon_from_exe(&exe_path) {
         guard.insert(exe_path, icon.clone());
+        Some(icon)
+    } else {
+        None
+    }
+}
+
+/// 获取文件的图标（用于 exe/lnk 等可执行文件，返回 base64 PNG data URI）
+#[tauri::command]
+fn get_file_icon(
+    file_path: String,
+    cache: tauri::State<'_, ProcessIconCache>,
+) -> Option<String> {
+    if file_path.is_empty() {
+        return None;
+    }
+    let mut guard = cache.0.lock().ok()?;
+    if let Some(cached) = guard.get(&file_path) {
+        return Some(cached.clone());
+    }
+    if let Some(icon) = extract_icon_from_exe(&file_path) {
+        guard.insert(file_path, icon.clone());
         Some(icon)
     } else {
         None
@@ -741,7 +914,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use tauri::WebviewUrl;
 use tauri::menu::MenuItem;
-use crate::jira_tools::{get_commits_by_date, get_current_date, get_my_today_worklogs, get_my_unfinished_issues, get_required_work_hours, load_ai_config, load_git_config, load_jira_config, log_work, process_worklog_with_ai, save_ai_config, save_git_config, save_jira_config};
+use crate::jira_tools::{get_commits_by_date, get_current_date, get_my_today_worklogs, get_my_unfinished_issues, get_required_work_hours, get_worklogs_by_date_range, load_git_config, load_jira_config, log_work, process_worklog_with_ai, generate_worklog_suggestions, delete_worklog, update_worklog, save_git_config, save_jira_config};
 
 // 生成有道翻译签名
 // 修改签名生成函数
@@ -985,12 +1158,8 @@ async fn upload_background_image(
     image_data: Vec<u8>,
     filename: String,
 ) -> Result<String, String> {
-    let app_data_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("无法获取应用数据目录: {}", e))?;
-
-    let images_dir = app_data_dir.join("background_images");
+    let data_dir = get_data_dir(&app)?;
+    let images_dir = data_dir.join("pic").join("backgrounds");
     tokio::fs::create_dir_all(&images_dir)
         .await
         .map_err(|e| format!("创建图片目录失败: {}", e))?;
@@ -1037,6 +1206,7 @@ fn create_tray_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let open_ai = MenuItemBuilder::with_id("open_ai", "AI对话").build(app)?;
     let open_translator = MenuItemBuilder::with_id("open_translator", "有道翻译").build(app)?;
     let open_calendar = MenuItemBuilder::with_id("open_calendar", "日历TODO").build(app)?;
+    let open_file_search = MenuItemBuilder::with_id("open_file_search", "文件搜索").build(app)?;
     let separator2 = PredefinedMenuItem::separator(app)?;
     let quit = MenuItemBuilder::with_id("quit", "退出").build(app)?;
 
@@ -1048,6 +1218,7 @@ fn create_tray_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         &open_ai,
         &open_translator,
         &open_calendar,
+        &open_file_search,
         &separator2,
         &quit,
     ])?;
@@ -1119,6 +1290,9 @@ fn handle_tray_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
         }
         "open_calendar" => {
             let _ = app.emit("tray://open-calendar", ());
+        }
+        "open_file_search" => {
+            let _ = app.emit("tray://open-file-search", ());
         }
         "quit" => {
             app.exit(0);
@@ -1350,8 +1524,8 @@ async fn read_text_file(path: String) -> Result<String, String> {
 
 #[tauri::command]
 async fn get_skills_dir(app: AppHandle) -> Result<String, String> {
-    let app_data_dir = app.path().app_data_dir().map_err(|e| format!("获取应用数据目录失败: {}", e))?;
-    let skills_dir = app_data_dir.join("skills");
+    let data_dir = get_data_dir(&app)?;
+    let skills_dir = data_dir.join("skills");
     std::fs::create_dir_all(&skills_dir).map_err(|e| format!("创建skills目录失败: {}", e))?;
     Ok(skills_dir.to_string_lossy().to_string())
 }
@@ -1387,8 +1561,8 @@ fn flatten_file_tree(entries: &[FileEntry]) -> Vec<database::SkillFileRecord> {
 
 #[tauri::command]
 async fn list_skills_directory(app: AppHandle) -> Result<Vec<FileEntry>, String> {
-    let app_data_dir = app.path().app_data_dir().map_err(|e| format!("获取应用数据目录失败: {}", e))?;
-    let skills_dir = app_data_dir.join("skills");
+    let data_dir = get_data_dir(&app)?;
+    let skills_dir = data_dir.join("skills");
     if !skills_dir.exists() {
         std::fs::create_dir_all(&skills_dir).map_err(|e| format!("创建skills目录失败: {}", e))?;
         return Ok(Vec::new());
@@ -1404,8 +1578,8 @@ async fn list_skills_directory(app: AppHandle) -> Result<Vec<FileEntry>, String>
 
 #[tauri::command]
 async fn copy_to_skills(app: AppHandle, source_path: String) -> Result<String, String> {
-    let app_data_dir = app.path().app_data_dir().map_err(|e| format!("获取应用数据目录失败: {}", e))?;
-    let skills_dir = app_data_dir.join("skills");
+    let data_dir = get_data_dir(&app)?;
+    let skills_dir = data_dir.join("skills");
     std::fs::create_dir_all(&skills_dir).map_err(|e| format!("创建skills目录失败: {}", e))?;
     
     let source = std::path::Path::new(&source_path);
@@ -1430,8 +1604,8 @@ async fn copy_to_skills(app: AppHandle, source_path: String) -> Result<String, S
 
 #[tauri::command]
 async fn delete_skill_item(app: AppHandle, file_path: String, is_dir: bool) -> Result<(), String> {
-    let app_data_dir = app.path().app_data_dir().map_err(|e| format!("获取应用数据目录失败: {}", e))?;
-    let full_path = app_data_dir.join("skills").join(&file_path);
+    let data_dir = get_data_dir(&app)?;
+    let full_path = data_dir.join("skills").join(&file_path);
     
     if !full_path.exists() {
         return Err(format!("文件不存在: {}", full_path.display()));
@@ -1463,8 +1637,8 @@ async fn create_skill_folder(app: AppHandle, name: String, parent_path: String) 
         return Err("文件夹名称包含非法字符 (/ \\ : * ? \" < > |)".to_string());
     }
     
-    let app_data_dir = app.path().app_data_dir().map_err(|e| format!("获取应用数据目录失败: {}", e))?;
-    let skills_dir = app_data_dir.join("skills");
+    let data_dir = get_data_dir(&app)?;
+    let skills_dir = data_dir.join("skills");
     let folder_path = if parent_path.is_empty() {
         skills_dir.join(&name)
     } else {
@@ -1498,8 +1672,8 @@ async fn create_skill_file(app: AppHandle, relative_path: String) -> Result<(), 
         return Err("文件路径不能为空".to_string());
     }
     
-    let app_data_dir = app.path().app_data_dir().map_err(|e| format!("获取应用数据目录失败: {}", e))?;
-    let full_path = app_data_dir.join("skills").join(&relative_path);
+    let data_dir = get_data_dir(&app)?;
+    let full_path = data_dir.join("skills").join(&relative_path);
     
     if full_path.exists() {
         return Err(format!("文件 '{}' 已存在", relative_path));
@@ -1580,8 +1754,8 @@ async fn delete_note_document(app: AppHandle, id: String) -> Result<(), String> 
 #[tauri::command]
 async fn save_note_image(app: AppHandle, note_id: String, file_name: String, image_data_base64: String) -> Result<String, String> {
     use std::io::Write;
-    let app_data_dir = app.path().app_data_dir().map_err(|e| format!("获取应用数据目录失败: {}", e))?;
-    let img_dir = app_data_dir.join("note_images").join(&note_id);
+    let data_dir = get_data_dir(&app)?;
+    let img_dir = data_dir.join("pic").join("notes").join(&note_id);
     std::fs::create_dir_all(&img_dir).map_err(|e| format!("创建图片目录失败: {}", e))?;
     
     let img_path = img_dir.join(&file_name);
@@ -1624,7 +1798,10 @@ async fn read_clipboard_image(app: AppHandle) -> Result<Option<String>, String> 
 }
 
 #[tauri::command]
-async fn reveal_in_folder(path: String) -> Result<(), String> {
+async fn reveal_in_folder(path: String, file_index: tauri::State<'_, Arc<FileIndex>>, mem_index: tauri::State<'_, Arc<MemFileIndex>>) -> Result<(), String> {
+    // 记录访问历史
+    let _ = file_index.record_access(&path);
+    mem_index.record_access(&path, Some(file_index.inner()));
     let result = std::process::Command::new("explorer")
         .arg("/select,")
         .arg(&path)
@@ -1632,6 +1809,21 @@ async fn reveal_in_folder(path: String) -> Result<(), String> {
     match result {
         Ok(_) => Ok(()),
         Err(e) => Err(format!("打开文件位置失败: {}", e)),
+    }
+}
+
+#[tauri::command]
+async fn open_file(path: String, file_index: tauri::State<'_, Arc<FileIndex>>, mem_index: tauri::State<'_, Arc<MemFileIndex>>) -> Result<(), String> {
+    // 记录访问历史
+    let _ = file_index.record_access(&path);
+    mem_index.record_access(&path, Some(file_index.inner()));
+    // 使用默认程序打开文件
+    let result = std::process::Command::new("cmd")
+        .args(&["/c", "start", "", &path])
+        .spawn();
+    match result {
+        Ok(_) => Ok(()),
+        Err(e) => Err(format!("打开文件失败: {}", e)),
     }
 }
 
@@ -1650,6 +1842,7 @@ pub fn run() {
             get_processes,
             kill_process,
             get_process_icon,
+            get_file_icon,
             set_click_through,
             wake_up_pet,
             get_clipboard_history,
@@ -1689,12 +1882,15 @@ pub fn run() {
             get_my_today_worklogs,
             log_work,
             test_jira_connection,
+            test_git_connection,
             get_commits_by_date,
             get_current_date,
             get_required_work_hours,
             process_worklog_with_ai,
-            save_ai_config,
-            load_ai_config,
+            generate_worklog_suggestions,
+            delete_worklog,
+            update_worklog,
+            get_worklogs_by_date_range,
             open_translator_with_text,
             open_json_compare_with_text,
             open_url_in_browser,
@@ -1730,13 +1926,18 @@ pub fn run() {
             delete_note_document,
             save_note_image,
             read_clipboard_image,
+            search_files,
+            search_files_load_more,
+            build_file_index,
+            get_index_status,
+            open_file,
         ])
         .setup(|app| {
             // 初始化 SQLite 数据库
             let handle = app.handle();
-            match handle.path().app_data_dir() {
-                Ok(app_data_dir) => {
-                    let db_path = app_data_dir.join("data").join("app.db");
+            match get_data_dir(handle) {
+                Ok(data_dir) => {
+                    let db_path = data_dir.join("app.db");
                     match database::Database::new(db_path.clone()) {
                         Ok(database) => {
                             if let Err(e) = database.init_tables() {
@@ -1747,6 +1948,35 @@ pub fn run() {
                             }
                             app.manage(database);
                             println!("数据库初始化成功: {:?}", db_path);
+
+                            // 初始化文件索引数据库（独立连接，避免阻塞主DB）
+                            let index_path = data_dir.join("file_index.db");
+                            match FileIndex::new(index_path.clone()) {
+                                Ok(file_index) => {
+                                    if let Err(e) = file_index.init_tables() {
+                                        eprintln!("文件索引表初始化失败: {}", e);
+                                    }
+                                    let fi = std::sync::Arc::new(file_index);
+
+                                    // 初始化内存索引（Listary 风格高速搜索层）
+                                    let mem_index = std::sync::Arc::new(MemFileIndex::new());
+                                    let mi_clone = mem_index.clone();
+                                    let fi_clone = fi.clone();
+                                    // 后台从 SQLite 加载到内存
+                                    std::thread::spawn(move || {
+                                        if let Err(e) = mi_clone.load_from_sqlite(&fi_clone) {
+                                            eprintln!("内存索引加载失败: {}", e);
+                                        }
+                                    });
+
+                                    app.manage(fi);
+                                    app.manage(mem_index);
+                                    println!("文件索引数据库初始化成功: {:?}", index_path);
+                                }
+                                Err(e) => {
+                                    eprintln!("文件索引数据库初始化失败: {}", e);
+                                }
+                            }
                         }
                         Err(e) => {
                             eprintln!("数据库初始化失败: {}", e);
@@ -1758,21 +1988,27 @@ pub fn run() {
                 }
             }
 
-            // 创建托盘菜单
-            let tray_menu = create_tray_menu(app.handle())?;
+            // 创建托盘图标（先检查是否已存在，避免重复创建导致多个图标）
+            if app.tray_by_id("main_tray").is_none() {
+                // 创建托盘菜单
+                let tray_menu = create_tray_menu(app.handle())?;
 
-            // 创建托盘图标
-            let _tray = TrayIconBuilder::with_id("main_tray")
-                .menu(&tray_menu)
-                .icon(app.default_window_icon().unwrap().clone())
-                .tooltip("XSun桌宠")
-                .on_tray_icon_event(|tray, event| {
-                    handle_tray_event(tray.app_handle(), event);
-                })
-                .on_menu_event(|tray, event| {
-                    handle_tray_menu_event(tray.app_handle(), event);
-                })
-                .build(app)?;
+                let tray = TrayIconBuilder::with_id("main_tray")
+                    .menu(&tray_menu)
+                    .icon(app.default_window_icon().unwrap().clone())
+                    .tooltip("XSun桌宠")
+                    .on_tray_icon_event(|tray, event| {
+                        handle_tray_event(tray.app_handle(), event);
+                    })
+                    .on_menu_event(|tray, event| {
+                        handle_tray_menu_event(tray.app_handle(), event);
+                    })
+                    .build(app)?;
+                // 存储托盘图标句柄，防止被 drop 销毁
+                app.manage(tray);
+            } else {
+                eprintln!("[setup] 托盘图标已存在，跳过创建");
+            }
             // 窗口初始化
             if let Some(main_window) = app.get_webview_window("main") {
                 if let Err(e) = main_window.hide() {
@@ -1794,6 +2030,9 @@ pub fn run() {
 
             // 启动全局鼠标中键钩子
             init_global_mouse_hook(app.app_handle().clone());
+
+            // 启动全局键盘钩子（双击反引号打开记事本）
+            init_global_keyboard_hook(app.app_handle().clone());
 
             // 系统信息监控任务
             let app_handle = app.app_handle().clone();

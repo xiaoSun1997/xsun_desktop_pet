@@ -6441,6 +6441,7 @@ dependencies = [
  "tokio-util",
  "urlencoding",
  "uuid",
+ "walkdir",
  "windows 0.58.0",
 ]
 

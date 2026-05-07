@@ -45,7 +45,7 @@
       "csp": null,
       "assetProtocol": {
         "enable": true,
-        "scope": ["$APPDATA/**"]
+        "scope": ["$APPDATA/**", "$RESOURCE/data/**"]
       },
       "capabilities": [
         "drag",
@@ -56,7 +56,8 @@
   },
   "bundle": {
     "resources": [
-      "config/*"
+      "config/*",
+      "data/*"
     ],
     "active": true,
     "targets": [
@@ -68,7 +69,12 @@
       "icons/cat32.png",
       "icons/cat48.png",
       "icons/cat72.ico"
-    ]
+    ],
+    "windows": {
+      "wix": {
+        "fragmentPaths": ["./wix/fragments/data_dir.wxs"]
+      }
+    }
   },
   "plugins": {
     "fs": {

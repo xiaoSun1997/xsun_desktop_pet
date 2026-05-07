@@ -10,11 +10,19 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@codemirror/commands": "^6.10.3",
+    "@codemirror/lang-json": "^6.0.2",
+    "@codemirror/language": "^6.12.3",
+    "@codemirror/search": "^6.7.0",
+    "@codemirror/state": "^6.6.0",
+    "@codemirror/view": "^6.42.0",
     "@tauri-apps/api": "~2.8.0",
     "@tauri-apps/plugin-dialog": "~2.4.0",
     "@tauri-apps/plugin-fs": "~2.4.0",
     "@tauri-apps/plugin-opener": "^2",
+    "@uiw/react-codemirror": "^4.25.9",
     "marked": "^18.0.3",
+    "mermaid": "^11.14.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },

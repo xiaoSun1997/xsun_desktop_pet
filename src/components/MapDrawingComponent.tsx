@@ -62,6 +62,18 @@ function calcCenter(sps: SubPoint[]): { cx: number; cy: number } {
     };
 }
 
+/** 像素到米的转换系数（1像素 = 0.05米） */
+const PIXEL_TO_METER_RATIO = 0.05;
+
+/** 计算两点间距离（像素转米） */
+function calcDistance(p1: SubPoint, p2: SubPoint): number {
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const distPx = Math.sqrt(dx * dx + dy * dy);
+    const distM = distPx * PIXEL_TO_METER_RATIO;
+    return Math.round(distM * 100) / 100;
+}
+
 export default function MapDrawingComponent() {
     const [shapes, setShapes] = useState<Shape[]>([]);
     const [showPasteInput, setShowPasteInput] = useState(false);
@@ -533,7 +545,7 @@ export default function MapDrawingComponent() {
         const ys = allCoords.map(c => c.y);
         const minX = Math.min(...xs), maxX = Math.max(...xs);
         const minY = Math.min(...ys), maxY = Math.max(...ys);
-        const pad = 80;
+        const pad = 50;
         const w = Math.max(maxX - minX + pad * 2, 300);
         const h = Math.max(maxY - minY + pad * 2, 300);
         return `${minX - pad} ${minY - pad} ${w} ${h}`;
@@ -545,25 +557,65 @@ export default function MapDrawingComponent() {
         const sps = shape.subPoints;
         const color = shape.lineColor;
 
-        const lines: React.ReactElement[] = [];
+        const elements: React.ReactElement[] = [];
         for (let i = 0; i < sps.length - 1; i++) {
-            lines.push(
+            const p1 = sps[i];
+            const p2 = sps[i + 1];
+            elements.push(
                 <line key={`l-${shape.id}-${i}`}
-                    x1={sps[i].x} y1={sps[i].y}
-                    x2={sps[i + 1].x} y2={sps[i + 1].y}
-                    stroke={color} strokeWidth={0.8} strokeLinecap="round" />
+                    x1={p1.x} y1={p1.y}
+                    x2={p2.x} y2={p2.y}
+                    stroke={color} strokeWidth={0.5} strokeLinecap="round" />
             );
+            // 货架类型：在边上显示长度标签
+            if (shape.type === "shelf") {
+                const dist = calcDistance(p1, p2);
+                if (dist > 0) {
+                    const midX = (p1.x + p2.x) / 2;
+                    const midY = (p1.y + p2.y) / 2;
+                    elements.push(
+                        <text key={`len-${shape.id}-${i}`}
+                            x={midX} y={midY}
+                            textAnchor="middle"
+                            dominantBaseline="middle"
+                            fill="#d97706" fontSize={4} fontWeight={600}
+                            style={{ paintOrder: "stroke", stroke: "#fff", strokeWidth: "1px", strokeLinecap: "round", strokeLinejoin: "round" }}>
+                            {dist.toFixed(2)}m
+                        </text>
+                    );
+                }
+            }
         }
         if (sps.length >= 3) {
-            lines.push(
+            const p1 = sps[sps.length - 1];
+            const p2 = sps[0];
+            elements.push(
                 <line key={`l-${shape.id}-close`}
-                    x1={sps[sps.length - 1].x} y1={sps[sps.length - 1].y}
-                    x2={sps[0].x} y2={sps[0].y}
-                    stroke={color} strokeWidth={0.8} strokeLinecap="round"
+                    x1={p1.x} y1={p1.y}
+                    x2={p2.x} y2={p2.y}
+                    stroke={color} strokeWidth={0.5} strokeLinecap="round"
                     strokeDasharray={shape.type === "shelf" ? "4 3" : "none"} />
             );
+            // 货架类型：闭合边也显示长度
+            if (shape.type === "shelf") {
+                const dist = calcDistance(p1, p2);
+                if (dist > 0) {
+                    const midX = (p1.x + p2.x) / 2;
+                    const midY = (p1.y + p2.y) / 2;
+                    elements.push(
+                        <text key={`len-${shape.id}-close`}
+                            x={midX} y={midY}
+                            textAnchor="middle"
+                            dominantBaseline="middle"
+                            fill="#d97706" fontSize={4} fontWeight={600}
+                            style={{ paintOrder: "stroke", stroke: "#fff", strokeWidth: "1px", strokeLinecap: "round", strokeLinejoin: "round" }}>
+                            {dist.toFixed(2)}m
+                        </text>
+                    );
+                }
+            }
         }
-        return lines;
+        return elements;
     };
 
     // ===== 渲染子点（圆点 + 选中高亮 + 坐标标签） =====
@@ -578,42 +630,42 @@ export default function MapDrawingComponent() {
                 <g key={sp.id}>
                     {/* 选中高亮圈 */}
                     {isSelected && (
-                        <circle cx={sp.x} cy={sp.y} r={5}
-                            fill="none" stroke="#fbbf24" strokeWidth={2.5}
+                        <circle cx={sp.x} cy={sp.y} r={3}
+                            fill="none" stroke="#fbbf24" strokeWidth={1.5}
                             opacity={0.8} />
                     )}
                     {/* 圆点 r=1 */}
-                    <circle cx={sp.x} cy={sp.y} r={1}
+                    <circle cx={sp.x} cy={sp.y} r={0.5}
                         fill={isSelected ? "#fbbf24" : color}
                         stroke={isSelected ? "#f59e0b" : "#fff"}
-                        strokeWidth={0.6} />
+                        strokeWidth={0.4} />
 
                     {/* 序号：只在 5 的倍数位置显示 */}
                     {(idx + 1) % 5 === 0 && (
-                        <text x={sp.x} y={sp.y - 8} textAnchor="middle"
-                            fill="rgba(0,0,0,0.4)" fontSize={8} fontWeight={600}>
+                        <text x={sp.x} y={sp.y - 4} textAnchor="middle"
+                            fill="rgba(0,0,0,0.4)" fontSize={4} fontWeight={600}>
                             {idx + 1}
                         </text>
                     )}
 
                     {/* 坐标标签：外边框只有选中才显示，货架始终显示但更小 */}
                     {shape.type === "shelf" && (
-                        <text x={sp.x} y={sp.y + 12} textAnchor="middle"
-                            fill="rgba(0,0,0,0.25)" fontSize={7}>
+                        <text x={sp.x} y={sp.y + 7} textAnchor="middle"
+                            fill="rgba(0,0,0,0.25)" fontSize={4}>
                             ({sp.x.toFixed(1)},{sp.y.toFixed(1)})
                         </text>
                     )}
                     {shape.type === "outerBorder" && isSelected && (
-                        <text x={sp.x} y={sp.y + 12} textAnchor="middle"
-                            fill="rgba(0,0,0,0.4)" fontSize={8}>
+                        <text x={sp.x} y={sp.y + 7} textAnchor="middle"
+                            fill="rgba(0,0,0,0.4)" fontSize={4}>
                             ({sp.x.toFixed(1)},{sp.y.toFixed(1)})
                         </text>
                     )}
 
                     {/* Z 校准值 */}
                     {sp.z > 1000 && (
-                        <text x={sp.x} y={sp.y + (shape.type === "shelf" ? 22 : 24)} textAnchor="middle"
-                            fill="rgba(217,119,6,0.5)" fontSize={7}>
+                        <text x={sp.x} y={sp.y + (shape.type === "shelf" ? 19 : 21)} textAnchor="middle"
+                            fill="rgba(217,119,6,0.5)" fontSize={4}>
                             ↻{calibrateZ(sp.z).toFixed(1)}°
                         </text>
                     )}
@@ -653,22 +705,22 @@ export default function MapDrawingComponent() {
                 <g key={ep.id}>
                     {/* 选中高亮 */}
                     {isSelected && (
-                        <circle cx={ep.x} cy={ep.y} r={6}
-                            fill="none" stroke="#fbbf24" strokeWidth={1.5}
+                        <circle cx={ep.x} cy={ep.y} r={4}
+                            fill="none" stroke="#fbbf24" strokeWidth={1}
                             opacity={0.8} />
                     )}
                     {/* 方向线 */}
                     <line x1={ep.x} y1={ep.y} x2={endX} y2={endY}
                         stroke={isSelected ? "#fbbf24" : "#f59e0b"}
-                        strokeWidth={0.6} strokeLinecap="round" />
+                        strokeWidth={0.4} strokeLinecap="round" />
                     {/* 箭头 */}
                     <polygon points={`${endX},${endY} ${hx1},${hy1} ${hx2},${hy2}`}
                         fill={isSelected ? "#fbbf24" : "#f59e0b"} />
                     {/* 外扩点标记（小菱形，与普通点大小一致） */}
-                    <rect x={ep.x - 1.5} y={ep.y - 1.5} width={3} height={3}
+                    <rect x={ep.x - 1} y={ep.y - 1} width={1.5} height={1.5}
                         transform={`rotate(45, ${ep.x}, ${ep.y})`}
                         fill={isSelected ? "#fbbf24" : "#f59e0b"}
-                        stroke="#fff" strokeWidth={0.8} />
+                        stroke="#fff" strokeWidth={0.5} />
                 </g>
             );
         });

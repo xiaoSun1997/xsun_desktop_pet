@@ -183,6 +183,10 @@ export default function PetComponent() {
             createOrShowJira();
         });
 
+        const unlistenTrayFileSearch = listen("tray://open-file-search", () => {
+            createOrShowFileSearch();
+        });
+
         // 监听全局鼠标中键选中文本事件
         const unlistenSelection = listen<{ text: string; x: number; y: number }>("selection://popup", (event) => {
             createSelectionMenu(event.payload);
@@ -196,6 +200,7 @@ export default function PetComponent() {
             unlistenTrayTranslator.then(fn => fn());
             unlistenTrayCalendar.then(fn => fn());
             unlistenTrayJira.then(fn => fn());
+            unlistenTrayFileSearch.then(fn => fn());
             unlistenSelection.then(fn => fn());
             if (doubleClickTimer.current) clearTimeout(doubleClickTimer.current);
         };
@@ -276,7 +281,7 @@ export default function PetComponent() {
                 transparent: true,
                 decorations: false,
                 center: true,
-
+                skipTaskbar: true,
             });
 
             await new Promise<void>((resolve, reject) => {
@@ -336,7 +341,7 @@ export default function PetComponent() {
                 transparent: true,
                 decorations: false,
                 center: true,
-
+                skipTaskbar: true,
             });
 
             await new Promise<void>((resolve, reject) => {
@@ -395,7 +400,7 @@ export default function PetComponent() {
                 minWidth: 600,
                 minHeight: 500,
                 center: true,
-
+                skipTaskbar: true,
             });
 
             await new Promise<void>((resolve, reject) => {
@@ -452,7 +457,7 @@ export default function PetComponent() {
                 minWidth: 800,
                 minHeight: 600,
                 center: true,
-
+                skipTaskbar: true,
             });
 
             await new Promise<void>((resolve, reject) => {
@@ -567,6 +572,7 @@ export default function PetComponent() {
                 resizable: true,
                 alwaysOnTop: false,
                 center: true,
+                skipTaskbar: true,
                 shadow: false,
             });
 
@@ -591,6 +597,62 @@ export default function PetComponent() {
             console.log("JIRA窗口已创建并显示");
         } catch (err) {
             console.error("创建JIRA窗口失败：", err);
+        }
+    };
+
+    const createOrShowFileSearch = async () => {
+        const windows = await getAllWindows();
+        const existing = windows.find((w) => w.label === "file-search");
+
+        if (existing) {
+            try {
+                await existing.show();
+                await existing.setFocus();
+                return;
+            } catch (e) {
+                console.warn("已有文件搜索窗口，但 show/setFocus 失败，尝试重新创建：", e);
+            }
+        }
+
+        const url = import.meta.env.DEV ? "http://localhost:1420" : "index.html";
+
+        try {
+            const webview = new WebviewWindow("file-search", {
+                url,
+                title: "文件搜索",
+                width: 700,
+                height: 550,
+                visible: false,
+                transparent: true,
+                decorations: false,
+                resizable: true,
+                alwaysOnTop: false,
+                center: true,
+                skipTaskbar: true,
+                shadow: false,
+            });
+
+            await new Promise<void>((resolve, reject) => {
+                const timeout = setTimeout(() => {
+                    reject(new Error("等待文件搜索窗口创建超时"));
+                }, 5000);
+
+                webview.once("tauri://created", () => {
+                    clearTimeout(timeout);
+                    resolve();
+                });
+
+                webview.once("tauri://error", (e) => {
+                    clearTimeout(timeout);
+                    reject(new Error(`创建文件搜索窗口时出错: ${JSON.stringify(e)}`));
+                });
+            });
+
+            await webview.show();
+            await webview.setFocus();
+            console.log("文件搜索窗口已创建并显示");
+        } catch (err) {
+            console.error("创建文件搜索窗口失败：", err);
         }
     };
     

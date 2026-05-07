@@ -95,8 +95,9 @@ impl ClipboardHistory {
                 };
 
                 if is_new {
-                    let preview = if current_text.len() > 50 {
-                        format!("{}...", &current_text[..50])
+                    let preview = if current_text.chars().count() > 50 {
+                        let truncated: String = current_text.chars().take(50).collect();
+                        format!("{}...", truncated)
                     } else {
                         current_text.clone()
                     };
