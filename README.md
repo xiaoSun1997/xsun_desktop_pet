@@ -39,7 +39,7 @@ XSUN Desktop Pet（桌宠）是一个基于 Rust 和 Tauri 2 开发的桌面应�
 - 托盘图标支持（右键菜单）
 
 ### 2. 功能菜单 (MenuPanel)
-**双击tab可以唤醒**
+**Ctrl+Tab 可以唤醒**
 
 点击桌宠会弹出一个九宫格菜单，提供对各种功能的快速访问：
 
@@ -145,6 +145,7 @@ XSUN Desktop Pet（桌宠）是一个基于 Rust 和 Tauri 2 开发的桌面应�
 - 拖拽缩放交互
 
 ### 11. 记事本 (NotepadComponent)
+**Ctrl+Alt+N 可以唤醒**
 
 类 Obsidian 的本地 Markdown 笔记管理。
 
@@ -154,7 +155,7 @@ XSUN Desktop Pet（桌宠）是一个基于 Rust 和 Tauri 2 开发的桌面应�
 - 数据持久化存储
 
 ### 12. 文件搜索 (QuickFileSearch / FileSearchComponent)
-**双击control可以唤醒**
+**Alt+S 可以唤醒**
 
 基于 FTS5 全文索引的快速文件搜索。
 
@@ -169,9 +170,9 @@ XSUN Desktop Pet（桌宠）是一个基于 Rust 和 Tauri 2 开发的桌面应�
 
 
 ### 14：快捷方式
-1. control+tab唤醒菜单
-2. control+space 唤醒搜索
-3. 双击·（tab上面那个键）唤醒记事本
+1. Ctrl+Tab 唤醒菜单
+2. Alt+S 唤醒搜索
+3. Ctrl+Alt+N 唤醒记事本
 4. 选择目标，点击鼠标滚轮，唤醒小窗（翻译/json序列化/唤醒默认游览器打开URL）
 
 ## 项目架构

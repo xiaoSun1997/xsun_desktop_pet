@@ -1,88 +1,61 @@
-use std::sync::{Mutex, OnceLock};
+use std::sync::OnceLock;
 use std::thread;
-use std::time::Instant;
 use tauri::{AppHandle, Emitter};
 use windows::Win32::{
     Foundation::{LPARAM, LRESULT, WPARAM, HINSTANCE, HWND},
+    UI::Input::KeyboardAndMouse::GetAsyncKeyState,
     UI::WindowsAndMessaging::{
         CallNextHookEx, GetMessageW, MSG, SetWindowsHookExW,
-        UnhookWindowsHookEx, HHOOK, WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP,
+        UnhookWindowsHookEx, HHOOK, WH_KEYBOARD_LL, WM_KEYDOWN, WM_SYSKEYDOWN,
         KBDLLHOOKSTRUCT,
     },
 };
 
 static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
-static LAST_CLICK: OnceLock<Mutex<Option<Instant>>> = OnceLock::new();
-static CTRL_DOWN: OnceLock<Mutex<bool>> = OnceLock::new();
 
-const VK_OEM_3: u32 = 0xC0; // 反引号键 `` ` ``
-const VK_LCONTROL: u32 = 0xA2; // 左 Ctrl 键（WH_KEYBOARD_LL 中实际报告的 vkCode）
-const VK_RCONTROL: u32 = 0xA3; // 右 Ctrl 键
-const VK_TAB: u32 = 0x09; // Tab 键
-const VK_SPACE: u32 = 0x20; // 空格键
+const VK_TAB: u32 = 0x09;    // Tab 键
+const VK_MENU: i32 = 0x12;   // Alt 键（用于 GetAsyncKeyState）
+const VK_CONTROL: i32 = 0x11; // Ctrl 键（用于 GetAsyncKeyState）
+const VK_S: u32 = 0x53;      // S 键
+const VK_N: u32 = 0x4E;      // N 键
+
+/// 使用 GetAsyncKeyState 实时检测按键是否被按下（返回值为负数表示当前按下）
+fn is_key_pressed(vk: i32) -> bool {
+    unsafe { GetAsyncKeyState(vk) < 0 }
+}
 
 unsafe extern "system" fn keyboard_proc(n_code: i32, w_param: WPARAM, l_param: LPARAM) -> LRESULT {
     if n_code >= 0 {
         let p = l_param.0 as *const KBDLLHOOKSTRUCT;
         if !p.is_null() {
             let kb_struct = &*p;
+            let is_keydown = w_param.0 == WM_KEYDOWN as usize || w_param.0 == WM_SYSKEYDOWN as usize;
 
-            // 双击反引号检测 (WM_KEYDOWN)
-            if w_param.0 == WM_KEYDOWN as usize && kb_struct.vkCode == VK_OEM_3 {
-                let now = Instant::now();
-                if let Some(mutex) = LAST_CLICK.get() {
-                    let mut last = mutex.lock().unwrap();
-                    if let Some(last_time) = *last {
-                        if now.duration_since(last_time).as_millis() < 500 {
-                            // 双击反引号 → 发射事件
-                            if let Some(app_handle) = APP_HANDLE.get() {
-                                let _ = app_handle.emit("keyboard://double-backtick", ());
-                            }
-                            *last = None;
-                            return LRESULT(1); // 消耗第二次按键，不让它输入到界面
-                        }
-                        // 时间窗口已过，重置为当前按键开启新一轮检测
-                        *last = Some(now);
-                    } else {
-                        *last = Some(now);
-                    }
-                }
-            }
+            if is_keydown {
+                let ctrl_pressed = is_key_pressed(VK_CONTROL);
+                let alt_pressed = is_key_pressed(VK_MENU);
 
-            // Ctrl 键状态追踪：按下/抬起
-            if kb_struct.vkCode == VK_LCONTROL || kb_struct.vkCode == VK_RCONTROL {
-                if w_param.0 == WM_KEYDOWN as usize {
-                    if let Some(mutex) = CTRL_DOWN.get() {
-                        *mutex.lock().unwrap() = true;
-                    }
-                    // 单独 Ctrl 键不消耗，正常传递
-                } else if w_param.0 == WM_KEYUP as usize {
-                    if let Some(mutex) = CTRL_DOWN.get() {
-                        *mutex.lock().unwrap() = false;
-                    }
-                }
-            }
-
-            // Ctrl+空格 → 打开快速文件搜索
-            if w_param.0 == WM_KEYDOWN as usize && kb_struct.vkCode == VK_SPACE {
-                let ctrl_down = CTRL_DOWN.get().map(|m| *m.lock().unwrap()).unwrap_or(false);
-                if ctrl_down {
+                // Alt+S → 打开快速文件搜索
+                if kb_struct.vkCode == VK_S && alt_pressed && !ctrl_pressed {
                     if let Some(app_handle) = APP_HANDLE.get() {
-                        let _ = app_handle.emit("keyboard://ctrl-space", ());
+                        let _ = app_handle.emit("keyboard://alt-s", ());
                     }
-                    // 消耗 Space 按键事件，阻止它输入到界面
                     return LRESULT(1);
                 }
-            }
 
-            // Ctrl+Tab → 打开功能菜单
-            if w_param.0 == WM_KEYDOWN as usize && kb_struct.vkCode == VK_TAB {
-                let ctrl_down = CTRL_DOWN.get().map(|m| *m.lock().unwrap()).unwrap_or(false);
-                if ctrl_down {
+                // Ctrl+Alt+N → 打开记事本
+                if kb_struct.vkCode == VK_N && ctrl_pressed && alt_pressed {
+                    if let Some(app_handle) = APP_HANDLE.get() {
+                        let _ = app_handle.emit("keyboard://ctrl-alt-n", ());
+                    }
+                    return LRESULT(1);
+                }
+
+                // Ctrl+Tab → 打开功能菜单
+                if kb_struct.vkCode == VK_TAB && ctrl_pressed && !alt_pressed {
                     if let Some(app_handle) = APP_HANDLE.get() {
                         let _ = app_handle.emit("keyboard://ctrl-tab", ());
                     }
-                    // 消耗 Tab 按键事件，阻止焦点切换
                     return LRESULT(1);
                 }
             }
@@ -96,8 +69,6 @@ pub fn init_global_keyboard_hook(app_handle: AppHandle) {
         eprintln!("全局键盘钩子已初始化，跳过");
         return;
     }
-    let _ = LAST_CLICK.set(Mutex::new(None));
-    let _ = CTRL_DOWN.set(Mutex::new(false));
 
     thread::spawn(|| {
         unsafe {

@@ -1,572 +1,852 @@
-import {useEffect, useState} from "react";
+import {useState, useEffect, useRef, useCallback} from "react";
 import {invoke} from "@tauri-apps/api/core";
-import {convertFileSrc} from "@tauri-apps/api/core";
-import {getCurrentWindow, getAllWindows} from "@tauri-apps/api/window";
-import {open} from "@tauri-apps/plugin-dialog";
-import {readFile} from "@tauri-apps/plugin-fs";
-import "./CalendarComponent.css";
-import {WebviewWindow} from "@tauri-apps/api/webviewWindow";
+import {getCurrentWindow} from "@tauri-apps/api/window";
 import {listen} from "@tauri-apps/api/event";
 import {LunarCalendar} from "../utils/lunarUtils";
-import {currentMonitor} from "@tauri-apps/api/window";
-import {PhysicalSize, PhysicalPosition} from "@tauri-apps/api/window";
+import "./CalendarComponent.css";
 
-type CalendarSettings = {
-    backgroundImages: string[];
-    rotationInterval: number;
-};
+// ===== 类型定义 =====
+interface HealthRecord {
+    date: string;
+    morningWeight?: number;
+    eveningWeight?: number;
+    note?: string;
+}
 
-type TodoItem = {
+interface TrainingItem {
+    id: string;
+    name: string;
+    completed: boolean;
+    sets?: number;
+    reps?: number;
+    weight?: number;
+    notes?: string;
+    created_at: number;
+}
+
+interface Subtask {
     id: string;
     content: string;
     completed: boolean;
+}
+
+interface LearningItem {
+    id: string;
+    title: string;
+    subtasks: Subtask[];
+    completed: boolean;
     created_at: number;
+}
+
+interface LongTermPlan {
+    id: string;
+    planType: "Health" | "Learning";
+    startDate: string;
+    endDate: string;
+    targetDesc: string;
+    planContent: string;
+    createdAt: number;
+    applied: boolean;
+}
+
+interface AIMessage {
+    role: "user" | "assistant";
+    content: string;
+}
+
+// 工具函数：日期格式化
+const formatDateStr = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
+const generateUUID = (): string => {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+        const r = Math.random() * 16 | 0;
+        const v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+    });
+};
+
+// 中国法定节假日（简化版）
+const CHINA_HOLIDAYS: Record<string, string> = {
+    '01-01': '元旦',
+    '02-14': '情人节',
+    '03-08': '妇女节',
+    '04-05': '清明节',
+    '05-01': '劳动节',
+    '06-01': '儿童节',
+    '07-01': '建党节',
+    '08-01': '建军节',
+    '09-10': '教师节',
+    '10-01': '国庆节',
+    '12-25': '圣诞节',
 };
 
 export default function CalendarComponent() {
-    const [currentDate, setCurrentDate] = useState(new Date());
-    const [settings, setSettings] = useState<CalendarSettings>({
-        backgroundImages: ["../data/img0.jpeg"],
-        rotationInterval: 30
+    // ===== 核心状态 =====
+    const [selectedDate, setSelectedDate] = useState<Date>(() => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        return today;
     });
-    const [showSettings, setShowSettings] = useState(false);
-    const [currentBgIndex, setCurrentBgIndex] = useState(0);
-    const [isCardMode, setIsCardMode] = useState(false);
-    const [monthTodos, setMonthTodos] = useState<{ [date: string]: TodoItem[] }>({});
-    const [tempSettings, setTempSettings] = useState<CalendarSettings>({
-        backgroundImages: ["../data/img0.jpeg"],
-        rotationInterval: 30
-    });
+    const [activeTab, setActiveTab] = useState<string>("calendar");
 
-    useEffect(() => {
-        const unlisten = listen('refresh-calendar', () => {
-            refreshCalendarData();
-        });
-        return () => {
-            unlisten.then(fn => fn());
-        };
+    // ===== 健康数据 =====
+    const [weightInput, setWeightInput] = useState({morning: "", evening: ""});
+    const [trainingItems, setTrainingItems] = useState<TrainingItem[]>([]);
+    const [showAddTraining, setShowAddTraining] = useState(false);
+    const [newTraining, setNewTraining] = useState({name: "", sets: "", reps: "", weight: ""});
+
+    // ===== 学习数据 =====
+    const [learningItems, setLearningItems] = useState<LearningItem[]>([]);
+    const [showAddLearning, setShowAddLearning] = useState(false);
+    const [newLearning, setNewLearning] = useState({title: "", subtaskInput: "", subtasks: [] as string[]});
+
+    // ===== 长期规划 =====
+    const [longTermPlans, setLongTermPlans] = useState<LongTermPlan[]>([]);
+    const [showCreatePlan, setShowCreatePlan] = useState(false);
+    const [newPlan, setNewPlan] = useState({
+        planType: "Health" as "Health" | "Learning",
+        startDate: "",
+        endDate: "",
+        targetDesc: "",
+    });
+    const [planGenerating, setPlanGenerating] = useState(false);
+    const [planApplying, setPlanApplying] = useState<string | null>(null);
+
+    // ===== AI 对话 =====
+    const [aiOpen, setAiOpen] = useState(false);
+    const [aiType, setAiType] = useState<"health" | "learning">("health");
+    const [aiMessages, setAiMessages] = useState<AIMessage[]>([]);
+    const [aiLoading, setAiLoading] = useState(false);
+    const [aiInput, setAiInput] = useState("");
+    const aiMessagesRef = useRef<HTMLDivElement>(null);
+
+    const headerRef = useRef<HTMLDivElement>(null);
+
+    // ===== 生成日期列表（前后各15天） =====
+    const generateDateList = useCallback((): {date: Date; isToday: boolean; formatted: string; dateStr: string; weekday: string; festival?: string}[] => {
+        const dates = [];
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        for (let i = -15; i <= 15; i++) {
+            const date = new Date(today);
+            date.setDate(today.getDate() + i);
+            const isToday = date.toDateString() === today.toDateString();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+            const weekday = weekdays[date.getDay()];
+            const mmdd = `${month}-${day}`;
+            const festival = CHINA_HOLIDAYS[mmdd] || LunarCalendar.getSolarTerm(date) || undefined;
+            dates.push({
+                date, isToday,
+                formatted: `${month}-${day}`,
+                dateStr: formatDateStr(date),
+                weekday,
+                festival,
+            });
+        }
+        return dates;
     }, []);
 
+    // ===== 初始化 & 数据加载 =====
     useEffect(() => {
-        loadSettings();
-        loadMonthTodos();
-    }, [currentDate]);
+        loadAllData();
+    }, [selectedDate]);
 
     useEffect(() => {
-        if (settings.backgroundImages.length > 1) {
-            const interval = setInterval(() => {
-                setCurrentBgIndex(prev => (prev + 1) % settings.backgroundImages.length);
-            }, settings.rotationInterval * 60 * 1000);
-            return () => clearInterval(interval);
-        }
-    }, [settings]);
-
-    const loadSettings = async () => {
-        try {
-            const loadedSettings = await invoke<CalendarSettings>('load_calendar_settings');
-            setSettings(loadedSettings);
-            setTempSettings(loadedSettings);
-        } catch (error) {
-            console.error('加载设置失败:', error);
-        }
-    };
-
-    const saveSettings = async () => {
-        try {
-            await invoke('save_calendar_settings', {settings: tempSettings});
-            setSettings(tempSettings);
-            setShowSettings(false);
-        } catch (error) {
-            console.error('保存设置失败:', error);
-        }
-    };
-
-    const loadMonthTodos = async () => {
-        const year = currentDate.getFullYear();
-        const month = currentDate.getMonth();
-
-        const todos: { [date: string]: TodoItem[] } = {};
-        const daysInMonth = new Date(year, month + 1, 0).getDate();
-
-        // 加载一周的待办（用于卡片模式显示）
-        const today = new Date();
-        for (let i = 0; i < 7; i++) {
-            const date = new Date(today);
-            date.setDate(today.getDate() - today.getDay() + i);
-            const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+        // 拖拽
+        const header = headerRef.current;
+        if (!header) return;
+        const mouseDownHandler = async (e: MouseEvent) => {
+            if ((e.target as HTMLElement).closest('button') ||
+                (e.target as HTMLElement).closest('input') ||
+                (e.target as HTMLElement).closest('textarea')) return;
             try {
-                const dayTodos = await invoke<TodoItem[]>('get_todos_for_date', {date: dateStr});
-                if (dayTodos.length > 0) {
-                    todos[dateStr] = dayTodos;
-                }
+                await getCurrentWindow().startDragging();
             } catch (error) {
-                console.error(`加载${dateStr}的待办失败:`, error);
+                console.error('拖动失败:', error);
             }
-        }
+        };
+        header.addEventListener('mousedown', mouseDownHandler);
+        return () => header.removeEventListener('mousedown', mouseDownHandler);
+    }, []);
 
-        // 加载当前月份的待办
-        for (let day = 1; day <= daysInMonth; day++) {
-            const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-            if (!todos[dateStr]) {
-                try {
-                    const dayTodos = await invoke<TodoItem[]>('get_todos_for_date', {date: dateStr});
-                    if (dayTodos.length > 0) {
-                        todos[dateStr] = dayTodos;
+    // 监听 AI 流式事件
+    useEffect(() => {
+        const unlistens: (() => void)[] = [];
+        listen<{token: string; planType: string}>('calendar-ai://stream-token', (event) => {
+            const {token, planType} = event.payload;
+            if ((planType === 'health' && aiType === 'health') || (planType === 'learning' && aiType === 'learning')) {
+                setAiMessages(prev => {
+                    const msgs = [...prev];
+                    const last = msgs[msgs.length - 1];
+                    if (last && last.role === 'assistant') {
+                        last.content += token;
+                    } else {
+                        msgs.push({role: 'assistant', content: token});
                     }
-                } catch (error) {
-                    console.error(`加载${dateStr}的待办失败:`, error);
-                }
+                    return msgs;
+                });
             }
-        }
+        }).then(fn => unlistens.push(fn));
 
-        setMonthTodos(todos);
+        listen<{content: string; planType: string}>('calendar-ai://stream-done', () => {
+            setAiLoading(false);
+        }).then(fn => unlistens.push(fn));
+
+        listen<{error: string}>('calendar-ai://stream-error', (event) => {
+            setAiLoading(false);
+            setAiMessages(prev => [...prev, {role: 'assistant', content: `❌ ${event.payload.error}`}]);
+        }).then(fn => unlistens.push(fn));
+
+        return () => { unlistens.forEach(fn => fn()); };
+    }, [aiType]);
+
+    const loadAllData = async () => {
+        const dateStr = formatDateStr(selectedDate);
+        await Promise.all([
+            loadHealthData(dateStr),
+            loadTrainingData(dateStr),
+            loadLearningData(dateStr),
+            loadLongTermPlans(),
+        ]);
     };
 
-    const createOrShowTodoWindow = async (date: Date) => {
-        const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-        const windowLabel = `todo_${dateStr}`;
+    const loadHealthData = async (dateStr: string) => {
+        try {
+            const record = await invoke<HealthRecord>('get_daily_health_data', {date: dateStr});
+            setWeightInput({
+                morning: record.morningWeight?.toString() || "",
+                evening: record.eveningWeight?.toString() || "",
+            });
+        } catch (e) { console.error('加载健康数据失败:', e); }
+    };
 
-        const windows = await getAllWindows();
-        const existing = windows.find((w) => w.label === windowLabel);
+    const loadTrainingData = async (dateStr: string) => {
+        try {
+            const items = await invoke<TrainingItem[]>('get_daily_training_data', {date: dateStr});
+            setTrainingItems(items || []);
+        } catch (e) { console.error('加载训练数据失败:', e); }
+    };
 
-        if (existing) {
-            try {
-                await existing.show();
-                await existing.setFocus();
-                return;
-            } catch (e) {
-                console.warn("已有待办窗口，但 show/setFocus 失败，尝试重新创建：", e);
-            }
+    const loadLearningData = async (dateStr: string) => {
+        try {
+            const items = await invoke<LearningItem[]>('get_daily_learning_data', {date: dateStr});
+            setLearningItems(items || []);
+        } catch (e) { console.error('加载学习数据失败:', e); }
+    };
+
+    const loadLongTermPlans = async () => {
+        try {
+            const plans = await invoke<LongTermPlan[]>('get_long_term_plans');
+            setLongTermPlans(plans || []);
+        } catch (e) { console.error('加载长期规划失败:', e); }
+    };
+
+    // ===== 健康数据操作 =====
+    const saveWeight = async () => {
+        const record: HealthRecord = {
+            date: formatDateStr(selectedDate),
+            morningWeight: weightInput.morning ? parseFloat(weightInput.morning) : undefined,
+            eveningWeight: weightInput.evening ? parseFloat(weightInput.evening) : undefined,
+        };
+        try {
+            await invoke('save_health_record', {record});
+        } catch (e) { alert('保存体重失败: ' + e); }
+    };
+
+    const toggleTrainingComplete = async (item: TrainingItem) => {
+        const updated = trainingItems.map(t =>
+            t.id === item.id ? {...t, completed: !t.completed} : t
+        );
+        setTrainingItems(updated);
+        await saveTrainingItems(updated);
+    };
+
+    const addTrainingItem = async () => {
+        if (!newTraining.name.trim()) return;
+        const item: TrainingItem = {
+            id: generateUUID(),
+            name: newTraining.name.trim(),
+            completed: false,
+            sets: newTraining.sets ? parseInt(newTraining.sets) : undefined,
+            reps: newTraining.reps ? parseInt(newTraining.reps) : undefined,
+            weight: newTraining.weight ? parseFloat(newTraining.weight) : undefined,
+            created_at: Date.now(),
+        };
+        const updated = [...trainingItems, item];
+        setTrainingItems(updated);
+        await saveTrainingItems(updated);
+        setNewTraining({name: "", sets: "", reps: "", weight: ""});
+        setShowAddTraining(false);
+    };
+
+    const deleteTrainingItem = async (id: string) => {
+        const updated = trainingItems.filter(t => t.id !== id);
+        setTrainingItems(updated);
+        await saveTrainingItems(updated);
+    };
+
+    const saveTrainingItems = async (items: TrainingItem[]) => {
+        try {
+            await invoke('save_training_items', {date: formatDateStr(selectedDate), items});
+        } catch (e) { console.error('保存训练数据失败:', e); }
+    };
+
+    // ===== 学习数据操作 =====
+    const toggleLearningComplete = async (item: LearningItem) => {
+        const updated = learningItems.map(l =>
+            l.id === item.id ? {...l, completed: !l.completed} : l
+        );
+        setLearningItems(updated);
+        await saveLearningItems(updated);
+    };
+
+    const toggleSubtask = async (itemId: string, subtaskId: string) => {
+        const updated = learningItems.map(l => {
+            if (l.id !== itemId) return l;
+            return {
+                ...l,
+                subtasks: l.subtasks.map(s =>
+                    s.id === subtaskId ? {...s, completed: !s.completed} : s
+                ),
+            };
+        });
+        setLearningItems(updated);
+        await saveLearningItems(updated);
+    };
+
+    const addLearningItem = async () => {
+        if (!newLearning.title.trim()) return;
+        const subtasks: Subtask[] = newLearning.subtasks
+            .filter(s => s.trim())
+            .map(s => ({id: generateUUID(), content: s.trim(), completed: false}));
+        const item: LearningItem = {
+            id: generateUUID(),
+            title: newLearning.title.trim(),
+            subtasks,
+            completed: false,
+            created_at: Date.now(),
+        };
+        const updated = [...learningItems, item];
+        setLearningItems(updated);
+        await saveLearningItems(updated);
+        setNewLearning({title: "", subtaskInput: "", subtasks: []});
+        setShowAddLearning(false);
+    };
+
+    const deleteLearningItem = async (id: string) => {
+        const updated = learningItems.filter(l => l.id !== id);
+        setLearningItems(updated);
+        await saveLearningItems(updated);
+    };
+
+    const saveLearningItems = async (items: LearningItem[]) => {
+        try {
+            await invoke('save_learning_items', {date: formatDateStr(selectedDate), items});
+        } catch (e) { console.error('保存学习数据失败:', e); }
+    };
+
+    const addSubtaskToNew = () => {
+        if (newLearning.subtaskInput.trim()) {
+            setNewLearning({
+                ...newLearning,
+                subtasks: [...newLearning.subtasks, newLearning.subtaskInput.trim()],
+                subtaskInput: "",
+            });
         }
+    };
 
-        const baseUrl = import.meta.env.DEV ? "http://localhost:1420" : "index.html";
-        const url = `${baseUrl}?date=${dateStr}&type=todo`;
+    // ===== AI 对话操作 =====
+    const openAiChat = (type: "health" | "learning") => {
+        setAiType(type);
+        setAiOpen(true);
+        const defaultPrompt = type === "health"
+            ? "请帮我规划今日锻炼计划，包括具体的训练项目和饮食建议。"
+            : "请帮我拆解今日学习任务，制定详细的学习计划。";
+        setAiMessages([{role: "user", content: defaultPrompt}]);
+        setAiInput("");
+        sendAiMessage(defaultPrompt, type);
+    };
+
+    const sendAiMessage = async (message?: string, forceType?: string) => {
+        const msg = message || aiInput.trim();
+        if (!msg) return;
+        const type = forceType || aiType;
+
+        if (!message) {
+            setAiMessages(prev => [...prev, {role: "user", content: msg}]);
+            setAiInput("");
+        }
+        setAiLoading(true);
 
         try {
-            const webview = new WebviewWindow(windowLabel, {
-                url,
-                title: `${dateStr} - 待办事项`,
-                width: 500,
-                height: 600,
-                visible: false,
-                transparent: true,
-                decorations: false,
-                resizable: true,
-                minWidth: 400,
-                minHeight: 500,
+            await invoke('ai_calendar_plan_stream', {
+                planType: type,
+                userPrompt: msg,
             });
-
-            await new Promise<void>((resolve, reject) => {
-                const timeout = setTimeout(() => {
-                    reject(new Error("等待待办窗口创建超时"));
-                }, 5000);
-
-                webview.once("tauri://created", async () => {
-                    clearTimeout(timeout);
-                    setTimeout(async () => {
-                        try {
-                            await webview.emit('set-todo-date', {date: dateStr});
-                            await webview.show();
-                            await webview.setFocus();
-                            resolve();
-                        } catch (error) {
-                            console.error('发送日期数据失败:', error);
-                            reject(error);
-                        }
-                    }, 1000);
-                });
-
-                webview.once("tauri://error", (e) => {
-                    clearTimeout(timeout);
-                    reject(new Error(`创建待办窗口时出错: ${JSON.stringify(e)}`));
-                });
-            });
-        } catch (err) {
-            console.error("创建待办窗口失败：", err);
+        } catch (e) {
+            setAiLoading(false);
+            setAiMessages(prev => [...prev, {role: 'assistant', content: `❌ ${e}`}]);
         }
     };
 
-    const refreshCalendarData = async () => {
-        await loadMonthTodos();
+    const closeAiChat = () => {
+        setAiOpen(false);
+        setAiMessages([]);
+        setAiLoading(false);
     };
 
-    const handleDateDoubleClick = async (date: Date) => {
-        await createOrShowTodoWindow(date);
-    };
-
-    const uploadImage = async () => {
-        try {
-            const selected = await open({
-                multiple: false,
-                filters: [{
-                    name: '图片文件',
-                    extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp']
-                }]
-            });
-
-            if (selected && typeof selected === 'string') {
-                const imageData = await readFile(selected);
-                const filename = `bg_${Date.now()}.${selected.split('.').pop()}`;
-
-                const imagePath = await invoke<string>('upload_background_image', {
-                    imageData: Array.from(imageData),
-                    filename
-                });
-
-                setTempSettings(prev => ({
-                    ...prev,
-                    backgroundImages: [...prev.backgroundImages, imagePath]
-                }));
-            }
-        } catch (error) {
-            console.error('上传图片失败:', error);
-            alert(`上传图片失败: ${error}`);
-        }
-    };
-
-    const deleteImage = async (imagePath: string, index: number) => {
-        if (tempSettings.backgroundImages.length <= 1) {
-            alert('至少需要保留一张背景图片');
+    // ===== 长期规划操作 =====
+    const createLongTermPlan = async () => {
+        if (!newPlan.startDate || !newPlan.endDate || !newPlan.targetDesc.trim()) {
+            alert('请填写完整的计划信息');
             return;
         }
-
+        setPlanGenerating(true);
         try {
-            await invoke('delete_background_image', {imagePath});
-            setTempSettings(prev => ({
-                ...prev,
-                backgroundImages: prev.backgroundImages.filter((_, i) => i !== index)
-            }));
-        } catch (error) {
-            console.error('删除图片失败:', error);
+            // 先让 AI 生成计划内容
+            const planContent = await invoke<string>('send_chat_message', {
+                messages: [
+                    {role: "system", content: `你是一个${newPlan.planType === 'Health' ? '健身教练和营养师' : '学习规划师'}。请根据用户的描述，制定一个从${newPlan.startDate}到${newPlan.endDate}的详细计划。用中文回复。`},
+                    {role: "user", content: newPlan.targetDesc},
+                ],
+            });
+
+            const plan: LongTermPlan = {
+                id: generateUUID(),
+                planType: newPlan.planType,
+                startDate: newPlan.startDate,
+                endDate: newPlan.endDate,
+                targetDesc: newPlan.targetDesc.trim(),
+                planContent,
+                createdAt: Date.now(),
+                applied: false,
+            };
+
+            await invoke('save_long_term_plan', {plan});
+            await loadLongTermPlans();
+            setShowCreatePlan(false);
+            setNewPlan({planType: "Health", startDate: "", endDate: "", targetDesc: ""});
+        } catch (e) {
+            alert('创建计划失败: ' + e);
+        } finally {
+            setPlanGenerating(false);
         }
     };
 
-    const toggleCardMode = async () => {
-        const window = getCurrentWindow();
-
-        if (!isCardMode) {
-            // 进入卡片模式 - 获取屏幕尺寸并定位窗口到右侧
-            try {
-                // 获取当前显示器信息
-                const monitor = await currentMonitor();
-                if (!monitor) {
-                    throw new Error('无法获取显示器信息');
-                }
-
-                const screenSize = monitor.size;
-                const cardWidth = 300; // 卡片宽度
-
-                // 设置窗口大小 - 使用 PhysicalSize
-                await window.setSize(new PhysicalSize(cardWidth, screenSize.height+10));
-
-                // 定位到屏幕最右侧 - 使用 PhysicalPosition
-                await window.setPosition(new PhysicalPosition(
-                    screenSize.width - cardWidth,
-                    0
-                ));
-
-                await window.setAlwaysOnTop(false);
-                await invoke('set_click_through', {enabled: false});
-
-            } catch (error) {
-                console.error('设置卡片模式失败:', error);
-                // 如果无法获取显示器信息，使用默认值
-                try {
-                    const cardWidth = 250;
-                    await window.setSize(new PhysicalSize(cardWidth, 1080));
-                    await window.setPosition(new PhysicalPosition(1920 - cardWidth, 0));
-                    await window.setAlwaysOnTop(true);
-                    await invoke('set_click_through', {enabled: true});
-                } catch (fallbackError) {
-                    console.error('使用默认值设置卡片模式也失败:', fallbackError);
-                }
-            }
-        } else {
-            // 退出卡片模式 - 恢复原始窗口大小和位置
-            try {
-                const monitor = await currentMonitor();
-                const originalWidth = 900;
-                const originalHeight = 700;
-
-                await window.setSize(new PhysicalSize(originalWidth, originalHeight));
-
-                if (monitor) {
-                    // 居中显示
-                    const centerX = (monitor.size.width - originalWidth) / 2;
-                    const centerY = (monitor.size.height - originalHeight) / 2;
-                    await window.setPosition(new PhysicalPosition(centerX, centerY));
-                } else {
-                    // 默认居中位置
-                    await window.setPosition(new PhysicalPosition(510, 190));
-                }
-
-                await window.setAlwaysOnTop(false);
-                await invoke('set_click_through', {enabled: false});
-
-            } catch (error) {
-                console.error('退出卡片模式失败:', error);
-            }
+    const applyPlan = async (plan: LongTermPlan) => {
+        if (!confirm(`确认将 "${plan.targetDesc}" 拆解并应用到每日计划？\n\nAI将自动分配从 ${plan.startDate} 到 ${plan.endDate} 的每日任务。`)) return;
+        setPlanApplying(plan.id);
+        try {
+            await invoke('ai_apply_long_term_plan', {plan});
+            alert('✅ 长期计划已成功拆解到每日！');
+            await loadLongTermPlans();
+            await loadAllData();
+        } catch (e) {
+            alert('应用计划失败: ' + e);
+        } finally {
+            setPlanApplying(null);
         }
-
-        setIsCardMode(!isCardMode);
     };
 
-
-    const handleClose = async () => {
-        const window = getCurrentWindow();
-        await window.close();
+    const deletePlan = async (id: string) => {
+        if (!confirm('确认删除此计划？')) return;
+        try {
+            await invoke('delete_long_term_plan', {id});
+            await loadLongTermPlans();
+        } catch (e) {
+            alert('删除失败: ' + e);
+        }
     };
 
-    const renderCalendar = () => {
-        const year = currentDate.getFullYear();
-        const month = currentDate.getMonth();
-        const firstDay = new Date(year, month, 1).getDay();
-        const daysInMonth = new Date(year, month + 1, 0).getDate();
+    // ===== 关闭窗口 =====
+    const closeWindow = async () => {
+        try { await getCurrentWindow().close(); }
+        catch (error) { console.error('关闭窗口失败:', error); }
+    };
 
-        const days = [];
+    // ===== 选中日期 =====
+    const handleDateSelect = (date: Date) => {
+        setSelectedDate(date);
+    };
 
-        // 上个月的日期（透明显示）
-        const prevMonthDays = new Date(year, month, 0).getDate();
-        for (let i = firstDay - 1; i >= 0; i--) {
-            const day = prevMonthDays - i;
-            const date = new Date(year, month - 1, day);
-            days.push(
-                <div key={`prev-${day}`} className="calendar-day prev-month">
-                    <div className="day-number">{day}</div>
-                    <div className="lunar-info">
-                        {getLunarInfo(date)}
-                    </div>
+    // ===== 渲染 =====
+    return (
+        <div className="calendar-container">
+            {/* ===== 左侧边栏 ===== */}
+            <div className="calendar-sidebar">
+                <div className="calendar-sidebar-header" ref={headerRef} data-tauri-drag-region>
+                    <span className="calendar-sidebar-title">📅 智能日历</span>
+                    <button className="calendar-close-btn" onClick={closeWindow}>✕</button>
                 </div>
-            );
-        }
 
-        // 当月日期
-        for (let day = 1; day <= daysInMonth; day++) {
-            const date = new Date(year, month, day);
-            const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-            const isToday = date.toDateString() === new Date().toDateString();
-            const dayTodos = monthTodos[dateStr] || [];
-            const completedCount = dayTodos.filter(t => t.completed).length;
-            const pendingCount = dayTodos.filter(t => !t.completed).length;
-            const solarTerm = LunarCalendar.getSolarTerm(date);
-
-            days.push(
-                <div
-                    key={day}
-                    className={`calendar-day ${isToday ? 'today' : ''}`}
-                    onDoubleClick={() => handleDateDoubleClick(date)}
-                >
-                    <div className="day-number">{day}</div>
-                    <div className="lunar-info">
-                        {getLunarInfo(date)}
-                        {solarTerm && <div className="solar-term">{solarTerm}</div>}
-                    </div>
-                    {(pendingCount > 0 || completedCount > 0) && (
-                        <div className="todo-indicator">
-                            {pendingCount > 0 && <span className="pending">{pendingCount}</span>}
-                            {completedCount > 0 && <span className="completed">{completedCount}</span>}
-                        </div>
-                    )}
-                </div>
-            );
-        }
-
-        // 下个月的日期（透明显示）
-        const totalCells = 42;
-        const remainingCells = totalCells - days.length;
-        for (let day = 1; day <= remainingCells; day++) {
-            const date = new Date(year, month + 1, day);
-            days.push(
-                <div key={`next-${day}`} className="calendar-day next-month">
-                    <div className="day-number">{day}</div>
-                    <div className="lunar-info">
-                        {getLunarInfo(date)}
-                    </div>
-                </div>
-            );
-        }
-
-        return days;
-    };
-
-    const renderCardModeCalendar = () => {
-        const today = new Date();
-        const weekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
-
-        return (
-            <div className="card-mode-fullscreen">
-                <div className="card-mode-calendar">
-                    {weekDays.map((weekDay, index) => {
-                        const date = new Date(today);
-                        date.setDate(today.getDate() - today.getDay() + index);
-                        const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-                        const dayTodos = monthTodos[dateStr] || [];
-                        const isToday = date.toDateString() === today.toDateString();
-                        const solarTerm = LunarCalendar.getSolarTerm(date);
-                        const bgIndex = index % 7; // 循环使用 0~5
-                        const backgroundStyle = {
-                            backgroundImage: `url("../data/img${bgIndex}.jpeg")`,
-                            backgroundSize: "cover",
-                            backgroundPosition: "center"
-                        };
+                {/* 日期列表 */}
+                <div className="calendar-sidebar-list">
+                    {generateDateList().map((dateInfo, index) => {
+                        const isSelected = dateInfo.date.toDateString() === selectedDate.toDateString();
+                        const isWeekend = dateInfo.date.getDay() === 0 || dateInfo.date.getDay() === 6;
                         return (
-                            <div
+                            <button
                                 key={index}
-                                className={`card-mode-day ${isToday ? 'today-special' : ''}`}
-                                style={backgroundStyle}
-                                onDoubleClick={() => handleDateDoubleClick(date)}
+                                className={`calendar-date-item ${dateInfo.isToday ? 'today' : ''} ${isSelected ? 'selected' : ''} ${isWeekend ? 'weekend' : ''} ${dateInfo.festival ? 'holiday' : ''}`}
+                                onClick={() => handleDateSelect(dateInfo.date)}
                             >
-                                <div className="weekday-header">{weekDay}</div>
-                                <div className="date-section">
-                                    <div className="date-number">{date.getDate()}</div>
-                                    <div className="date-info">
-                                        <div className="lunar-small">{getLunarInfo(date)}</div>
-                                        {solarTerm && <div className="solar-term-small">{solarTerm}</div>}
-                                    </div>
-                                </div>
-                                <div className="card-mode-todos">
-                                    {dayTodos.slice(0, 3).map((todo, todoIndex) => (
-                                        <div
-                                            key={todoIndex}
-                                            className={`card-mode-todo ${todo.completed ? 'completed' : ''}`}
-                                            title={todo.content}
-                                        >
-                                            {todo.content.length > 15 ? todo.content.substring(0, 15) + '...' : todo.content}
-                                        </div>
-                                    ))}
-                                    {dayTodos.length > 3 && (
-                                        <div className="more-todos">还有{dayTodos.length - 3}项</div>
-                                    )}
-                                </div>
-                            </div>
+                                <span className="calendar-date-label">
+                                    <span className="calendar-date-day">{dateInfo.formatted}</span>
+                                    <span className="calendar-date-weekday">{dateInfo.weekday}</span>
+                                    {dateInfo.festival && <span className="calendar-date-festival">{dateInfo.festival}</span>}
+                                </span>
+                                <span className="calendar-date-badges">
+                                    {dateInfo.isToday && <span className="calendar-date-today-dot" />}
+                                    {dateInfo.festival && <span className="calendar-date-holiday-dot" />}
+                                </span>
+                            </button>
                         );
                     })}
                 </div>
-            </div>
-        );
-    };
 
-    const getLunarInfo = (date: Date): string => {
-        return LunarCalendar.formatLunarDate(date);
-    };
-
-    const toImageUrl = (path: string): string => {
-        if (!path) return path;
-        // Windows 绝对路径 C:\... 或 Unix 绝对路径 /...
-        if (/^[a-zA-Z]:[\\\/]/.test(path) || path.startsWith('/')) {
-            return convertFileSrc(path);
-        }
-        // 相对路径（公共资源）直接返回
-        return path;
-    };
-
-    const currentBgImage = settings.backgroundImages[currentBgIndex] || "../data/img0.jpeg";
-    const currentBgUrl = toImageUrl(currentBgImage);
-
-    // 如果是卡片模式，只显示右侧卡片
-    if (isCardMode) {
-        return renderCardModeCalendar();
-    }
-
-    return (
-        <div
-            className="calendar-container"
-            style={{
-                backgroundImage: `url(${currentBgUrl})`,
-                backgroundSize: 'cover',
-                backgroundPosition: 'center'
-            }}
-        >
-            <div className="calendar-header" data-tauri-drag-region>
-                <div className="header-left" data-tauri-drag-region>
-                    <h1 className="calendar-title" data-tauri-drag-region>智能日历</h1>
-                    <div className="current-month" data-tauri-drag-region>
-                        {currentDate.getFullYear()}年{currentDate.getMonth() + 1}月
-                    </div>
-                </div>
-                <div className="header-actions">
-                    <button className="nav-button"
-                            onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() - 1)))}>
-                        &lt;
+                {/* 底部导航 */}
+                <div className="calendar-sidebar-nav">
+                    <button className={`calendar-nav-item ${activeTab === 'calendar' ? 'active' : ''}`} onClick={() => setActiveTab('calendar')}>
+                        <span className="calendar-nav-icon">📅</span>
+                        <span className="calendar-nav-label">日历</span>
                     </button>
-                    <button className="today-button" onClick={() => setCurrentDate(new Date())}>
-                        今天
-                    </button>
-                    <button className="nav-button"
-                            onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() + 1)))}>
-                        &gt;
-                    </button>
-                    <button className="settings-button" onClick={() => setShowSettings(true)}>
-                        ⚙️
-                    </button>
-                    <button className="expand-button" onClick={toggleCardMode}>
-                        &gt;&gt;
-                    </button>
-                    <button className="close-button" onClick={handleClose}>
-                        <div className="close-icon"></div>
+                    <button className={`calendar-nav-item ${activeTab === 'long-term' ? 'active' : ''}`} onClick={() => setActiveTab('long-term')}>
+                        <span className="calendar-nav-icon">📋</span>
+                        <span className="calendar-nav-label">长期规划</span>
                     </button>
                 </div>
             </div>
 
-            <div className="calendar-grid">
-                <div className="weekday-headers">
-                    {['日', '一', '二', '三', '四', '五', '六'].map(day => (
-                        <div key={day} className="weekday-header">{day}</div>
-                    ))}
-                </div>
-                <div className="calendar-days">
-                    {renderCalendar()}
-                </div>
-            </div>
+            {/* ===== 右侧主内容区 ===== */}
+            <div className="calendar-main">
+                {activeTab === 'calendar' && (
+                    <div className="calendar-main-content">
+                        {/* 健康看板 */}
+                        <div className="calendar-board">
+                            <div className="calendar-board-header">
+                                <div className="calendar-board-title">
+                                    <span className="board-icon">💪</span>
+                                    <span>健康 & 锻炼</span>
+                                </div>
+                                <button className="calendar-board-ai-btn" onClick={() => openAiChat('health')}>
+                                    🤖 AI 规划
+                                </button>
+                            </div>
+                            <div className="calendar-board-body">
+                                {/* 体重记录 */}
+                                <div className="health-weight-card">
+                                    <div className="weight-entry">
+                                        <span className="weight-label">🌅 晨重</span>
+                                        <div className="weight-input-group">
+                                            <input
+                                                type="number"
+                                                value={weightInput.morning}
+                                                onChange={e => setWeightInput({...weightInput, morning: e.target.value})}
+                                                placeholder="--"
+                                                step="0.1"
+                                            />
+                                            <span className="weight-unit">kg</span>
+                                        </div>
+                                    </div>
+                                    <div className="weight-entry">
+                                        <span className="weight-label">🌙 晚重</span>
+                                        <div className="weight-input-group">
+                                            <input
+                                                type="number"
+                                                value={weightInput.evening}
+                                                onChange={e => setWeightInput({...weightInput, evening: e.target.value})}
+                                                placeholder="--"
+                                                step="0.1"
+                                            />
+                                            <span className="weight-unit">kg</span>
+                                        </div>
+                                    </div>
+                                    <button className="weight-save-btn" onClick={saveWeight}>保存</button>
+                                </div>
 
-            {showSettings && (
-                <div className="settings-overlay">
-                    <div className="settings-modal">
-                        <div className="settings-header">
-                            <h3>日历设置</h3>
-                            <button className="settings-close" onClick={() => setShowSettings(false)}>
-                                <div className="close-icon"></div>
-                            </button>
-                        </div>
-                        <div className="settings-content">
-                            <div className="setting-item">
-                                <label>背景图片管理:</label>
-                                <div className="image-list">
-                                    {tempSettings.backgroundImages.map((img, index) => (
-                                        <div key={index} className="image-item">
-                                            <img src={toImageUrl(img)} alt={`背景${index + 1}`}/>
-                                            <button onClick={() => deleteImage(img, index)}>删除</button>
+                                {/* 训练项目列表 */}
+                                <div className="training-list">
+                                    {trainingItems.map(item => (
+                                        <div key={item.id} className={`training-item ${item.completed ? 'completed' : ''}`}>
+                                            <input
+                                                type="checkbox"
+                                                className="training-item-checkbox"
+                                                checked={item.completed}
+                                                onChange={() => toggleTrainingComplete(item)}
+                                            />
+                                            <div className="training-item-info">
+                                                <span className="training-item-name">{item.name}</span>
+                                                <span className="training-item-details">
+                                                    {item.sets && <span>{item.sets}组</span>}
+                                                    {item.reps && <span>{item.reps}次</span>}
+                                                    {item.weight && <span>{item.weight}kg</span>}
+                                                </span>
+                                            </div>
+                                            <button className="training-item-delete" onClick={() => deleteTrainingItem(item.id)}>✕</button>
                                         </div>
                                     ))}
                                 </div>
-                                <button onClick={uploadImage}>添加图片</button>
-                            </div>
-                            <div className="setting-item">
-                                <label>轮播间隔 ({tempSettings.rotationInterval}分钟):</label>
-                                <input
-                                    type="range"
-                                    min="5"
-                                    max="1440"
-                                    value={tempSettings.rotationInterval}
-                                    onChange={(e) => setTempSettings(prev => ({
-                                        ...prev,
-                                        rotationInterval: parseInt(e.target.value)
-                                    }))}
-                                />
-                                <div className="interval-labels">
-                                    <span>5分钟</span>
-                                    <span>12小时</span>
-                                    <span>24小时</span>
-                                </div>
+
+                                {/* 添加训练项 */}
+                                {showAddTraining ? (
+                                    <div className="add-training-form">
+                                        <input
+                                            type="text"
+                                            value={newTraining.name}
+                                            onChange={e => setNewTraining({...newTraining, name: e.target.value})}
+                                            placeholder="训练项目名称"
+                                        />
+                                        <div className="add-training-row">
+                                            <input type="number" value={newTraining.sets} onChange={e => setNewTraining({...newTraining, sets: e.target.value})} placeholder="组数" />
+                                            <input type="number" value={newTraining.reps} onChange={e => setNewTraining({...newTraining, reps: e.target.value})} placeholder="次数" />
+                                            <input type="number" value={newTraining.weight} onChange={e => setNewTraining({...newTraining, weight: e.target.value})} placeholder="重量(kg)" step="0.5" />
+                                        </div>
+                                        <div className="add-training-actions">
+                                            <button className="cancel-training-btn" onClick={() => setShowAddTraining(false)}>取消</button>
+                                            <button className="add-training-btn" onClick={addTrainingItem}>添加</button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <button className="show-add-btn" onClick={() => setShowAddTraining(true)}>
+                                        + 添加训练项目
+                                    </button>
+                                )}
+
+                                {trainingItems.length === 0 && !showAddTraining && (
+                                    <div className="calendar-empty">暂无训练项目，点击上方添加</div>
+                                )}
                             </div>
                         </div>
-                        <div className="settings-actions">
-                            <button className="cancel-button" onClick={() => setShowSettings(false)}>取消</button>
-                            <button className="save-button" onClick={saveSettings}>保存</button>
+
+                        {/* 学习看板 */}
+                        <div className="calendar-board">
+                            <div className="calendar-board-header">
+                                <div className="calendar-board-title">
+                                    <span className="board-icon">📚</span>
+                                    <span>学习 & 任务</span>
+                                </div>
+                                <button className="calendar-board-ai-btn" onClick={() => openAiChat('learning')}>
+                                    🤖 AI 拆解
+                                </button>
+                            </div>
+                            <div className="calendar-board-body">
+                                <div className="learning-list">
+                                    {learningItems.map(item => (
+                                        <div key={item.id} className={`learning-item ${item.completed ? 'completed' : ''}`}>
+                                            <div className="learning-item-header">
+                                                <input
+                                                    type="checkbox"
+                                                    className="learning-item-checkbox"
+                                                    checked={item.completed}
+                                                    onChange={() => toggleLearningComplete(item)}
+                                                />
+                                                <span className="learning-item-title">{item.title}</span>
+                                                <button className="learning-item-delete" onClick={() => deleteLearningItem(item.id)}>✕</button>
+                                            </div>
+                                            {item.subtasks.length > 0 && (
+                                                <div className="learning-subtasks">
+                                                    {item.subtasks.map(sub => (
+                                                        <label key={sub.id} className={`learning-subtask ${sub.completed ? 'completed' : ''}`}>
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={sub.completed}
+                                                                onChange={() => toggleSubtask(item.id, sub.id)}
+                                                            />
+                                                            <span>{sub.content}</span>
+                                                        </label>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* 添加学习项 */}
+                                {showAddLearning ? (
+                                    <div className="add-learning-form">
+                                        <input
+                                            type="text"
+                                            value={newLearning.title}
+                                            onChange={e => setNewLearning({...newLearning, title: e.target.value})}
+                                            placeholder="学习目标标题"
+                                        />
+                                        <div style={{display: 'flex', gap: 6}}>
+                                            <input
+                                                type="text"
+                                                value={newLearning.subtaskInput}
+                                                onChange={e => setNewLearning({...newLearning, subtaskInput: e.target.value})}
+                                                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addSubtaskToNew(); }}}
+                                                placeholder="添加子任务"
+                                                style={{flex: 1}}
+                                            />
+                                            <button onClick={addSubtaskToNew} className="add-training-btn" style={{padding: '5px 10px'}}>+</button>
+                                        </div>
+                                        {newLearning.subtasks.length > 0 && (
+                                            <div style={{display: 'flex', flexWrap: 'wrap', gap: 4}}>
+                                                {newLearning.subtasks.map((s, i) => (
+                                                    <span key={i} style={{
+                                                        padding: '2px 8px',
+                                                        background: '#f3f4f6',
+                                                        borderRadius: 4,
+                                                        fontSize: 11,
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: 4,
+                                                    }}>
+                                                        {s}
+                                                        <button
+                                                            onClick={() => setNewLearning({...newLearning, subtasks: newLearning.subtasks.filter((_, j) => j !== i)})}
+                                                            style={{border: 'none', background: 'transparent', cursor: 'pointer', color: '#9ca3af', padding: 0, fontSize: 12}}
+                                                        >✕</button>
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        )}
+                                        <div className="add-learning-actions">
+                                            <button className="cancel-training-btn" onClick={() => {setShowAddLearning(false); setNewLearning({title: "", subtaskInput: "", subtasks: []});}}>取消</button>
+                                            <button className="add-learning-btn" onClick={addLearningItem}>添加</button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <button className="show-add-btn" onClick={() => setShowAddLearning(true)}>
+                                        + 添加学习目标
+                                    </button>
+                                )}
+
+                                {learningItems.length === 0 && !showAddLearning && (
+                                    <div className="calendar-empty">暂无学习目标，点击上方添加</div>
+                                )}
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )}
+
+                {/* AI 对话面板（在日历模式下显示） */}
+                {activeTab === 'calendar' && aiOpen && (
+                    <div className="ai-chat-panel">
+                        <div className="ai-chat-messages" ref={aiMessagesRef}>
+                            {aiMessages.map((msg, i) => (
+                                <div key={i} className={`ai-chat-msg ${msg.role}`}>
+                                    {msg.content}
+                                </div>
+                            ))}
+                            {aiLoading && <div className="ai-generating-hint">🤖 AI 正在生成{aiType === 'health' ? '健康' : '学习'}计划...</div>}
+                        </div>
+                        <div className="ai-chat-input-row">
+                            <input
+                                type="text"
+                                value={aiInput}
+                                onChange={e => setAiInput(e.target.value)}
+                                onKeyDown={e => { if (e.key === 'Enter' && !aiLoading) { sendAiMessage(); }}}
+                                placeholder="输入你的需求，如：帮我制定减脂训练计划..."
+                                disabled={aiLoading}
+                            />
+                            <button className="ai-chat-send-btn" onClick={() => sendAiMessage()} disabled={aiLoading}>发送</button>
+                            <button className="ai-chat-close-btn" onClick={closeAiChat}>关闭</button>
+                        </div>
+                    </div>
+                )}
+
+                {/* ===== 长期规划面板 ===== */}
+                {activeTab === 'long-term' && (
+                    <div className="long-term-panel">
+                        <div className="long-term-header">
+                            <h3>📋 长期规划</h3>
+                            <button className="create-plan-btn" onClick={() => setShowCreatePlan(!showCreatePlan)}>
+                                {showCreatePlan ? '取消' : '＋ 新建计划'}
+                            </button>
+                        </div>
+
+                        {/* 创建计划表单 */}
+                        {showCreatePlan && (
+                            <div className="create-plan-form">
+                                <h4>创建新计划</h4>
+                                <div className="plan-type-selector">
+                                    <button
+                                        className={`plan-type-btn ${newPlan.planType === 'Health' ? 'selected' : ''}`}
+                                        onClick={() => setNewPlan({...newPlan, planType: 'Health'})}
+                                    >
+                                        💪 健康/锻炼
+                                    </button>
+                                    <button
+                                        className={`plan-type-btn ${newPlan.planType === 'Learning' ? 'selected' : ''}`}
+                                        onClick={() => setNewPlan({...newPlan, planType: 'Learning'})}
+                                    >
+                                        📚 学习
+                                    </button>
+                                </div>
+                                <div className="form-row">
+                                    <div className="form-group">
+                                        <label>开始日期</label>
+                                        <input type="date" value={newPlan.startDate} onChange={e => setNewPlan({...newPlan, startDate: e.target.value})} />
+                                    </div>
+                                    <div className="form-group">
+                                        <label>结束日期</label>
+                                        <input type="date" value={newPlan.endDate} onChange={e => setNewPlan({...newPlan, endDate: e.target.value})} />
+                                    </div>
+                                </div>
+                                <div className="form-group">
+                                    <label>目标描述</label>
+                                    <textarea
+                                        value={newPlan.targetDesc}
+                                        onChange={e => setNewPlan({...newPlan, targetDesc: e.target.value})}
+                                        placeholder={newPlan.planType === 'Health' ? '例如：减重5kg，每周锻炼4次，每天摄入1800卡路里...' : '例如：3个月内完成《算法导论》学习，每天学习2小时...'}
+                                    />
+                                </div>
+                                <div className="form-actions">
+                                    <button className="form-cancel-btn" onClick={() => setShowCreatePlan(false)}>取消</button>
+                                    <button className="form-submit-btn" onClick={createLongTermPlan} disabled={planGenerating}>
+                                        {planGenerating ? '🤖 AI生成中...' : '🤖 AI 生成计划'}
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* 计划列表 */}
+                        <div className="plan-list">
+                            {longTermPlans.length === 0 && (
+                                <div className="calendar-empty">暂无长期计划，点击上方"新建计划"开始</div>
+                            )}
+                            {longTermPlans.map(plan => (
+                                <div key={plan.id} className="plan-card">
+                                    <div className="plan-card-header">
+                                        <span className={`plan-card-type ${plan.planType.toLowerCase()}`}>
+                                            {plan.planType === 'Health' ? '💪 健康/锻炼' : '📚 学习'}
+                                        </span>
+                                        {plan.applied && (
+                                            <span className="plan-card-applied">✅ 已应用</span>
+                                        )}
+                                    </div>
+                                    <div className="plan-card-date">
+                                        📅 {plan.startDate} → {plan.endDate}
+                                    </div>
+                                    <div className="plan-card-target">{plan.targetDesc}</div>
+                                    <div className="plan-card-content">{plan.planContent}</div>
+                                    <div className="plan-card-actions">
+                                        <button className="plan-delete-btn" onClick={() => deletePlan(plan.id)}>删除</button>
+                                        {!plan.applied && (
+                                            <button
+                                                className="plan-apply-btn"
+                                                onClick={() => applyPlan(plan)}
+                                                disabled={planApplying === plan.id}
+                                            >
+                                                {planApplying === plan.id ? '⏳ 拆解中...' : '🚀 应用到每日'}
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+            </div>
         </div>
     );
 }

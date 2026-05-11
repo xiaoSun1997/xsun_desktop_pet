@@ -80,6 +80,84 @@ pub struct LunarInfo {
     pub festival: Option<String>,
 }
 
+// ===== 健康与锻炼数据模型 =====
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct HealthRecord {
+    pub date: String,
+    #[serde(rename = "morningWeight")]
+    pub morning_weight: Option<f64>,
+    #[serde(rename = "eveningWeight")]
+    pub evening_weight: Option<f64>,
+    pub note: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TrainingItem {
+    pub id: String,
+    pub name: String,
+    pub completed: bool,
+    pub sets: Option<i32>,
+    pub reps: Option<i32>,
+    pub weight: Option<f64>,
+    pub notes: Option<String>,
+    pub created_at: i64,
+}
+
+// ===== 学习数据模型 =====
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct Subtask {
+    pub id: String,
+    pub content: String,
+    pub completed: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct LearningItem {
+    pub id: String,
+    pub title: String,
+    pub subtasks: Vec<Subtask>,
+    pub completed: bool,
+    pub created_at: i64,
+}
+
+// ===== 每日汇总 =====
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct DailyPlanData {
+    pub date: String,
+    #[serde(rename = "trainingItems")]
+    pub training_items: Vec<TrainingItem>,
+    #[serde(rename = "learningItems")]
+    pub learning_items: Vec<LearningItem>,
+    #[serde(rename = "aiGeneratedPlan")]
+    pub ai_generated_plan: Option<String>,
+}
+
+// ===== 长期规划 =====
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub enum PlanType {
+    Health,
+    Learning,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct LongTermPlan {
+    pub id: String,
+    #[serde(rename = "planType")]
+    pub plan_type: PlanType,
+    #[serde(rename = "startDate")]
+    pub start_date: String,
+    #[serde(rename = "endDate")]
+    pub end_date: String,
+    #[serde(rename = "targetDesc")]
+    pub target_desc: String,
+    #[serde(rename = "planContent")]
+    pub plan_content: String,
+    #[serde(rename = "createdAt")]
+    pub created_at: i64,
+    #[serde(rename = "applied")]
+    pub applied: bool,
+}
+
 pub struct CalendarManager {
     data_dir: std::path::PathBuf,
 }
@@ -319,6 +397,104 @@ impl CalendarManager {
             (12, 25) => Some("圣诞节".to_string()),
             _ => None,
         }
+    }
+
+    // ===== 健康数据 CRUD =====
+    pub async fn load_health_record_for_date(&self, date: &str) -> Result<HealthRecord, String> {
+        let file = self.data_dir.join("health_records.json");
+        if !tokio::fs::try_exists(&file).await.unwrap_or(false) {
+            return Ok(HealthRecord { date: date.to_string(), morning_weight: None, evening_weight: None, note: None });
+        }
+        let content = tokio::fs::read_to_string(&file).await.map_err(|e| format!("读取健康数据失败: {}", e))?;
+        let all: HashMap<String, HealthRecord> = serde_json::from_str(&content).unwrap_or_default();
+        Ok(all.get(date).cloned().unwrap_or(HealthRecord { date: date.to_string(), morning_weight: None, evening_weight: None, note: None }))
+    }
+
+    pub async fn save_health_record(&self, record: &HealthRecord) -> Result<(), String> {
+        self.ensure_data_dir().await?;
+        let file = self.data_dir.join("health_records.json");
+        let mut all: HashMap<String, HealthRecord> = if tokio::fs::try_exists(&file).await.unwrap_or(false) {
+            let content = tokio::fs::read_to_string(&file).await.unwrap_or_default();
+            serde_json::from_str(&content).unwrap_or_default()
+        } else { HashMap::new() };
+        all.insert(record.date.clone(), record.clone());
+        let json = serde_json::to_string_pretty(&all).map_err(|e| format!("序列化健康数据失败: {}", e))?;
+        tokio::fs::write(&file, json).await.map_err(|e| format!("保存健康数据失败: {}", e))
+    }
+
+    // ===== 训练数据 CRUD =====
+    pub async fn load_training_items_for_date(&self, date: &str) -> Result<Vec<TrainingItem>, String> {
+        let file = self.data_dir.join("training_items.json");
+        if !tokio::fs::try_exists(&file).await.unwrap_or(false) { return Ok(vec![]); }
+        let content = tokio::fs::read_to_string(&file).await.map_err(|e| format!("读取训练数据失败: {}", e))?;
+        let all: HashMap<String, Vec<TrainingItem>> = serde_json::from_str(&content).unwrap_or_default();
+        Ok(all.get(date).cloned().unwrap_or_default())
+    }
+
+    pub async fn save_training_items_for_date(&self, date: &str, items: Vec<TrainingItem>) -> Result<(), String> {
+        self.ensure_data_dir().await?;
+        let file = self.data_dir.join("training_items.json");
+        let mut all: HashMap<String, Vec<TrainingItem>> = if tokio::fs::try_exists(&file).await.unwrap_or(false) {
+            let content = tokio::fs::read_to_string(&file).await.unwrap_or_default();
+            serde_json::from_str(&content).unwrap_or_default()
+        } else { HashMap::new() };
+        if items.is_empty() { all.remove(date); } else { all.insert(date.to_string(), items); }
+        let json = serde_json::to_string_pretty(&all).map_err(|e| format!("序列化训练数据失败: {}", e))?;
+        tokio::fs::write(&file, json).await.map_err(|e| format!("保存训练数据失败: {}", e))
+    }
+
+    // ===== 学习数据 CRUD =====
+    pub async fn load_learning_items_for_date(&self, date: &str) -> Result<Vec<LearningItem>, String> {
+        let file = self.data_dir.join("learning_items.json");
+        if !tokio::fs::try_exists(&file).await.unwrap_or(false) { return Ok(vec![]); }
+        let content = tokio::fs::read_to_string(&file).await.map_err(|e| format!("读取学习数据失败: {}", e))?;
+        let all: HashMap<String, Vec<LearningItem>> = serde_json::from_str(&content).unwrap_or_default();
+        Ok(all.get(date).cloned().unwrap_or_default())
+    }
+
+    pub async fn save_learning_items_for_date(&self, date: &str, items: Vec<LearningItem>) -> Result<(), String> {
+        self.ensure_data_dir().await?;
+        let file = self.data_dir.join("learning_items.json");
+        let mut all: HashMap<String, Vec<LearningItem>> = if tokio::fs::try_exists(&file).await.unwrap_or(false) {
+            let content = tokio::fs::read_to_string(&file).await.unwrap_or_default();
+            serde_json::from_str(&content).unwrap_or_default()
+        } else { HashMap::new() };
+        if items.is_empty() { all.remove(date); } else { all.insert(date.to_string(), items); }
+        let json = serde_json::to_string_pretty(&all).map_err(|e| format!("序列化学系数据失败: {}", e))?;
+        tokio::fs::write(&file, json).await.map_err(|e| format!("保存学习数据失败: {}", e))
+    }
+
+    // ===== 长期规划 CRUD =====
+    pub async fn load_long_term_plans(&self) -> Result<Vec<LongTermPlan>, String> {
+        let file = self.data_dir.join("long_term_plans.json");
+        if !tokio::fs::try_exists(&file).await.unwrap_or(false) { return Ok(vec![]); }
+        let content = tokio::fs::read_to_string(&file).await.map_err(|e| format!("读取长期规划失败: {}", e))?;
+        Ok(serde_json::from_str(&content).unwrap_or_default())
+    }
+
+    pub async fn save_long_term_plans(&self, plans: &Vec<LongTermPlan>) -> Result<(), String> {
+        self.ensure_data_dir().await?;
+        let file = self.data_dir.join("long_term_plans.json");
+        let json = serde_json::to_string_pretty(plans).map_err(|e| format!("序列化长期规划失败: {}", e))?;
+        tokio::fs::write(&file, json).await.map_err(|e| format!("保存长期规划失败: {}", e))
+    }
+
+    // ===== 日期范围批量查询 =====
+    pub async fn get_date_range_daily_data(&self, start_date: &str, end_date: &str) -> Result<Vec<DailyPlanData>, String> {
+        let start = NaiveDate::parse_from_str(start_date, "%Y-%m-%d").map_err(|e| format!("解析开始日期失败: {}", e))?;
+        let end = NaiveDate::parse_from_str(end_date, "%Y-%m-%d").map_err(|e| format!("解析结束日期失败: {}", e))?;
+        let mut results = Vec::new();
+        let mut current = start;
+        while current <= end {
+            let date_str = current.format("%Y-%m-%d").to_string();
+            let training = self.load_training_items_for_date(&date_str).await.unwrap_or_default();
+            let learning = self.load_learning_items_for_date(&date_str).await.unwrap_or_default();
+            if !training.is_empty() || !learning.is_empty() {
+                results.push(DailyPlanData { date: date_str, training_items: training, learning_items: learning, ai_generated_plan: None });
+            }
+            current = current.succ_opt().ok_or("日期溢出")?;
+        }
+        Ok(results)
     }
 
     pub async fn cleanup_old_data(&self, days_to_keep: u32) -> Result<(), String> {

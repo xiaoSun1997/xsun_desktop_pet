@@ -1,9 +1,9 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow, getAllWindows } from "@tauri-apps/api/window";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { marked } from "marked";
-import mermaid from 'mermaid';
+import TipTapEditor from "./TipTapEditor";
 import "./NotepadComponent.css";
 
 type NoteRecord = {
@@ -26,7 +26,36 @@ type TreeNode = {
     content?: string;
 };
 
+// ========== 数据兼容层：解析存储内容 ==========
+function parseStoredContent(content: string): string {
+    if (!content) return "";
+    // 尝试解析为 JSON（TipTap 格式：{\"type\":\"doc\", ...}）
+    try {
+        const parsed = JSON.parse(content);
+        if (parsed && typeof parsed === "object" && "type" in parsed) {
+            return content; // 已是 TipTap JSON
+        }
+    } catch { /* 不是 JSON，继续检测 */ }
+    // 如果包含 HTML 标签，直接返回
+    if (/<[a-zA-Z][^>]*>/.test(content)) {
+        return content;
+    }
+    // 否则视为 Markdown，转为 HTML 给 TipTap 解析
+    try {
+        const html = marked.parse(content, { breaks: true }) as string;
+        return html;
+    } catch {
+        return content;
+    }
+}
 
+// ========== 获取编辑器纯文本（用于AI总结） ==========
+function htmlToPlainText(html: string): string {
+    if (!html) return "";
+    const div = document.createElement("div");
+    div.innerHTML = html;
+    return div.textContent || div.innerText || "";
+}
 
 export default function NotepadComponent() {
     // ---- 窗口控制 ----
@@ -40,8 +69,8 @@ export default function NotepadComponent() {
     const [selectedNoteName, setSelectedNoteName] = useState<string>('');
 
     // ---- 编辑器 ----
-    const [editorContent, setEditorContent] = useState<string>('');
-    const [editorMode, setEditorMode] = useState<0 | 1 | 2>(1); // 0=全编辑, 1=分屏, 2=全预览
+    const [editorJson, setEditorJson] = useState<string>('');
+    const [editorHtml, setEditorHtml] = useState<string>('');
     const [isLoadingContent, setIsLoadingContent] = useState(false);
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
@@ -52,7 +81,6 @@ export default function NotepadComponent() {
     // ---- 添加菜单 ----
     const [addMenuPos, setAddMenuPos] = useState<{ x: number; y: number; parentId: string } | null>(null);
 
-    const textareaRef = useRef<HTMLTextAreaElement>(null);
     const aiOpeningRef = useRef(false);
 
     // ========== 构建文件树 ==========
@@ -60,7 +88,6 @@ export default function NotepadComponent() {
         const map = new Map<string, TreeNode[]>();
         const roots: TreeNode[] = [];
 
-        // 先收集所有节点
         for (const note of notes) {
             const node: TreeNode = {
                 id: note.id,
@@ -79,12 +106,10 @@ export default function NotepadComponent() {
             }
         }
 
-        // 递归添加子节点
         const addChildren = (nodes: TreeNode[]) => {
             for (const node of nodes) {
                 if (node.is_dir) {
                     const children = map.get(node.id) || [];
-                    // 文件夹排在前面
                     children.sort((a, b) => {
                         if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1;
                         return a.name.localeCompare(b.name);
@@ -118,56 +143,37 @@ export default function NotepadComponent() {
         loadNotes();
     }, [loadNotes]);
 
-    // ========== 初始化 Mermaid ==========
-    useEffect(() => {
-        mermaid.initialize({ startOnLoad: false, theme: 'dark' });
-    }, []);
-
-    // ========== 渲染 Mermaid 图表 ==========
-    useEffect(() => {
-        if (editorMode === 0) return;
-        const timer = setTimeout(() => {
-            mermaid.run({ querySelector: '.markdown-body pre.mermaid' }).catch(() => {});
-        }, 50);
-        return () => clearTimeout(timer);
-    }, [editorContent, editorMode]);
-
     // ========== 文件树操作 ==========
     const toggleFolder = (id: string) => {
         setExpandedFolders(prev => {
             const next = new Set(prev);
-            if (next.has(id)) {
-                next.delete(id);
-            } else {
-                next.add(id);
-            }
+            if (next.has(id)) { next.delete(id); }
+            else { next.add(id); }
             return next;
         });
     };
 
     const handleSelectNote = async (note: NoteRecord) => {
-        if (hasUnsavedChanges) {
-            // 先保存当前
-            if (selectedNoteId) {
-                try {
-                    await invoke('update_note_content', { id: selectedNoteId, content: editorContent });
-                } catch (e) {
-                    console.error('自动保存失败:', e);
-                }
+        if (hasUnsavedChanges && selectedNoteId) {
+            try {
+                await invoke('update_note_content', { id: selectedNoteId, content: editorJson });
+            } catch (e) {
+                console.error('自动保存失败:', e);
             }
         }
-
         setSelectedNoteId(note.id);
         setSelectedNoteName(note.name);
-        setEditorMode(1);
         setIsLoadingContent(true);
         try {
             const content = await invoke<string>('get_note_content', { id: note.id });
-            setEditorContent(content || '');
+            const parsed = parseStoredContent(content || '');
+            setEditorJson(parsed);
+            setEditorHtml('');
             setHasUnsavedChanges(false);
         } catch (error) {
             console.error('加载笔记内容失败:', error);
-            setEditorContent('');
+            setEditorJson('');
+            setEditorHtml('');
         }
         setIsLoadingContent(false);
     };
@@ -176,7 +182,7 @@ export default function NotepadComponent() {
         if (!selectedNoteId) return;
         setSaveStatus('saving');
         try {
-            await invoke('update_note_content', { id: selectedNoteId, content: editorContent });
+            await invoke('update_note_content', { id: selectedNoteId, content: editorJson });
             setHasUnsavedChanges(false);
             setSaveStatus('saved');
             setTimeout(() => setSaveStatus('idle'), 1500);
@@ -185,6 +191,13 @@ export default function NotepadComponent() {
             setSaveStatus('idle');
         }
     };
+
+    // ========== TipTap 编辑器回调 ==========
+    const handleEditorChange = useCallback((json: string, html: string) => {
+        setEditorJson(json);
+        setEditorHtml(html);
+        setHasUnsavedChanges(true);
+    }, []);
 
     // ========== 创建/删除文件/文件夹 ==========
     const handleCreateItem = async (name: string, parentId: string, isDir: boolean) => {
@@ -206,8 +219,8 @@ export default function NotepadComponent() {
             if (selectedNoteId === id) {
                 setSelectedNoteId(null);
                 setSelectedNoteName('');
-                setEditorContent('');
-                setEditorMode(1);
+                setEditorJson('');
+                setEditorHtml('');
             }
             await loadNotes();
         } catch (error) {
@@ -239,89 +252,11 @@ export default function NotepadComponent() {
         setAddMenuPos(null);
     };
 
-    // ========== 图片粘贴 ==========
-    const insertAtCursor = (text: string) => {
-        const textarea = textareaRef.current;
-        if (!textarea) {
-            setEditorContent(prev => prev + text);
-            return;
-        }
-        const start = textarea.selectionStart;
-        const end = textarea.selectionEnd;
-        const newContent = editorContent.substring(0, start) + text + editorContent.substring(end);
-        setEditorContent(newContent);
-        setHasUnsavedChanges(true);
-        // 恢复光标位置
-        setTimeout(() => {
-            textarea.selectionStart = textarea.selectionEnd = start + text.length;
-            textarea.focus();
-        }, 0);
-    };
-
-    const handlePaste = async (e: React.ClipboardEvent) => {
-        const items = e.clipboardData.items;
-        let foundImage = false;
-
-        // 方案1: 尝试浏览器 Clipboard API
-        for (const item of items) {
-            if (item.type.startsWith('image/')) {
-                e.preventDefault();
-                foundImage = true;
-                const file = item.getAsFile();
-                if (!file || !selectedNoteId) continue;
-
-                const reader = new FileReader();
-                reader.onload = async (ev) => {
-                    const result = ev.target?.result as string;
-                    const base64 = result.split(',')[1];
-                    const ext = file.type.split('/')[1] || 'png';
-                    const fileName = `img_${Date.now()}.${ext}`;
-                    try {
-                        const savedPath = await invoke<string>('save_note_image', {
-                            noteId: selectedNoteId,
-                            fileName,
-                            imageDataBase64: base64,
-                        });
-                        // 转换为 asset protocol URL 以便 WebView 加载
-                        const assetUrl = convertFileSrc(savedPath);
-                        insertAtCursor(`<div style="text-align:center">\n  <img src="${assetUrl}" alt="paste-image" />\n</div>\n\n`);
-                    } catch (error) {
-                        console.error('保存图片失败:', error);
-                    }
-                };
-                reader.readAsDataURL(file);
-                break;
-            }
-        }
-
-        // 方案2: 浏览器API没找到图片，尝试 Tauri 剪贴板命令
-        if (!foundImage && selectedNoteId) {
-            try {
-                const imageDataUrl = await invoke<string | null>('read_clipboard_image');
-                if (imageDataUrl) {
-                    e.preventDefault();
-                    const base64 = imageDataUrl.split(',')[1];
-                    const fileName = `img_${Date.now()}.png`;
-                    const savedPath = await invoke<string>('save_note_image', {
-                        noteId: selectedNoteId,
-                        fileName,
-                        imageDataBase64: base64,
-                    });
-                    // 转换为 asset protocol URL 以便 WebView 加载
-                    const assetUrl = convertFileSrc(savedPath);
-                    insertAtCursor(`<div style="text-align:center">\n  <img src="${assetUrl}" alt="paste-image" />\n</div>\n\n`);
-                }
-            } catch (error) {
-                console.error('通过Tauri读取剪贴板图片失败:', error);
-            }
-        }
-    };
-
     // ========== 窗口控制 ==========
     const handleClose = async () => {
         if (hasUnsavedChanges && selectedNoteId) {
             try {
-                await invoke('update_note_content', { id: selectedNoteId, content: editorContent });
+                await invoke('update_note_content', { id: selectedNoteId, content: editorJson });
             } catch (e) {
                 console.error('关闭前自动保存失败:', e);
             }
@@ -342,23 +277,26 @@ export default function NotepadComponent() {
         if (!selectedNoteId) return;
         if (aiOpeningRef.current) return;
         aiOpeningRef.current = true;
-        
+
+        // 获取编辑器纯文本内容
+        const plainText = htmlToPlainText(editorHtml) || editorJson;
+
         try {
             const windows = await getAllWindows();
             const existing = windows.find(w => w.label === 'ai-chat');
-            
+
             if (existing) {
                 await existing.show();
                 await existing.setFocus();
                 await existing.emit('notepad://ai-summarize', {
-                    content: editorContent,
+                    content: plainText,
                     title: selectedNoteName,
                 });
                 return;
             }
-            
+
             const url = import.meta.env.DEV ? 'http://localhost:1420' : 'index.html';
-            
+
             const webview = new WebviewWindow('ai-chat', {
                 url,
                 title: 'AI对话助手',
@@ -372,7 +310,7 @@ export default function NotepadComponent() {
                 minHeight: 500,
                 center: true,
             });
-            
+
             await new Promise<void>((resolve, reject) => {
                 const timeout = setTimeout(() => {
                     reject(new Error('等待AI对话窗口创建超时'));
@@ -386,15 +324,13 @@ export default function NotepadComponent() {
                     reject(new Error('创建AI对话窗口出错: ' + JSON.stringify(e)));
                 });
             });
-            
+
             await webview.show();
             await webview.setFocus();
-            
-            // 等待窗口加载完成
             await new Promise(resolve => setTimeout(resolve, 500));
-            
+
             await webview.emit('notepad://ai-summarize', {
-                content: editorContent,
+                content: plainText,
                 title: selectedNoteName,
             });
         } catch (error) {
@@ -404,189 +340,27 @@ export default function NotepadComponent() {
         }
     };
 
-    // ========== 编辑器 KeyPress ==========
-    const handleEditorKeyPress = (e: React.KeyboardEvent) => {
+    // ========== 编辑器快捷键 ==========
+    const handleEditorKeyDown = (e: React.KeyboardEvent) => {
         if ((e.ctrlKey || e.metaKey) && e.key === 's') {
             e.preventDefault();
             handleSaveContent();
         }
     };
 
-    // ========== 提取内容中的图片用于编辑模式预览 ==========
-    const extractImages = (content: string): string[] => {
-        const urls: string[] = [];
-        const regex = /<img\s+[^>]*src="([^"]+)"[^>]*\/?>/g;
-        let match;
-        while ((match = regex.exec(content)) !== null) {
-            if (!urls.includes(match[1])) {
-                urls.push(match[1]);
-            }
-        }
-        return urls;
-    };
-    const extractedImages = extractImages(editorContent);
-
+    // ========== Markdown 语法参考 ==========
     const markdownRefItems = [
-        {
-            title: '标题 (Headings)',
-            demo: (
-                <>
-                    <code># 一级标题</code><br />
-                    <code>## 二级标题</code><br />
-                    <code>### 三级标题</code>
-                    <span className="mdref-result">使用 # 号数量控制级别，最多 ######</span>
-                </>
-            ),
-        },
-        {
-            title: '粗体 & 斜体',
-            demo: (
-                <>
-                    <code>**粗体文字**</code> 或 <code>__粗体__</code><br />
-                    <code>*斜体文字*</code> 或 <code>_斜体_</code><br />
-                    <code>***粗斜体***</code>
-                    <span className="mdref-result">使用 * 或 _ 包裹文字</span>
-                </>
-            ),
-        },
-        {
-            title: '链接',
-            demo: (
-                <>
-                    <code>[显示文字](https://链接)</code><br />
-                    <code>[带标题](链接 "鼠标悬停提示")</code>
-                    <span className="mdref-result">方括号放文字，圆括号放 URL</span>
-                </>
-            ),
-        },
-        {
-            title: '图片',
-            demo: (
-                <>
-                    <code>![替代文字](图片URL)</code><br />
-                    <code>[![点击图片](img.jpg)](链接)</code>
-                    <span className="mdref-result">前面加 ! 号表示图片</span>
-                </>
-            ),
-        },
-        {
-            title: '无序列表',
-            demo: (
-                <>
-                    <code>- 项目一</code><br />
-                    <code>* 项目二</code><br />
-                    <code>  - 嵌套项目</code>
-                    <span className="mdref-result">使用 -、* 或 +</span>
-                </>
-            ),
-        },
-        {
-            title: '有序列表',
-            demo: (
-                <>
-                    <code>1. 第一项</code><br />
-                    <code>2. 第二项</code><br />
-                    <code>   1. 子项（缩进）</code>
-                    <span className="mdref-result">数字加点号，自动排序</span>
-                </>
-            ),
-        },
-        {
-            title: '代码',
-            demo: (
-                <>
-                    <code>\`行内代码\`</code><br />
-                    <code>\`\`\`语言</code><br />
-                    <code>代码块</code><br />
-                    <code>\`\`\`</code>
-                    <span className="mdref-result">三个反引号包裹多行代码块</span>
-                </>
-            ),
-        },
-        {
-            title: '表格',
-            demo: (
-                <>
-                    <code>| 列1 | 列2 |</code><br />
-                    <code>| --- | --- |</code><br />
-                    <code>| A | B |</code>
-                    <span className="mdref-result">对齐：:---（左）:---:（中）---:（右）</span>
-                </>
-            ),
-        },
-        {
-            title: '引用',
-            demo: (
-                <>
-                    <code>&gt; 这是一段引用</code><br />
-                    <code>&gt;&gt; 嵌套引用</code><br />
-                    <code>&gt; **引号内可放其他语法**</code>
-                    <span className="mdref-result">使用 &gt; 符号</span>
-                </>
-            ),
-        },
-        {
-            title: '分割线',
-            demo: (
-                <>
-                    <code>---</code><br />
-                    <code>***</code><br />
-                    <code>___</code>
-                    <span className="mdref-result">三个或以上的符号</span>
-                </>
-            ),
-        },
-        {
-            title: '删除线',
-            demo: (
-                <>
-                    <code>~~被删除的文字~~</code>
-                    <span className="mdref-result">两个波浪线包裹文字</span>
-                </>
-            ),
-        },
-        {
-            title: '任务列表',
-            demo: (
-                <>
-                    <code>- [ ] 待办事项</code><br />
-                    <code>- [x] 已完成</code>
-                    <span className="mdref-result">- 后跟空格和方括号</span>
-                </>
-            ),
-        },
+        { title: '标题', demo: <><code># 一级标题</code><br /><code>## 二级标题</code><br /><code>### 三级标题</code><span className="mdref-result"># 号数量控制级别</span></> },
+        { title: '粗体 & 斜体', demo: <><code>**粗体**</code><br /><code>*斜体*</code><br /><code>***粗斜体***</code><span className="mdref-result">* 或 _ 包裹</span></> },
+        { title: '链接', demo: <><code>[文字](URL)</code><span className="mdref-result">方括号+圆括号</span></> },
+        { title: '图片', demo: <><code>![替代文字](URL)</code><span className="mdref-result">前加 ! 号</span></> },
+        { title: '无序列表', demo: <><code>- 项目</code><br /><code>  - 嵌套</code><span className="mdref-result">- * + 均可</span></> },
+        { title: '有序列表', demo: <><code>1. 第一项</code><br /><code>2. 第二项</code><span className="mdref-result">数字+点+空格</span></> },
+        { title: '代码', demo: <><code>\`行内\`</code><br /><code>\`\`\`语言</code><br /><code>代码块</code><br /><code>\`\`\`</code><span className="mdref-result">反引号包裹</span></> },
+        { title: '表格', demo: <><code>| 列1 | 列2 |</code><br /><code>| --- | --- |</code><br /><code>| A | B |</code><span className="mdref-result">管道符分隔</span></> },
+        { title: '引用', demo: <><code>&gt; 引用内容</code><span className="mdref-result">&gt; 开头</span></> },
+        { title: '任务列表', demo: <><code>- [ ] 待办</code><br /><code>- [x] 已完成</code><span className="mdref-result">- [ ] 格式</span></> },
     ];
-
-    const renderMarkdown = (content: string): string => {
-        // 兼容已有数据：将绝对路径转换为 asset protocol URL
-        const processed = content.replace(
-            /<img\s+[^>]*src="([^"]+)"[^>]*\/?>/g,
-            (match, src) => {
-                // 已经是可访问的 URL 则跳过
-                if (src.startsWith('http') || src.startsWith('asset:') || src.startsWith('data:')) {
-                    return match;
-                }
-                // 本地文件路径 → asset protocol URL
-                try {
-                    const assetUrl = convertFileSrc(src);
-                    return match.replace(`src="${src}"`, `src="${assetUrl}"`);
-                } catch {
-                    return match;
-                }
-            }
-        );
-        try {
-            let html = marked(processed) as string;
-            // 将 mermaid 代码块转换为 mermaid 可识别的格式
-            html = html.replace(
-                /<pre><code class="[^"]*language-mermaid[^"]*">([\s\S]*?)<\/code><\/pre>/g,
-                '<pre class="mermaid">$1</pre>'
-            );
-            return html;
-        } catch {
-            return processed;
-        }
-    };
 
     // ========== 渲染文件树节点 ==========
     const renderTreeNodes = (nodes: TreeNode[], level: number = 0): React.ReactNode => {
@@ -644,7 +418,7 @@ export default function NotepadComponent() {
 
     // ========== 渲染 ==========
     return (
-        <div className="notepad-container">
+        <div className="notepad-container" onKeyDown={handleEditorKeyDown}>
             {/* 标题栏 */}
             <div className="notepad-header" data-tauri-drag-region>
                 <div className="notepad-header-title">
@@ -695,21 +469,6 @@ export default function NotepadComponent() {
                                 </div>
                                 <div className="notepad-editor-actions">
                                     <button
-                                        className={`notepad-editor-btn ${editorMode === 0 ? 'notepad-edit-btn' : editorMode === 2 ? 'notepad-preview-btn' : 'notepad-split-btn'}`}
-                                        onClick={() => setEditorMode(((editorMode + 1) % 3) as 0 | 1 | 2)}
-                                        title={
-                                            editorMode === 0 ? '全编辑模式' :
-                                            editorMode === 1 ? '分屏模式' : '全预览模式'
-                                        }
-                                    >
-                                        <span className="btn-icon">
-                                            {editorMode === 0 ? '✏️' : editorMode === 1 ? '📝/👁️' : '👁️'}
-                                        </span>
-                                        <span className="btn-text">
-                                            {editorMode === 0 ? '全编辑' : editorMode === 1 ? '分屏' : '全预览'}
-                                        </span>
-                                    </button>
-                                    <button
                                         className={`notepad-mdref-btn ${isShowMdRef ? 'active' : ''}`}
                                         onClick={() => setIsShowMdRef(!isShowMdRef)}
                                         title={isShowMdRef ? '关闭语法参考' : 'Markdown 语法参考'}
@@ -730,8 +489,8 @@ export default function NotepadComponent() {
                                         onClick={() => {
                                             setSelectedNoteId(null);
                                             setSelectedNoteName('');
-                                            setEditorContent('');
-                                            setEditorMode(1);
+                                            setEditorJson('');
+                                            setEditorHtml('');
                                         }}
                                         title="关闭"
                                     >
@@ -743,57 +502,13 @@ export default function NotepadComponent() {
                             <div className="notepad-editor-body">
                                 {isLoadingContent ? (
                                     <div className="notepad-loading">加载中...</div>
-                                ) : editorMode === 2 ? (
-                                    <div
-                                        className="notepad-editor-preview markdown-body"
-                                        dangerouslySetInnerHTML={{ __html: renderMarkdown(editorContent) }}
-                                    />
-                                ) : editorMode === 1 ? (
-                                    <div className="notepad-editor-split">
-                                        <div className="notepad-editor-split-edit">
-                                            <textarea
-                                                ref={textareaRef}
-                                                className="notepad-editor-textarea"
-                                                value={editorContent}
-                                                onChange={(e) => {
-                                                    setEditorContent(e.target.value);
-                                                    setHasUnsavedChanges(true);
-                                                }}
-                                                onKeyDown={handleEditorKeyPress}
-                                                onPaste={handlePaste}
-                                                placeholder="开始编写 Markdown 内容... (可粘贴图片)"
-                                            />
-                                        </div>
-                                        <div
-                                            className="notepad-editor-split-preview markdown-body"
-                                            dangerouslySetInnerHTML={{ __html: renderMarkdown(editorContent) }}
-                                        />
-                                    </div>
                                 ) : (
-                                    <div className="notepad-editor-edit-wrap">
-                                        <textarea
-                                            ref={textareaRef}
-                                            className="notepad-editor-textarea"
-                                            value={editorContent}
-                                            onChange={(e) => {
-                                                setEditorContent(e.target.value);
-                                                setHasUnsavedChanges(true);
-                                            }}
-                                            onKeyDown={handleEditorKeyPress}
-                                            onPaste={handlePaste}
-                                            placeholder="开始编写 Markdown 内容... (可粘贴图片)"
-                                        />
-                                        {extractedImages.length > 0 && (
-                                            <div className="notepad-editor-images">
-                                                {extractedImages.map((src, idx) => (
-                                                    <div key={idx} className="notepad-editor-image-item">
-                                                        <img src={src} alt={`paste-image-${idx}`}
-                                                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
+                                    <TipTapEditor
+                                        content={editorJson}
+                                        onChange={handleEditorChange}
+                                        noteId={selectedNoteId}
+                                        placeholder="开始输入内容... 支持 Markdown 快捷输入（如 # 标题、- 列表等）"
+                                    />
                                 )}
                             </div>
                         </div>

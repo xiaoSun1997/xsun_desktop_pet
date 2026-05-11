@@ -33,7 +33,7 @@ function App() {
         setLabel(win.label);
     }, []);
 
-    // ===== 双击反引号打开记事本（只在桌宠窗口监听） =====
+    // ===== Ctrl+Alt+N 打开记事本（只在桌宠窗口监听） =====
     useEffect(() => {
         const win = getCurrentWindow();
         if (win.label !== 'pet') return;
@@ -41,7 +41,7 @@ function App() {
         let cancelled = false;
         let unlistenFn: (() => void) | undefined;
 
-        listen('keyboard://double-backtick', () => {
+        listen('keyboard://ctrl-alt-n', () => {
             if (!cancelled) openNotepadWindow();
         }).then(fn => { unlistenFn = fn; });
 
@@ -51,7 +51,7 @@ function App() {
         };
     }, []);
 
-    // ===== 双击 Ctrl 打开文件搜索（只在桌宠窗口监听） =====
+    // ===== Alt+S 打开文件搜索（只在桌宠窗口监听） =====
     useEffect(() => {
         const win = getCurrentWindow();
         if (win.label !== 'pet') return;
@@ -59,10 +59,10 @@ function App() {
         let cancelled = false;
         let unlistenFn: (() => void) | undefined;
 
-        listen('keyboard://ctrl-space', () => {
-            console.log('[App] 收到Ctrl+空格事件');
+        listen('keyboard://alt-s', () => {
+            console.log('[App] 收到Alt+S事件');
             if (!cancelled) openQuickFileSearchWindow();
-        }).then(fn => { unlistenFn = fn; console.log('[App] Ctrl+空格监听已注册'); });
+        }).then(fn => { unlistenFn = fn; console.log('[App] Alt+S监听已注册'); });
 
         return () => {
             cancelled = true;
@@ -221,15 +221,37 @@ function App() {
     };
 
     const openNotepadWindow = async () => {
-        if (notepadOpeningRef.current) return;
+        if (notepadOpeningRef.current) {
+            console.log('[Notepad] 已有打开任务进行中，跳过');
+            return;
+        }
         notepadOpeningRef.current = true;
+
+        const guardTimeout = setTimeout(() => {
+            if (notepadOpeningRef.current) {
+                console.warn('[Notepad] 守卫超时，强制重置');
+                notepadOpeningRef.current = false;
+            }
+        }, 15000);
+
         try {
             const windows = await getAllWindows();
             const existing = windows.find(w => w.label === 'notepad');
+
             if (existing) {
-                await existing.show();
-                await existing.setFocus();
-                return;
+                try {
+                    await existing.show();
+                    await existing.setFocus();
+                    return;
+                } catch (showErr) {
+                    console.warn('[Notepad] 已有窗口无法显示，尝试关闭并重建:', showErr);
+                    try {
+                        await existing.close();
+                    } catch (closeErr) {
+                        console.warn('[Notepad] 关闭僵尸窗口失败:', closeErr);
+                    }
+                    await new Promise(r => setTimeout(r, 200));
+                }
             }
 
             const url = import.meta.env.DEV
@@ -263,8 +285,9 @@ function App() {
             await webview.show();
             await webview.setFocus();
         } catch (error) {
-            console.error('打开记事本失败:', error);
+            console.error('[Notepad] 打开记事本失败:', error);
         } finally {
+            clearTimeout(guardTimeout);
             notepadOpeningRef.current = false;
         }
     };

@@ -1,0 +1,385 @@
+/* ===== TipTap 编辑器 - 整体容器 ===== */
+.tiptap-wrapper {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+    position: relative;
+}
+
+/* ===== 顶部工具栏 ===== */
+.tiptap-toolbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 6px 12px;
+    background: #f8f9fa;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    flex-shrink: 0;
+    user-select: none;
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
+.tiptap-toolbar::-webkit-scrollbar { height: 2px; }
+.tiptap-toolbar::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.12);
+    border-radius: 1px;
+}
+
+.tiptap-toolbar-group {
+    display: flex;
+    align-items: center;
+    gap: 1px;
+    padding: 0 4px;
+}
+
+.tiptap-toolbar-group + .tiptap-toolbar-group {
+    border-left: 1px solid rgba(0, 0, 0, 0.08);
+    padding-left: 8px;
+}
+
+.tiptap-toolbar-btn {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: #666666;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    font-family: inherit;
+    line-height: 1;
+}
+
+.tiptap-toolbar-btn:hover {
+    background: rgba(0, 0, 0, 0.06);
+    color: #333333;
+}
+
+.tiptap-toolbar-btn.is-active {
+    background: rgba(59, 130, 246, 0.1);
+    color: #2563eb;
+}
+
+/* ===== 编辑器内容区 ===== */
+.tiptap-editor-body {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+/* TipTap ProseMirror 编辑器主区域 */
+.tiptap-editor-body .tiptap.ProseMirror {
+    flex: 1;
+    overflow-y: auto;
+    outline: none;
+    padding: 32px;
+    color: #333333;
+    font-size: 15px;
+    line-height: 1.8;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #ffffff;
+}
+
+.tiptap-editor-body .tiptap.ProseMirror::-webkit-scrollbar { width: 4px; }
+.tiptap-editor-body .tiptap.ProseMirror::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.12);
+    border-radius: 2px;
+}
+
+/* ===== TipTap 内容样式 ===== */
+
+/* 标题 */
+.tiptap-editor-content h1 {
+    font-size: 26px;
+    font-weight: 700;
+    margin: 24px 0 12px;
+    color: #1a1a2e;
+    line-height: 1.3;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+.tiptap-editor-content h2 {
+    font-size: 21px;
+    font-weight: 600;
+    margin: 20px 0 10px;
+    color: #222222;
+    line-height: 1.3;
+}
+.tiptap-editor-content h3 {
+    font-size: 17px;
+    font-weight: 600;
+    margin: 16px 0 8px;
+    color: #333333;
+    line-height: 1.3;
+}
+.tiptap-editor-content h4 {
+    font-size: 15px;
+    font-weight: 600;
+    margin: 12px 0 6px;
+    color: #444444;
+}
+
+/* 段落 */
+.tiptap-editor-content p { margin: 8px 0; }
+
+.tiptap-editor-content p.is-editor-empty:first-child::before {
+    content: attr(data-placeholder);
+    float: left;
+    color: #bbbbbb;
+    pointer-events: none;
+    height: 0;
+    font-style: italic;
+}
+
+/* 行内代码 */
+.tiptap-editor-content code {
+    background: rgba(0, 0, 0, 0.05);
+    border-radius: 3px;
+    padding: 2px 6px;
+    font-size: 13px;
+    font-family: "Cascadia Code", "Fira Code", "Consolas", monospace;
+    color: #e11d48;
+}
+
+/* 代码块 */
+.tiptap-editor-content pre {
+    background: #f5f6f8;
+    border-radius: 8px;
+    padding: 16px 18px;
+    overflow-x: auto;
+    margin: 14px 0;
+    border: 1px solid rgba(0, 0, 0, 0.06);
+}
+.tiptap-editor-content pre code {
+    background: none;
+    padding: 0;
+    font-size: 13px;
+    color: #333333;
+}
+
+/* 引用 */
+.tiptap-editor-content blockquote {
+    border-left: 3px solid #3b82f6;
+    padding-left: 16px;
+    margin: 12px 0;
+    color: #666666;
+    font-style: italic;
+    background: rgba(59, 130, 246, 0.03);
+    padding: 10px 16px;
+    border-radius: 0 6px 6px 0;
+}
+
+/* 列表 */
+.tiptap-editor-content ul,
+.tiptap-editor-content ol {
+    padding-left: 24px;
+    margin: 8px 0;
+}
+.tiptap-editor-content li { margin: 4px 0; }
+
+.tiptap-editor-content ul[data-type="taskList"] {
+    list-style: none;
+    padding-left: 0;
+}
+.tiptap-editor-content ul[data-type="taskList"] li {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+.tiptap-editor-content ul[data-type="taskList"] li label { flex-shrink: 0; margin-top: 2px; }
+.tiptap-editor-content ul[data-type="taskList"] li label input[type="checkbox"] {
+    cursor: pointer;
+    accent-color: #3b82f6;
+}
+.tiptap-editor-content ul[data-type="taskList"] li[data-checked="true"] > div > p {
+    text-decoration: line-through;
+    color: #aaaaaa;
+}
+
+/* 图片 */
+.tiptap-editor-content img.tiptap-image {
+    display: block;
+    margin: 16px auto;
+    max-width: 80%;
+    height: auto;
+    border-radius: 8px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+}
+
+/* 分割线 */
+.tiptap-editor-content hr {
+    border: none;
+    border-top: 2px solid rgba(0, 0, 0, 0.08);
+    margin: 24px 0;
+}
+
+/* 高亮 */
+.tiptap-editor-content mark {
+    background: rgba(251, 191, 36, 0.25);
+    color: inherit;
+    border-radius: 2px;
+    padding: 0 2px;
+}
+
+/* 链接 */
+.tiptap-editor-content a.tiptap-link {
+    color: #2563eb;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    cursor: pointer;
+}
+.tiptap-editor-content a.tiptap-link:hover { color: #1d4ed8; }
+
+/* 表格 */
+.tiptap-editor-content table {
+    border-collapse: collapse;
+    margin: 14px 0;
+    font-size: 13px;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    table-layout: auto;
+    overflow: visible;
+}
+.tiptap-editor-content th,
+.tiptap-editor-content td {
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    padding: 8px 12px;
+    text-align: left;
+    color: #333333;
+    position: relative;
+    min-width: 60px;
+    box-sizing: border-box;
+}
+.tiptap-editor-content th {
+    font-weight: 600;
+    background: #f5f6f8;
+    color: #1a1a2e;
+}
+.tiptap-editor-content td { background: #ffffff; }
+.tiptap-editor-content .selectedCell { background: rgba(59, 130, 246, 0.08); }
+
+/* 列宽拖拽手柄 */
+.tiptap-editor-content .column-resize-handle {
+    position: absolute;
+    right: -2px;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: transparent;
+    cursor: col-resize;
+    z-index: 5;
+    transition: background 0.15s ease;
+    border-radius: 2px;
+}
+.tiptap-editor-content .column-resize-handle:hover,
+.tiptap-editor-content .column-resize-handle.is-active {
+    background: #3b82f6;
+}
+.tiptap-editor-content table:hover .column-resize-handle {
+    background: rgba(59, 130, 246, 0.15);
+}
+
+/* 删除线 */
+.tiptap-editor-content s { color: #999999; }
+
+/* 下划线 */
+.tiptap-editor-content u { text-decoration-color: rgba(0, 0, 0, 0.3); }
+
+/* ===== 表格操作浮动工具栏 ===== */
+.table-toolbar {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 3px 5px;
+    background: #ffffff;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+    z-index: 100;
+    user-select: none;
+}
+
+.table-toolbar button {
+    height: 26px;
+    padding: 0 7px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: #666666;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.12s ease;
+    font-family: inherit;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+}
+
+.table-toolbar button:hover {
+    background: rgba(0, 0, 0, 0.06);
+    color: #333333;
+}
+
+.table-toolbar button.table-action-delete:hover {
+    background: rgba(239, 68, 68, 0.1);
+    color: #ef4444;
+}
+
+.table-toolbar .table-toolbar-sep {
+    width: 1px;
+    height: 16px;
+    background: rgba(0, 0, 0, 0.1);
+    margin: 0 3px;
+}
+
+/* 单元格背景色选择器 */
+.table-color-picker {
+    display: flex;
+    gap: 3px;
+    padding: 2px 0;
+}
+
+.table-color-btn {
+    width: 20px;
+    height: 20px;
+    border-radius: 3px;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    cursor: pointer;
+    transition: all 0.12s ease;
+}
+
+.table-color-btn:hover {
+    transform: scale(1.15);
+    border-color: #3b82f6;
+}
+
+.table-color-btn.table-color-reset {
+    background: #ffffff;
+    position: relative;
+}
+.table-color-btn.table-color-reset::after {
+    content: "✕";
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    color: #999999;
+}
+
+/* ===== 编辑器光标 ===== */
+.tiptap-editor-content .ProseMirror .ProseMirror-cursor {
+    border-left-color: #2563eb;
+}

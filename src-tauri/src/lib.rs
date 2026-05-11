@@ -9,6 +9,7 @@ use urlencoding::encode as urlencode;
 use std::collections::HashMap;
 
 mod calendar;
+use calendar::{CalendarManager, HealthRecord, TrainingItem, LearningItem, DailyPlanData, PlanType, LongTermPlan};
 mod clipboard;
 mod global_mouse;
 mod global_keyboard;
@@ -1196,6 +1197,277 @@ async fn refresh_calendar_data(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+// ===== 健康数据命令 =====
+#[tauri::command]
+async fn get_daily_health_data(app: AppHandle, date: String) -> Result<HealthRecord, String> {
+    let data_dir = get_data_dir(&app)?;
+    let manager = CalendarManager::new(data_dir);
+    manager.load_health_record_for_date(&date).await
+}
+
+#[tauri::command]
+async fn save_health_record(app: AppHandle, record: HealthRecord) -> Result<(), String> {
+    let data_dir = get_data_dir(&app)?;
+    let manager = CalendarManager::new(data_dir);
+    manager.save_health_record(&record).await
+}
+
+// ===== 训练数据命令 =====
+#[tauri::command]
+async fn get_daily_training_data(app: AppHandle, date: String) -> Result<Vec<TrainingItem>, String> {
+    let data_dir = get_data_dir(&app)?;
+    let manager = CalendarManager::new(data_dir);
+    manager.load_training_items_for_date(&date).await
+}
+
+#[tauri::command]
+async fn save_training_items(app: AppHandle, date: String, items: Vec<TrainingItem>) -> Result<(), String> {
+    let data_dir = get_data_dir(&app)?;
+    let manager = CalendarManager::new(data_dir);
+    manager.save_training_items_for_date(&date, items).await
+}
+
+// ===== 学习数据命令 =====
+#[tauri::command]
+async fn get_daily_learning_data(app: AppHandle, date: String) -> Result<Vec<LearningItem>, String> {
+    let data_dir = get_data_dir(&app)?;
+    let manager = CalendarManager::new(data_dir);
+    manager.load_learning_items_for_date(&date).await
+}
+
+#[tauri::command]
+async fn save_learning_items(app: AppHandle, date: String, items: Vec<LearningItem>) -> Result<(), String> {
+    let data_dir = get_data_dir(&app)?;
+    let manager = CalendarManager::new(data_dir);
+    manager.save_learning_items_for_date(&date, items).await
+}
+
+// ===== 长期规划命令 =====
+#[tauri::command]
+async fn get_long_term_plans(app: AppHandle) -> Result<Vec<LongTermPlan>, String> {
+    let data_dir = get_data_dir(&app)?;
+    let manager = CalendarManager::new(data_dir);
+    manager.load_long_term_plans().await
+}
+
+#[tauri::command]
+async fn save_long_term_plan(app: AppHandle, plan: LongTermPlan) -> Result<(), String> {
+    let data_dir = get_data_dir(&app)?;
+    let manager = CalendarManager::new(data_dir);
+    let mut plans = manager.load_long_term_plans().await?;
+    // 更新或添加
+    if let Some(existing) = plans.iter_mut().find(|p| p.id == plan.id) {
+        *existing = plan;
+    } else {
+        plans.push(plan);
+    }
+    manager.save_long_term_plans(&plans).await
+}
+
+#[tauri::command]
+async fn delete_long_term_plan(app: AppHandle, id: String) -> Result<(), String> {
+    let data_dir = get_data_dir(&app)?;
+    let manager = CalendarManager::new(data_dir);
+    let plans = manager.load_long_term_plans().await?;
+    let filtered: Vec<LongTermPlan> = plans.into_iter().filter(|p| p.id != id).collect();
+    manager.save_long_term_plans(&filtered).await
+}
+
+// ===== 日期范围查询 =====
+#[tauri::command]
+async fn get_date_range_daily_plans(app: AppHandle, start_date: String, end_date: String) -> Result<Vec<DailyPlanData>, String> {
+    let data_dir = get_data_dir(&app)?;
+    let manager = CalendarManager::new(data_dir);
+    manager.get_date_range_daily_data(&start_date, &end_date).await
+}
+
+// ===== AI 日历规划命令 =====
+#[tauri::command]
+async fn ai_calendar_plan_stream(
+    app: AppHandle,
+    plan_type: String,
+    user_prompt: String,
+) -> Result<(), String> {
+    let config = load_deepseek_config(app.clone()).await?;
+
+    let system_prompt = if plan_type == "health" {
+        "你是一个专业的健身教练和营养师。请根据用户的描述，为其制定科学的锻炼计划和饮食建议。请用中文回复，格式清晰，包含具体的训练项目、组数、次数、重量建议，以及饮食指导。如果需要，可以询问用户的体重、目标等信息。"
+    } else {
+        "你是一个专业的学习规划师。请根据用户的描述，帮助其拆解学习任务，制定详细的学习计划。请用中文回复，将大目标拆解为可执行的每日小任务，格式清晰，包含具体的子任务、时间安排等。"
+    };
+
+    let messages = vec![
+        ChatMessage { role: "system".to_string(), content: system_prompt.to_string() },
+        ChatMessage { role: "user".to_string(), content: user_prompt },
+    ];
+
+    let client = reqwest::Client::new();
+    let chat_request = ChatRequest {
+        model: config.model,
+        messages,
+        stream: true,
+    };
+
+    let response = client
+        .post(&format!("{}/chat/completions", config.base_url))
+        .header("Authorization", format!("Bearer {}", config.api_key))
+        .header("Content-Type", "application/json")
+        .header("Accept", "text/event-stream")
+        .header("Cache-Control", "no-cache")
+        .json(&chat_request)
+        .send()
+        .await
+        .map_err(|e| format!("发送请求失败: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let error_text = response.text().await.unwrap_or_default();
+        let err_msg = format!("API请求失败 ({}): {}", status, error_text);
+        let _ = app.emit("calendar-ai://stream-error", serde_json::json!({"error": &err_msg, "planType": &plan_type}));
+        return Err(err_msg);
+    }
+
+    use tokio_stream::StreamExt;
+    let mut stream = response.bytes_stream();
+    let mut full_content = String::new();
+    let mut buffer = String::new();
+
+    while let Some(chunk_result) = stream.next().await {
+        let chunk = match chunk_result {
+            Ok(c) => c,
+            Err(e) => {
+                let err_msg = format!("读取响应流失败: {}", e);
+                let _ = app.emit("calendar-ai://stream-error", serde_json::json!({"error": &err_msg, "planType": &plan_type}));
+                return Err(err_msg);
+            }
+        };
+
+        let chunk_str = String::from_utf8_lossy(&chunk);
+        buffer.push_str(&chunk_str);
+
+        while let Some(line_end) = buffer.find('\n') {
+            let line = buffer[..line_end].trim().to_string();
+            buffer = buffer[line_end + 1..].to_string();
+
+            if line.is_empty() { continue; }
+            if line == "data: [DONE]" { break; }
+
+            if let Some(data) = line.strip_prefix("data: ") {
+                if let Ok(sse) = serde_json::from_str::<StreamResponse>(data) {
+                    if let Some(choice) = sse.choices.first() {
+                        if let Some(ref delta_content) = choice.delta.content {
+                            full_content.push_str(delta_content);
+                            let _ = app.emit("calendar-ai://stream-token", serde_json::json!({
+                                "token": delta_content,
+                                "planType": &plan_type
+                            }));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let _ = app.emit("calendar-ai://stream-done", serde_json::json!({
+        "content": full_content,
+        "planType": &plan_type
+    }));
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn ai_apply_long_term_plan(
+    app: AppHandle,
+    plan: LongTermPlan,
+) -> Result<Vec<DailyPlanData>, String> {
+    let config = load_deepseek_config(app.clone()).await?;
+
+    let plan_type_str = match plan.plan_type {
+        PlanType::Health => "健康/锻炼",
+        PlanType::Learning => "学习",
+    };
+
+    let system_prompt = format!(
+        "你是一个计划拆解助手。请将以下{}长期计划拆解为每日任务，从{}到{}，每天分配具体的任务项。\n\n请以JSON数组格式返回，每个元素包含：\n- date: 日期 (YYYY-MM-DD)\n- trainingItems: 训练项目数组 (仅Health类型)，每项包含 id(用uuid格式), name, sets, reps, weight(可为null), notes(可为null), completed(false), createdAt(时间戳)\n- learningItems: 学习项目数组 (仅Learning类型)，每项包含 id(用uuid格式), title, subtasks(子任务数组，每项id, content, completed:false), completed(false), createdAt(时间戳)\n\n只返回JSON数组，不要包含任何其他文本。",
+        plan_type_str, plan.start_date, plan.end_date
+    );
+
+    let messages = vec![
+        ChatMessage { role: "system".to_string(), content: system_prompt },
+        ChatMessage { role: "user".to_string(), content: format!("目标描述: {}\n\n计划内容: {}", plan.target_desc, plan.plan_content) },
+    ];
+
+    let client = reqwest::Client::new();
+    let chat_request = ChatRequest {
+        model: config.model,
+        messages,
+        stream: false,
+    };
+
+    let response = client
+        .post(&format!("{}/chat/completions", config.base_url))
+        .header("Authorization", format!("Bearer {}", config.api_key))
+        .header("Content-Type", "application/json")
+        .json(&chat_request)
+        .send()
+        .await
+        .map_err(|e| format!("发送请求失败: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let error_text = response.text().await.unwrap_or_default();
+        return Err(format!("API请求失败 ({}): {}", status, error_text));
+    }
+
+    let chat_response: ChatResponse = response
+        .json()
+        .await
+        .map_err(|e| format!("解析响应失败: {}", e))?;
+
+    let ai_content = chat_response
+        .choices
+        .first()
+        .map(|choice| choice.message.content.clone())
+        .ok_or_else(|| "AI响应为空".to_string())?;
+
+    // 尝试从AI响应中提取JSON
+    let json_str = if let Some(start) = ai_content.find('[') {
+        if let Some(end) = ai_content.rfind(']') {
+            &ai_content[start..=end]
+        } else {
+            return Err("AI返回格式错误：未找到有效的JSON数组".to_string());
+        }
+    } else {
+        return Err("AI返回格式错误：未找到JSON数组".to_string());
+    };
+
+    let daily_plans: Vec<DailyPlanData> = serde_json::from_str(json_str)
+        .map_err(|e| format!("解析AI返回的每日计划失败: {}", e))?;
+
+    // 将每日计划保存到对应的日期
+    let data_dir = get_data_dir(&app)?;
+    let manager = CalendarManager::new(data_dir);
+
+    for daily in &daily_plans {
+        if !daily.training_items.is_empty() {
+            let _ = manager.save_training_items_for_date(&daily.date, daily.training_items.clone()).await;
+        }
+        if !daily.learning_items.is_empty() {
+            let _ = manager.save_learning_items_for_date(&daily.date, daily.learning_items.clone()).await;
+        }
+    }
+
+    // 标记长期计划已应用
+    let mut plans = manager.load_long_term_plans().await?;
+    if let Some(p) = plans.iter_mut().find(|p| p.id == plan.id) {
+        p.applied = true;
+    }
+    manager.save_long_term_plans(&plans).await?;
+
+    Ok(daily_plans)
+}
+
 // 添加创建托盘菜单的函数
 // 修正后的创建托盘菜单函数
 fn create_tray_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
@@ -1870,6 +2142,18 @@ pub fn run() {
             upload_background_image,
             delete_background_image,
             refresh_calendar_data,
+            get_daily_health_data,
+            save_health_record,
+            get_daily_training_data,
+            save_training_items,
+            get_daily_learning_data,
+            save_learning_items,
+            get_long_term_plans,
+            save_long_term_plan,
+            delete_long_term_plan,
+            get_date_range_daily_plans,
+            ai_calendar_plan_stream,
+            ai_apply_long_term_plan,
             show_from_tray,
             hide_to_tray,
             show_pomodoro_notification,

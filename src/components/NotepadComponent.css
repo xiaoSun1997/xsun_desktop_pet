@@ -4,8 +4,8 @@
     height: 100vh;
     display: flex;
     flex-direction: column;
-    background: #1a1b2e;
-    color: rgba(255, 255, 255, 0.85);
+    background: #f5f6f8;
+    color: #333333;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     overflow: hidden;
 }
@@ -16,8 +16,8 @@
     align-items: center;
     justify-content: space-between;
     padding: 8px 16px;
-    background: rgba(30, 32, 52, 0.95);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    background: #ffffff;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
     flex-shrink: 0;
     -webkit-app-region: drag;
     user-select: none;
@@ -26,7 +26,7 @@
 .notepad-header-title {
     font-size: 14px;
     font-weight: 600;
-    color: rgba(255, 255, 255, 0.8);
+    color: #222222;
     letter-spacing: 0.3px;
     display: flex;
     align-items: center;
@@ -51,13 +51,13 @@
     font-weight: 500;
     cursor: pointer;
     transition: all 0.2s ease;
-    color: rgba(255, 255, 255, 0.6);
+    color: #666666;
     background: transparent;
 }
 
 .notepad-header-btn:hover {
-    background: rgba(255, 255, 255, 0.08);
-    color: rgba(255, 255, 255, 0.9);
+    background: rgba(0, 0, 0, 0.06);
+    color: #333333;
 }
 
 /* ===== 主区域 ===== */
@@ -74,8 +74,8 @@
     min-width: 220px;
     display: flex;
     flex-direction: column;
-    background: rgba(25, 26, 42, 0.95);
-    border-right: 1px solid rgba(255, 255, 255, 0.06);
+    background: #fafbfc;
+    border-right: 1px solid rgba(0, 0, 0, 0.08);
     flex-shrink: 0;
 }
 
@@ -84,14 +84,14 @@
     align-items: center;
     justify-content: space-between;
     padding: 14px 16px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
     flex-shrink: 0;
 }
 
 .notepad-sidebar-title {
     font-size: 13px;
     font-weight: 600;
-    color: rgba(255, 255, 255, 0.8);
+    color: #333333;
     letter-spacing: 0.3px;
 }
 
@@ -101,7 +101,7 @@
     border: none;
     border-radius: 4px;
     background: transparent;
-    color: rgba(255, 255, 255, 0.3);
+    color: #999999;
     font-size: 16px;
     font-weight: 700;
     cursor: pointer;
@@ -114,8 +114,7 @@
 }
 
 .notepad-sidebar-add-btn:hover {
-    color: rgba(255, 255, 255, 0.9);
-    background: rgba(16, 185, 129, 0.3);
+    background: rgba(16, 185, 129, 0.1);
     color: #10b981;
 }
 
@@ -126,18 +125,14 @@
     padding: 4px 0;
 }
 
-.notepad-tree::-webkit-scrollbar {
-    width: 4px;
-}
+.notepad-tree::-webkit-scrollbar { width: 4px; }
 .notepad-tree::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(0, 0, 0, 0.12);
     border-radius: 2px;
 }
 
 /* 树节点 */
-.notepad-tree-node {
-    user-select: none;
-}
+.notepad-tree-node { user-select: none; }
 
 .notepad-tree-folder,
 .notepad-tree-file {
@@ -147,20 +142,20 @@
     padding: 6px 12px 6px 12px;
     cursor: pointer;
     transition: all 0.15s ease;
-    color: rgba(255, 255, 255, 0.7);
+    color: #555555;
     font-size: 12px;
     position: relative;
 }
 
 .notepad-tree-folder:hover,
 .notepad-tree-file:hover {
-    background: rgba(255, 255, 255, 0.06);
-    color: rgba(255, 255, 255, 0.95);
+    background: rgba(0, 0, 0, 0.04);
+    color: #222222;
 }
 
 .notepad-tree-file.selected {
-    background: rgba(59, 130, 246, 0.15);
-    color: #60a5fa;
+    background: rgba(59, 130, 246, 0.1);
+    color: #2563eb;
 }
 
 .notepad-tree-arrow {
@@ -168,7 +163,7 @@
     width: 12px;
     text-align: center;
     flex-shrink: 0;
-    color: rgba(255, 255, 255, 0.4);
+    color: #999999;
 }
 
 .notepad-tree-folder-icon,
@@ -190,7 +185,7 @@
     border: none;
     border-radius: 4px;
     background: transparent;
-    color: rgba(255, 255, 255, 0.2);
+    color: #cccccc;
     font-size: 11px;
     cursor: pointer;
     display: none;
@@ -203,12 +198,10 @@
 }
 
 .notepad-tree-folder:hover .notepad-tree-delete,
-.notepad-tree-file:hover .notepad-tree-delete {
-    display: flex;
-}
+.notepad-tree-file:hover .notepad-tree-delete { display: flex; }
 
 .notepad-tree-delete:hover {
-    background: rgba(239, 68, 68, 0.3);
+    background: rgba(239, 68, 68, 0.1);
     color: #ef4444;
 }
 
@@ -218,7 +211,7 @@
     border: none;
     border-radius: 4px;
     background: transparent;
-    color: rgba(255, 255, 255, 0.2);
+    color: #cccccc;
     font-size: 14px;
     font-weight: 700;
     cursor: pointer;
@@ -231,30 +224,23 @@
     transition: all 0.15s ease;
 }
 
-.notepad-tree-folder:hover .notepad-tree-add {
-    display: flex;
-}
+.notepad-tree-folder:hover .notepad-tree-add { display: flex; }
 
 .notepad-tree-add:hover {
-    background: rgba(16, 185, 129, 0.3);
+    background: rgba(16, 185, 129, 0.1);
     color: #10b981;
 }
 
-.notepad-tree-children {
-    padding-left: 16px;
-}
+.notepad-tree-children { padding-left: 16px; }
 
 .notepad-tree-empty {
     padding: 24px 16px;
     text-align: center;
-    color: rgba(255, 255, 255, 0.3);
+    color: #999999;
     font-size: 13px;
 }
 
-.notepad-tree-empty p {
-    margin: 0 0 4px 0;
-    font-size: 13px;
-}
+.notepad-tree-empty p { margin: 0 0 4px 0; font-size: 13px; }
 
 /* ===== 右侧编辑器区域 ===== */
 .notepad-editor-area {
@@ -263,10 +249,7 @@
     flex-direction: column;
     overflow: hidden;
     transition: margin-right 0.3s ease;
-}
-
-.notepad-editor-area.with-ai-panel {
-    margin-right: 400px;
+    background: #ffffff;
 }
 
 .notepad-editor-container {
@@ -282,8 +265,8 @@
     align-items: center;
     justify-content: space-between;
     padding: 8px 16px;
-    background: rgba(30, 32, 52, 0.95);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    background: #ffffff;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
     flex-shrink: 0;
 }
 
@@ -293,14 +276,12 @@
     gap: 8px;
 }
 
-.notepad-editor-file-icon {
-    font-size: 14px;
-}
+.notepad-editor-file-icon { font-size: 14px; }
 
 .notepad-editor-filename {
     font-size: 13px;
     font-weight: 500;
-    color: rgba(255, 255, 255, 0.8);
+    color: #333333;
 }
 
 .notepad-editor-actions {
@@ -352,205 +333,35 @@
 
 .notepad-editor-btn:hover {
     transform: translateY(-1px);
-    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15);
-}
-
-.notepad-preview-btn {
-    background: #8b5cf6;
-    box-shadow: 0 1px 4px rgba(139, 92, 246, 0.3);
-}
-.notepad-preview-btn:hover {
-    background: #7c3aed;
-}
-
-.notepad-edit-btn {
-    background: #3b82f6;
-    box-shadow: 0 1px 4px rgba(59, 130, 246, 0.3);
-}
-.notepad-edit-btn:hover {
-    background: #2563eb;
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.12);
 }
 
 .notepad-save-btn {
     background: #059669;
-    box-shadow: 0 2px 8px rgba(5, 150, 105, 0.5);
-    border: 1px solid rgba(5, 150, 105, 0.6);
+    box-shadow: 0 2px 8px rgba(5, 150, 105, 0.4);
+    border: 1px solid rgba(5, 150, 105, 0.4);
     color: #ffffff;
     font-weight: 700;
     letter-spacing: 0.5px;
 }
 .notepad-save-btn:hover {
     background: #10b981;
-    box-shadow: 0 3px 12px rgba(16, 185, 129, 0.6);
-    border-color: rgba(16, 185, 129, 0.8);
+    box-shadow: 0 3px 12px rgba(16, 185, 129, 0.5);
+    border-color: rgba(16, 185, 129, 0.6);
 }
 
 .notepad-close-editor-btn {
     background: #f43f5e;
     box-shadow: 0 1px 4px rgba(244, 63, 94, 0.3);
 }
-.notepad-close-editor-btn:hover {
-    background: #e11d48;
-}
+.notepad-close-editor-btn:hover { background: #e11d48; }
 
 /* 编辑器内容区 */
 .notepad-editor-body {
     flex: 1;
     overflow: hidden;
-}
-
-.notepad-editor-textarea {
-    width: 100%;
-    height: 100%;
-    padding: 16px;
-    border: none;
-    outline: none;
-    resize: none;
-    background: #1e2034;
-    color: rgba(255, 255, 255, 0.85);
-    font-size: 13px;
-    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
-    line-height: 1.6;
-    tab-size: 4;
-    box-sizing: border-box;
-}
-
-.notepad-editor-textarea::-webkit-scrollbar {
-    width: 4px;
-    height: 4px;
-}
-.notepad-editor-textarea::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 2px;
-}
-.notepad-editor-textarea::-webkit-scrollbar-corner {
-    background: transparent;
-}
-
-.notepad-editor-textarea::placeholder {
-    color: rgba(255, 255, 255, 0.25);
-}
-
-.notepad-editor-preview {
-    width: 100%;
-    height: 100%;
-    padding: 24px;
-    overflow-y: auto;
-    background: #1e2034;
-    box-sizing: border-box;
-}
-
-.notepad-editor-preview::-webkit-scrollbar {
-    width: 4px;
-    height: 4px;
-}
-.notepad-editor-preview::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 2px;
-}
-.notepad-editor-preview::-webkit-scrollbar-corner {
-    background: transparent;
-}
-
-/* Markdown 预览样式 */
-.notepad-editor-preview.markdown-body {
-    color: rgba(255, 255, 255, 0.85);
-    font-size: 14px;
-    line-height: 1.7;
-}
-
-.notepad-editor-preview.markdown-body h1,
-.notepad-editor-preview.markdown-body h2,
-.notepad-editor-preview.markdown-body h3,
-.notepad-editor-preview.markdown-body h4 {
-    color: rgba(255, 255, 255, 0.95);
-    margin: 16px 0 8px;
-    font-weight: 600;
-}
-
-.notepad-editor-preview.markdown-body p {
-    margin: 8px 0;
-}
-
-.notepad-editor-preview.markdown-body code {
-    background: rgba(255, 255, 255, 0.08);
-    border-radius: 3px;
-    padding: 2px 6px;
-    font-size: 13px;
-    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
-}
-
-.notepad-editor-preview.markdown-body pre {
-    background: rgba(0, 0, 0, 0.3);
-    border-radius: 6px;
-    padding: 12px;
-    overflow-x: auto;
-}
-
-.notepad-editor-preview.markdown-body pre code {
-    background: none;
-    padding: 0;
-}
-
-.notepad-editor-preview.markdown-body blockquote {
-    border-left: 3px solid rgba(59, 130, 246, 0.5);
-    padding-left: 12px;
-    margin: 8px 0;
-    color: rgba(255, 255, 255, 0.6);
-}
-
-.notepad-editor-preview.markdown-body img {
-    display: block;
-    margin: 12px auto;
-    max-width: 80%;
-    border-radius: 6px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-}
-
-.notepad-editor-preview.markdown-body ul,
-.notepad-editor-preview.markdown-body ol {
-    padding-left: 20px;
-    margin: 8px 0;
-}
-
-.notepad-editor-preview.markdown-body li {
-    margin: 4px 0;
-}
-
-.notepad-editor-preview.markdown-body table {
-    border-collapse: collapse;
-    margin: 12px 0;
-    width: 100%;
-    font-size: 13px;
-    border: 1px solid rgba(255, 255, 255, 0.15);
-}
-
-.notepad-editor-preview.markdown-body th,
-.notepad-editor-preview.markdown-body td {
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    padding: 8px 12px;
-    text-align: left;
-    color: rgba(255, 255, 255, 0.85);
-}
-
-.notepad-editor-preview.markdown-body th {
-    font-weight: 600;
-    background: rgba(255, 255, 255, 0.06);
-}
-
-.notepad-editor-preview.markdown-body a {
-    color: #60a5fa;
-    text-decoration: none;
-}
-
-.notepad-editor-preview.markdown-body a:hover {
-    text-decoration: underline;
-}
-
-.notepad-editor-preview.markdown-body hr {
-    border: none;
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
-    margin: 16px 0;
+    display: flex;
+    flex-direction: column;
 }
 
 /* 空状态 */
@@ -559,213 +370,21 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    color: rgba(255, 255, 255, 0.2);
+    color: #cccccc;
     font-size: 14px;
     flex-direction: column;
     gap: 8px;
 }
 
-.notepad-editor-empty-icon {
-    font-size: 48px;
-    opacity: 0.3;
-}
+.notepad-editor-empty-icon { font-size: 48px; opacity: 0.3; }
 
 .notepad-loading {
     flex: 1;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: rgba(255, 255, 255, 0.4);
+    color: #999999;
     font-size: 13px;
-}
-
-/* ===== AI 面板 ===== */
-.notepad-ai-panel-overlay {
-    position: absolute;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    width: 400px;
-    background: rgba(26, 28, 46, 0.98);
-    border-left: 1px solid rgba(255, 255, 255, 0.08);
-    display: flex;
-    flex-direction: column;
-    animation: slideIn 0.25s ease;
-    z-index: 10;
-    box-shadow: -4px 0 20px rgba(0, 0, 0, 0.3);
-}
-
-@keyframes slideIn {
-    from { transform: translateX(100%); opacity: 0; }
-    to { transform: translateX(0); opacity: 1; }
-}
-
-.notepad-ai-panel-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 12px 16px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-    flex-shrink: 0;
-}
-
-.notepad-ai-panel-title {
-    font-size: 13px;
-    font-weight: 600;
-    color: rgba(255, 255, 255, 0.85);
-}
-
-.notepad-ai-panel-close {
-    width: 24px;
-    height: 24px;
-    border: none;
-    border-radius: 4px;
-    background: transparent;
-    color: rgba(255, 255, 255, 0.4);
-    font-size: 14px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.15s ease;
-}
-
-.notepad-ai-panel-close:hover {
-    background: rgba(239, 68, 68, 0.2);
-    color: #ef4444;
-}
-
-.notepad-ai-messages {
-    flex: 1;
-    overflow-y: auto;
-    padding: 12px 16px;
-}
-
-.notepad-ai-messages::-webkit-scrollbar {
-    width: 4px;
-}
-.notepad-ai-messages::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 2px;
-}
-
-.notepad-ai-message {
-    margin-bottom: 12px;
-    padding: 10px 14px;
-    border-radius: 8px;
-    font-size: 13px;
-    line-height: 1.6;
-    max-width: 90%;
-}
-
-.notepad-ai-message.user {
-    background: rgba(59, 130, 246, 0.15);
-    color: rgba(255, 255, 255, 0.9);
-    margin-left: auto;
-    border-bottom-right-radius: 4px;
-}
-
-.notepad-ai-message.assistant {
-    background: rgba(255, 255, 255, 0.05);
-    color: rgba(255, 255, 255, 0.85);
-    margin-right: auto;
-    border-bottom-left-radius: 4px;
-}
-
-.notepad-ai-message .message-text p {
-    margin: 4px 0;
-}
-
-.notepad-ai-streaming {
-    opacity: 0.8;
-    animation: pulse 1.5s infinite;
-}
-
-@keyframes pulse {
-    0%, 100% { opacity: 0.8; }
-    50% { opacity: 0.5; }
-}
-
-.notepad-ai-input-area {
-    padding: 12px 16px;
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
-    flex-shrink: 0;
-}
-
-.notepad-ai-input-wrapper {
-    display: flex;
-    gap: 8px;
-    align-items: flex-end;
-}
-
-.notepad-ai-input {
-    flex: 1;
-    padding: 8px 12px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 8px;
-    background: rgba(255, 255, 255, 0.05);
-    color: rgba(255, 255, 255, 0.85);
-    font-size: 13px;
-    font-family: inherit;
-    resize: none;
-    outline: none;
-    min-height: 36px;
-    max-height: 120px;
-    box-sizing: border-box;
-}
-
-.notepad-ai-input:focus {
-    border-color: rgba(59, 130, 246, 0.4);
-}
-
-.notepad-ai-send-btn {
-    width: 36px;
-    height: 36px;
-    border: none;
-    border-radius: 8px;
-    background: #3b82f6;
-    color: white;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.2s ease;
-    flex-shrink: 0;
-}
-
-.notepad-ai-send-btn:hover {
-    background: #2563eb;
-    transform: translateY(-1px);
-}
-
-.notepad-ai-send-btn:disabled {
-    background: rgba(59, 130, 246, 0.3);
-    cursor: not-allowed;
-    transform: none;
-}
-
-.notepad-ai-typing {
-    display: flex;
-    gap: 4px;
-    padding: 8px 0;
-    align-items: center;
-}
-
-.notepad-ai-typing span {
-    width: 6px;
-    height: 6px;
-    background: rgba(255, 255, 255, 0.4);
-    border-radius: 50%;
-    animation: bounce 1.4s infinite ease-in-out both;
-}
-
-.notepad-ai-typing span:nth-child(1) { animation-delay: -0.32s; }
-.notepad-ai-typing span:nth-child(2) { animation-delay: -0.16s; }
-.notepad-ai-typing span:nth-child(3) { animation-delay: 0s; }
-
-@keyframes bounce {
-    0%, 80%, 100% { transform: scale(0); }
-    40% { transform: scale(1); }
 }
 
 /* ===== 右下角 AI 按钮 ===== */
@@ -775,9 +394,9 @@
     right: 20px;
     width: 44px;
     height: 44px;
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(0, 0, 0, 0.1);
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.9);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
     color: white;
@@ -786,7 +405,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
     transition: all 0.2s ease;
     z-index: 20;
     overflow: hidden;
@@ -803,24 +422,22 @@
     pointer-events: none;
 }
 
-.notepad-ai-fab:hover img {
-    transform: rotate(-15deg) scale(1.15);
-}
+.notepad-ai-fab:hover img { transform: rotate(-15deg) scale(1.15); }
 
 .notepad-ai-fab:hover {
     transform: scale(1.1);
-    background: rgba(255, 255, 255, 0.2);
-    border-color: rgba(255, 255, 255, 0.35);
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+    background: rgba(255, 255, 255, 1);
+    border-color: rgba(0, 0, 0, 0.2);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
 }
 
 .notepad-ai-fab.active {
-    background: rgba(244, 63, 94, 0.15);
-    border-color: rgba(244, 63, 94, 0.4);
-    box-shadow: 0 4px 16px rgba(244, 63, 94, 0.2);
+    background: rgba(244, 63, 94, 0.1);
+    border-color: rgba(244, 63, 94, 0.3);
+    box-shadow: 0 4px 16px rgba(244, 63, 94, 0.15);
 }
 
-/* ===== Markdown 语法参考面板 ===== */
+/* ===== Markdown 语法参考按钮 ===== */
 .notepad-mdref-btn {
     display: flex;
     align-items: center;
@@ -835,32 +452,38 @@
     transition: all 0.2s ease;
     font-family: inherit;
     white-space: nowrap;
-    background: rgba(251, 191, 36, 0.1);
-    color: #fbbf24;
+    background: rgba(251, 191, 36, 0.08);
+    color: #d97706;
 }
 .notepad-mdref-btn:hover {
-    background: rgba(251, 191, 36, 0.2);
+    background: rgba(251, 191, 36, 0.15);
     border-color: rgba(251, 191, 36, 0.6);
     transform: translateY(-1px);
 }
 .notepad-mdref-btn.active {
-    background: rgba(251, 191, 36, 0.2);
-    border-color: #fbbf24;
+    background: rgba(251, 191, 36, 0.15);
+    border-color: #f59e0b;
 }
 
+/* ===== Markdown 语法参考面板 ===== */
 .notepad-mdref-panel {
     position: absolute;
     top: 0;
     right: 0;
     bottom: 0;
     width: 320px;
-    background: rgba(26, 28, 46, 0.98);
-    border-left: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.98);
+    border-left: 1px solid rgba(0, 0, 0, 0.08);
     display: flex;
     flex-direction: column;
-    animation: slideIn 0.25s ease;
+    animation: notepadSlideIn 0.25s ease;
     z-index: 10;
-    box-shadow: -4px 0 20px rgba(0, 0, 0, 0.3);
+    box-shadow: -4px 0 20px rgba(0, 0, 0, 0.08);
+}
+
+@keyframes notepadSlideIn {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
 }
 
 .notepad-mdref-header {
@@ -868,13 +491,13 @@
     align-items: center;
     justify-content: space-between;
     padding: 12px 16px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
     flex-shrink: 0;
 }
 .notepad-mdref-title {
     font-size: 13px;
     font-weight: 600;
-    color: rgba(255, 255, 255, 0.85);
+    color: #333333;
     display: flex;
     align-items: center;
     gap: 6px;
@@ -885,7 +508,7 @@
     border: none;
     border-radius: 4px;
     background: transparent;
-    color: rgba(255, 255, 255, 0.4);
+    color: #999999;
     font-size: 14px;
     cursor: pointer;
     display: flex;
@@ -894,7 +517,7 @@
     transition: all 0.15s ease;
 }
 .notepad-mdref-close:hover {
-    background: rgba(239, 68, 68, 0.2);
+    background: rgba(239, 68, 68, 0.1);
     color: #ef4444;
 }
 
@@ -903,25 +526,23 @@
     overflow-y: auto;
     padding: 12px 16px;
 }
-.notepad-mdref-body::-webkit-scrollbar {
-    width: 4px;
-}
+.notepad-mdref-body::-webkit-scrollbar { width: 4px; }
 .notepad-mdref-body::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(0, 0, 0, 0.12);
     border-radius: 2px;
 }
 
 .notepad-mdref-item {
     margin-bottom: 12px;
     padding: 10px 12px;
-    background: rgba(255, 255, 255, 0.03);
+    background: rgba(0, 0, 0, 0.02);
     border-radius: 6px;
     border-left: 3px solid rgba(251, 191, 36, 0.5);
 }
 .notepad-mdref-item-title {
     font-size: 11px;
     font-weight: 600;
-    color: #fbbf24;
+    color: #d97706;
     margin-bottom: 4px;
     text-transform: uppercase;
     letter-spacing: 0.3px;
@@ -929,135 +550,52 @@
 .notepad-mdref-item-demo {
     font-size: 12px;
     line-height: 1.6;
-    color: rgba(255, 255, 255, 0.8);
+    color: #444444;
 }
 .notepad-mdref-item-demo code {
     font-size: 11px;
-    background: rgba(255, 255, 255, 0.08);
+    background: rgba(0, 0, 0, 0.04);
     border-radius: 3px;
     padding: 1px 5px;
-    color: #a5b4fc;
+    color: #2563eb;
     font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
 }
 .notepad-mdref-item-demo .mdref-result {
     display: block;
     margin-top: 4px;
     padding: 4px 8px;
-    background: rgba(0, 0, 0, 0.2);
+    background: rgba(0, 0, 0, 0.02);
     border-radius: 4px;
     font-size: 11px;
-    color: rgba(255, 255, 255, 0.6);
+    color: #888888;
     font-style: italic;
 }
 .notepad-mdref-item-demo .mdref-result::before {
     content: "→ ";
-    color: #fbbf24;
+    color: #d97706;
 }
 
-/* ===== 编辑模式图片预览 ===== */
-.notepad-editor-edit-wrap {
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-}
-
-.notepad-editor-edit-wrap .notepad-editor-textarea {
-    flex-shrink: 0;
-    min-height: 150px;
-}
-
-.notepad-editor-images {
-    flex: 1;
-    overflow-y: auto;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    padding: 8px 16px 16px;
-    align-content: flex-start;
-    background: #1e2034;
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.notepad-editor-images::-webkit-scrollbar {
-    width: 4px;
-}
-.notepad-editor-images::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 2px;
-}
-
-.notepad-editor-image-item {
+/* ===== 文档属性栏 ===== */
+.notepad-doc-props {
     display: flex;
     align-items: center;
-    justify-content: center;
-    max-width: 280px;
-    min-width: 100px;
-    flex: 1 1 auto;
-    border-radius: 8px;
-    overflow: hidden;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    background: rgba(0, 0, 0, 0.2);
-    padding: 4px;
-    box-sizing: border-box;
+    gap: 12px;
+    padding: 6px 16px;
+    background: #fafbfc;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+    flex-shrink: 0;
+    font-size: 11px;
+    color: #999999;
+}
+.notepad-doc-props span { display: flex; align-items: center; gap: 4px; }
+.notepad-doc-props .doc-prop-sep {
+    width: 1px;
+    height: 10px;
+    background: rgba(0, 0, 0, 0.08);
 }
 
-.notepad-editor-image-item img {
-    display: block;
-    max-width: 100%;
-    max-height: 200px;
-    object-fit: contain;
-    border-radius: 4px;
-}
-
-/* ===== 分屏模式 ===== */
-.notepad-editor-split {
-    display: flex;
-    flex-direction: row;
-    height: 100%;
-    overflow: hidden;
-}
-
-.notepad-editor-split-edit {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    border-right: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.notepad-editor-split-edit .notepad-editor-textarea {
-    flex: 1;
-    min-height: 100px;
-}
-
-.notepad-editor-split-preview {
-    flex: 1;
-    overflow-y: auto;
-    padding: 16px 20px;
-    background: #1e2034;
-    box-sizing: border-box;
-}
-
-.notepad-editor-split-preview::-webkit-scrollbar {
-    width: 4px;
-    height: 4px;
-}
-.notepad-editor-split-preview::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 2px;
-}
-.notepad-editor-split-preview::-webkit-scrollbar-corner {
-    background: transparent;
-}
-
-.notepad-split-btn {
-    background: #8b5cf6;
-    box-shadow: 0 1px 4px rgba(139, 92, 246, 0.3);
-}
-.notepad-split-btn:hover {
-    background: #7c3aed;
-}
+/* ===== 编辑器区域 - 右侧面板边距 ===== */
+.notepad-editor-area.with-mdref-panel { margin-right: 320px; }
 
 /* ===== 保存按钮状态 ===== */
 .notepad-save-btn:disabled {
@@ -1068,21 +606,11 @@
 .notepad-save-btn.saved {
     background: #059669;
     border-color: #34d399;
-    box-shadow: 0 0 12px rgba(52, 211, 153, 0.5);
+    box-shadow: 0 0 12px rgba(52, 211, 153, 0.4);
 }
-.notepad-save-btn.saved:hover {
-    background: #10b981;
-}
+.notepad-save-btn.saved:hover { background: #10b981; }
 
-/* ===== 编辑器区域 - 右侧面板边距 ===== */
-.notepad-editor-area.with-mdref-panel {
-    margin-right: 320px;
-}
-
-.notepad-editor-area.with-ai-panel.with-mdref-panel {
-    margin-right: 720px;
-}
-
+/* ===== 添加菜单 ===== */
 .notepad-add-menu-overlay {
     position: fixed;
     top: 0;
@@ -1094,12 +622,12 @@
 
 .notepad-add-menu {
     position: fixed;
-    background: rgba(35, 37, 60, 0.98);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.98);
+    border: 1px solid rgba(0, 0, 0, 0.1);
     border-radius: 8px;
     padding: 4px;
     z-index: 1001;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
     min-width: 140px;
 }
 
@@ -1111,7 +639,7 @@
     border: none;
     border-radius: 6px;
     background: transparent;
-    color: rgba(255, 255, 255, 0.8);
+    color: #444444;
     font-size: 12px;
     cursor: pointer;
     width: 100%;
@@ -1120,6 +648,6 @@
 }
 
 .notepad-add-menu-item:hover {
-    background: rgba(255, 255, 255, 0.08);
-    color: rgba(255, 255, 255, 0.95);
+    background: rgba(0, 0, 0, 0.04);
+    color: #222222;
 }
