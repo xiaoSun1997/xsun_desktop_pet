@@ -85,8 +85,50 @@ export default function TipTapEditor({
 
     // ---- 表格工具栏状态 ----
     const [tableToolbarPos, setTableToolbarPos] = useState<{ x: number; y: number } | null>(null);
+    const [cellToolbarPos, setCellToolbarPos] = useState<{ x: number; y: number } | null>(null);
     const [showTableColorPicker, setShowTableColorPicker] = useState(false);
     const wrapperRef = useRef<HTMLDivElement>(null);
+    const rowResizeRef = useRef<{ row: HTMLTableRowElement; startY: number; startHeight: number; cells: HTMLElement[] } | null>(null);
+
+    // ===== 行高拖拽处理 =====
+    const handleRowResizeMouseDown = useCallback((e: MouseEvent, cell: HTMLElement) => {
+        const row = cell.closest('tr') as HTMLTableRowElement;
+        if (!row) return;
+        const cells = Array.from(row.querySelectorAll('td, th')) as HTMLElement[];
+        rowResizeRef.current = {
+            row,
+            startY: e.clientY,
+            startHeight: cells[0]?.offsetHeight || row.offsetHeight,
+            cells,
+        };
+        e.preventDefault();
+        e.stopPropagation();
+    }, []);
+
+    useEffect(() => {
+        const onMouseMove = (e: MouseEvent) => {
+            const state = rowResizeRef.current;
+            if (!state) return;
+            const delta = e.clientY - state.startY;
+            const newHeight = Math.max(24, state.startHeight + delta);
+            state.cells.forEach(cell => {
+                cell.style.height = `${newHeight}px`;
+            });
+        };
+        const onMouseUp = () => {
+            if (rowResizeRef.current) {
+                // 拖拽结束，保存行高到编辑器（通过设置 cell 属性）
+                rowResizeRef.current = null;
+            }
+            rowResizeRef.current = null;
+        };
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+        return () => {
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+        };
+    }, []);
 
     const editor = useEditor({
         extensions: [
@@ -124,6 +166,7 @@ export default function TipTapEditor({
                 updateTableToolbarPos();
             } else {
                 setTableToolbarPos(null);
+                setCellToolbarPos(null);
                 setShowTableColorPicker(false);
             }
         },
@@ -148,15 +191,52 @@ export default function TipTapEditor({
                 break;
             }
         }
-        if (tablePos < 0) { setTableToolbarPos(null); return; }
+        if (tablePos < 0) { setTableToolbarPos(null); setCellToolbarPos(null); return; }
 
-        const coords = editor.view.coordsAtPos(tablePos);
+        const tableCoords = editor.view.coordsAtPos(tablePos);
         const wrapperRect = wrapperRef.current.getBoundingClientRect();
+        // 全表工具栏（表格上方）
         setTableToolbarPos({
-            x: coords.left - wrapperRect.left,
-            y: coords.top - wrapperRect.top - 42,
+            x: tableCoords.left - wrapperRect.left,
+            y: tableCoords.top - wrapperRect.top - 42,
+        });
+
+        // 单元格行操作工具栏（选中单元格底部）
+        const cellCoords = editor.view.coordsAtPos(from);
+        setCellToolbarPos({
+            x: cellCoords.left - wrapperRect.left,
+            y: cellCoords.bottom - wrapperRect.top + 4,
         });
     }, [editor]);
+
+    // ===== 注入行高拖拽手柄到表格单元格 =====
+    useEffect(() => {
+        if (!editor) return;
+        const wrapper = wrapperRef.current;
+        if (!wrapper) return;
+
+        const injectHandles = () => {
+            const cells = wrapper.querySelectorAll('.tiptap-editor-content td, .tiptap-editor-content th');
+            cells.forEach(cell => {
+                if (!cell.querySelector('.row-resize-handle')) {
+                    const handle = document.createElement('div');
+                    handle.className = 'row-resize-handle';
+                    handle.addEventListener('mousedown', (e) => {
+                        handleRowResizeMouseDown(e as unknown as MouseEvent, cell as HTMLElement);
+                    });
+                    cell.appendChild(handle);
+                }
+            });
+        };
+
+        // 初始注入
+        injectHandles();
+        // 监听DOM变化（表格编辑可能新增/删除行）
+        const observer = new MutationObserver(() => injectHandles());
+        observer.observe(wrapper, { childList: true, subtree: true });
+
+        return () => observer.disconnect();
+    }, [editor, handleRowResizeMouseDown]);
 
     // 监窗口滚动/大小变化时更新位置
     useEffect(() => {
@@ -378,6 +458,28 @@ export default function TipTapEditor({
                     </div>
                     <span className="table-toolbar-sep" />
                     <button onClick={() => execCmd("deleteTable")} className="table-action-delete">🗑 删表</button>
+                </div>
+            )}
+
+            {/* 单元格行操作工具栏（选中单元格时出现在单元格下方） */}
+            {cellToolbarPos && tableToolbarPos && (
+                <div
+                    className="table-toolbar table-row-toolbar"
+                    style={{
+                        left: cellToolbarPos.x,
+                        top: cellToolbarPos.y,
+                        background: 'rgba(255,255,255,0.95)',
+                        boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
+                        border: '1px solid rgba(59,130,246,0.2)',
+                        borderRadius: 6,
+                        padding: '2px 4px',
+                        gap: 1,
+                    }}
+                    onMouseDown={(e) => e.preventDefault()}
+                >
+                    <button onClick={() => execCmd("addRowBefore")} title="上方插入行">⬆ +</button>
+                    <button onClick={() => execCmd("addRowAfter")} title="下方插入行">⬇ +</button>
+                    <button onClick={() => execCmd("deleteRow")} className="table-action-delete" title="删除当前行">✕ 行</button>
                 </div>
             )}
 

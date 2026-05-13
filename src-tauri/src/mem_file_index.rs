@@ -20,6 +20,7 @@ pub struct MemFileIndex {
     entries: RwLock<Vec<FileEntry>>,
     access_scores: RwLock<HashMap<String, (i64, i64)>>, // path -> (access_count, last_access_at)
     is_ready: AtomicBool,
+    is_building: AtomicBool,
 }
 
 impl MemFileIndex {
@@ -28,11 +29,22 @@ impl MemFileIndex {
             entries: RwLock::new(Vec::new()),
             access_scores: RwLock::new(HashMap::new()),
             is_ready: AtomicBool::new(false),
+            is_building: AtomicBool::new(false),
         }
     }
 
     pub fn is_ready(&self) -> bool {
         self.is_ready.load(Ordering::Acquire)
+    }
+
+    /// 尝试获取构建锁，返回 true 表示成功获取并开始构建
+    pub fn try_start_build(&self) -> bool {
+        self.is_building.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire).is_ok()
+    }
+
+    /// 释放构建锁
+    pub fn finish_build(&self) {
+        self.is_building.store(false, Ordering::Release);
     }
 
     /// 从 SQLite 批量加载所有文件条目和访问记录到内存

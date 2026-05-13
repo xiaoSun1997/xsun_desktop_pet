@@ -318,6 +318,11 @@ export default function FileSearchComponent() {
               ({indexProgress.current} / {indexProgress.total})
             </span>
           )}
+          {indexProgress.total === 0 && indexProgress.current > 0 && (
+            <span className="index-progress-text">
+              (已索引 {indexProgress.current} 个文件)
+            </span>
+          )}
         </div>
       )}
       {useIndex && !isIndexing && (

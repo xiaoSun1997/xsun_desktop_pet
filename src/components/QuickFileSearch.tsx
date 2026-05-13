@@ -112,6 +112,7 @@ export default function QuickFileSearch() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const resultsRef = useRef<FileResult[]>([]);
   const hasAutoBuiltRef = useRef(false);
+  const indexGuardRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Auto focus on mount & check index status
   useEffect(() => {
@@ -124,9 +125,20 @@ export default function QuickFileSearch() {
       } else if (!hasAutoBuiltRef.current) {
         hasAutoBuiltRef.current = true;
         setIsIndexing(true);
+        // 启动索引，并设置120秒超时保护
         invoke("build_file_index").catch(() => setIsIndexing(false));
+        indexGuardRef.current = setTimeout(() => {
+          if (isIndexing) {
+            console.warn('[QuickSearch] 索引超时保护触发，隐藏进度条');
+            setIsIndexing(false);
+          }
+        }, 120000);
       }
     }).catch(() => {});
+
+    return () => {
+      if (indexGuardRef.current) clearTimeout(indexGuardRef.current);
+    };
   }, []);
 
   // Listen for file search results & index events
@@ -293,6 +305,7 @@ export default function QuickFileSearch() {
             <span>
               {indexProgress.message || "正在建立索引..."}
               {indexProgress.total > 0 && ` (${indexProgress.current} / ${indexProgress.total})`}
+              {indexProgress.total === 0 && indexProgress.current > 0 && ` (已索引 ${indexProgress.current} 个)`}
             </span>
           </div>
         )}

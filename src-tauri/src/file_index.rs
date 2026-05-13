@@ -232,6 +232,8 @@ impl FileIndex {
     }
 
     /// 构建文件索引（后台线程调用）
+    /// progress_callback: (indexed_count, total_estimate_or_0, message)
+    /// total_estimate 传 0 表示不显示总数（避免预扫全盘带来的双倍耗时）
     pub fn build_index(
         &self,
         progress_callback: impl Fn(u32, u32, String) + Send + 'static,
@@ -255,36 +257,6 @@ impl FileIndex {
             .as_secs() as i64;
 
         let mut batch: Vec<(String, String, u64, bool)> = Vec::with_capacity(5000);
-        let mut searched_roots = std::collections::HashSet::new();
-
-        // 先统计总数用于进度（快速预扫）
-        let mut total_estimate = 0u32;
-        for root in &roots {
-            let root_str = root.to_string_lossy().to_string();
-            if !searched_roots.insert(root_str) || !root.exists() {
-                continue;
-            }
-            let walker = WalkDir::new(root)
-                .follow_links(false)
-                .max_depth(20)
-                .into_iter()
-                .filter_entry(|e| {
-                    if e.file_type().is_dir() {
-                        !should_skip_dir_name(&e.file_name().to_string_lossy())
-                    } else {
-                        true
-                    }
-                });
-            for entry in walker {
-                if let Ok(entry) = entry {
-                    if entry.file_type().is_file() || entry.file_type().is_dir() {
-                        total_estimate += 1;
-                    }
-                }
-            }
-        }
-
-        // 实际遍历并批量插入
         let mut searched_roots = std::collections::HashSet::new();
         let mut processed = 0u32;
 
@@ -328,7 +300,8 @@ impl FileIndex {
                             total_files += batch_size;
                             batch.clear();
 
-                            progress_callback(processed, total_estimate.max(1), "正在索引...".into());
+                            // total=0 表示不确定进度，前端显示已索引数量即可
+                            progress_callback(processed, 0, format!("已索引 {} 个文件...", total_files).into());
                         }
                     }
                     Err(e) => {
@@ -347,7 +320,7 @@ impl FileIndex {
             total_files += batch_size;
         }
 
-        progress_callback(processed, processed, "索引完成".into());
+        progress_callback(processed, 0, format!("索引完成，共 {} 个文件", total_files).into());
 
         Ok(total_files)
     }

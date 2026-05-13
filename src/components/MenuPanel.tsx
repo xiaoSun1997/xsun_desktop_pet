@@ -113,7 +113,14 @@ export default function MenuPanel() {
                 await existing.setFocus();
                 return;
             } catch (e) {
-                console.warn(`已有${label}窗口，但 show/setFocus 失败，尝试重新创建：`, e);
+                console.warn(`已有${label}窗口，但 show/setFocus 失败，尝试关闭并重建：`, e);
+                // 关闭僵尸窗口，等待释放后再创建新的
+                try {
+                    await existing.close();
+                } catch (closeErr) {
+                    console.warn(`关闭僵尸${label}窗口失败:`, closeErr);
+                }
+                await new Promise(r => setTimeout(r, 300));
             }
         }
 
