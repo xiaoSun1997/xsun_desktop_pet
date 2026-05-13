@@ -386,7 +386,6 @@ onUnmounted(() => {
         }"
         @click="handleBubbleClick(bubble)"
       >
-        <img src="/pet/bubble/bubble.png" class="bubble-bg" />
         <span class="bubble-text">{{ bubble.label }}</span>
       </div>
     </div>
@@ -451,13 +450,6 @@ onUnmounted(() => {
 .bubble:nth-child(4) { animation-delay: 240ms; }
 .bubble:nth-child(5) { animation-delay: 320ms; }
 
-.bubble-bg {
-  width: 100%;
-  height: auto;
-  object-fit: contain;
-  transition: transform 0.2s ease;
-}
-
 .bubble-text {
   position: absolute;
   font-family: "Comic Sans MS", "幼圆", cursive;
@@ -477,7 +469,6 @@ onUnmounted(() => {
   to { opacity: 1; transform: scale(1); }
 }
 
-.bubble:hover .bubble-bg { transform: scale(1.1); }
 .bubble:hover .bubble-text { transform: scale(1.05); }
 
 .pet-image.sleeping {

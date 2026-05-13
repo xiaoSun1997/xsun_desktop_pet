@@ -116,8 +116,6 @@ const onKeyEscape = (e: KeyboardEvent) => {
 };
 
 const onCmReady = ({ view }: { view: EditorView }) => { cmView = view; };
-const onLeftCmReady = ({ view }: { view: EditorView }) => { leftCmView = view; };
-const onRightCmReady = ({ view }: { view: EditorView }) => { rightCmView = view; };
 
 const onTextChange = (val: string) => {
   text.value = val;
@@ -345,7 +343,7 @@ const handleCopyRight = () => { invoke("copy_to_clipboard", { content: rightText
               class="json-codemirror"
               placeholder="粘贴左侧 JSON..."
               :autofocus="false"
-              @ready="onLeftCmReady"
+              @ready="onCmReady"
               @update:model-value="(val: string) => { leftText = val; diffResult = null; diffSummary = ''; }"
             />
           </div>
@@ -364,7 +362,7 @@ const handleCopyRight = () => { invoke("copy_to_clipboard", { content: rightText
               class="json-codemirror"
               placeholder="粘贴右侧 JSON..."
               :autofocus="false"
-              @ready="onRightCmReady"
+              @ready="onCmReady"
               @update:model-value="(val: string) => { rightText = val; diffResult = null; diffSummary = ''; }"
             />
           </div>

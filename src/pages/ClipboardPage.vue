@@ -17,7 +17,6 @@ const isLoadingMore = ref(false);
 const expandedItems = ref<Set<number>>(new Set());
 const currentPage = ref(1);
 const hasMore = ref(true);
-const enlargeImage = ref<string | null>(null);
 const confirmDelete = ref<number | null>(null);
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
 
