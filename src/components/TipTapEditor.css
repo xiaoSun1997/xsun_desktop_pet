@@ -266,6 +266,30 @@
 .tiptap-editor-content td { background: #ffffff; }
 .tiptap-editor-content .selectedCell { background: rgba(59, 130, 246, 0.08); }
 
+/* ===== 行高拖拽手柄（位于每个单元格底部） ===== */
+.tiptap-editor-content td .row-resize-handle,
+.tiptap-editor-content th .row-resize-handle {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -3px;
+    height: 6px;
+    cursor: row-resize;
+    z-index: 6;
+    transition: background 0.15s ease;
+    border-radius: 1px;
+}
+.tiptap-editor-content td:hover .row-resize-handle,
+.tiptap-editor-content th:hover .row-resize-handle {
+    background: rgba(239, 68, 68, 0.12);
+}
+.tiptap-editor-content td .row-resize-handle.is-active,
+.tiptap-editor-content th .row-resize-handle.is-active {
+    background: #ef4444;
+    height: 4px;
+    bottom: -2px;
+}
+
 /* 列宽拖拽手柄 */
 .tiptap-editor-content .column-resize-handle {
     position: absolute;
@@ -306,6 +330,17 @@
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
     z-index: 100;
     user-select: none;
+}
+
+/* 单元格行操作工具栏 */
+.table-row-toolbar {
+    animation: rowToolbarIn 0.15s ease;
+    z-index: 99;
+}
+
+@keyframes rowToolbarIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
 .table-toolbar button {

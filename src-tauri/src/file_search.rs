@@ -383,6 +383,12 @@ pub fn build_file_index(
 ) -> Result<(), String> {
     let fi = file_index.inner().clone();
     let mi = mem_index.inner().clone();
+
+    // 防止并发构建
+    if !mi.try_start_build() {
+        return Ok(()); // 已有构建任务在进行中
+    }
+
     let app_clone = app.clone();
 
     // 先发送开始事件（不等待，避免阻塞 invoke 返回）
@@ -410,6 +416,7 @@ pub fn build_file_index(
                 if let Err(e) = mi.sync_from_sqlite(&fi) {
                     eprintln!("同步内存索引失败: {}", e);
                 }
+                mi.finish_build();
                 let _ = app_clone.emit("file-index://status", serde_json::json!({
                     "phase": "done",
                     "count": count,
@@ -418,6 +425,7 @@ pub fn build_file_index(
                 println!("文件索引构建完成，共 {} 个文件", count);
             }
             Ok(Err(e)) => {
+                mi.finish_build();
                 eprintln!("文件索引构建失败: {}", e);
                 let _ = app_clone.emit("file-index://status", serde_json::json!({
                     "phase": "error",
@@ -425,6 +433,7 @@ pub fn build_file_index(
                 }));
             }
             Err(panic_info) => {
+                mi.finish_build();
                 let msg = if let Some(s) = panic_info.downcast_ref::<&str>() {
                     s.to_string()
                 } else if let Some(s) = panic_info.downcast_ref::<String>() {
