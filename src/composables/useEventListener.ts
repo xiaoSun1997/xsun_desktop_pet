@@ -1,4 +1,4 @@
-import { onMounted, onUnmounted, type Ref } from "vue";
+import { onMounted, onUnmounted } from "vue";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 export function useTauriEvent<T = any>(

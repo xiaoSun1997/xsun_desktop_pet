@@ -33,8 +33,6 @@ const diffSummary = ref("");
 const isFullscreen = ref(false);
 
 let cmView: EditorView | null = null;
-let leftCmView: EditorView | null = null;
-let rightCmView: EditorView | null = null;
 
 const setErrorLinesEffect = StateEffect.define<number[]>();
 const errorLineField = StateField.define({

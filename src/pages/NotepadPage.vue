@@ -162,11 +162,6 @@ const handleToggleFullscreen = async () => {
   isFullscreen.value = !fs;
 };
 
-const handleNewFolder = async (parentId: string) => {
-  const name = prompt("请输入文件夹名称:");
-  if (name && name.trim()) await handleCreateItem(name.trim(), parentId, true);
-};
-
 const handleNewFile = async (parentId: string) => {
   const name = prompt("请输入文件名称 (例如: 笔记.md):");
   if (name && name.trim()) await handleCreateItem(name.trim(), parentId, false);

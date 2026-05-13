@@ -138,7 +138,6 @@ const handleSendMessage = async () => {
   const userMsg: Message = { role: 'user', content: inputValue.value.trim(), timestamp: Date.now() };
   const assistantMsg: Message = { role: 'assistant', content: '', timestamp: Date.now(), isStreaming: true };
   messages.value = [...messages.value, userMsg, assistantMsg];
-  const userInput = inputValue.value.trim();
   inputValue.value = "";
   isLoading.value = true;
   streamingContent = "";

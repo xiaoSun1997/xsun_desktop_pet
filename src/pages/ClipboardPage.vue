@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, onMounted, onUnmounted } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
@@ -19,10 +19,11 @@ const currentPage = ref(1);
 const hasMore = ref(true);
 const enlargeImage = ref<string | null>(null);
 const confirmDelete = ref<number | null>(null);
+let refreshTimer: ReturnType<typeof setInterval> | null = null;
 
 onMounted(() => {
   loadClipboardHistory(1);
-  const interval = setInterval(async () => {
+  refreshTimer = setInterval(async () => {
     try {
       const history = await invoke<ClipboardItem[]>("get_clipboard_history");
       if (history.length === 0) return;
@@ -36,6 +37,13 @@ onMounted(() => {
       hasMore.value = history.length >= 10;
     } catch (error) { console.error("Auto refresh clipboard failed:", error); }
   }, 2000);
+});
+
+onUnmounted(() => {
+  if (refreshTimer !== null) {
+    clearInterval(refreshTimer);
+    refreshTimer = null;
+  }
 });
 
 const loadClipboardHistory = async (page: number = 1) => {

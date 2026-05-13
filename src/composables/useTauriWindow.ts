@@ -8,25 +8,6 @@ interface WindowConfig {
 }
 
 const openingLocks = new Map<string, boolean>();
-const guardTimeouts = new Map<string, number>();
-
-function clearGuard(label: string) {
-  const existing = guardTimeouts.get(label);
-  if (existing) {
-    clearTimeout(existing);
-    guardTimeouts.delete(label);
-  }
-}
-
-function setGuard(label: string, timeoutMs: number, resetFn: () => void) {
-  const guardTimeout = window.setTimeout(() => {
-    console.warn(`[useTauriWindow] Guard timeout for ${label}, force reset`);
-    resetFn();
-    guardTimeouts.delete(label);
-  }, timeoutMs);
-  guardTimeouts.set(label, guardTimeout);
-  return guardTimeout;
-}
 
 export function useTauriWindow() {
   async function createOrShowWindow(label: string, config: WindowConfig): Promise<any | null> {

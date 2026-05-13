@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, onMounted, onUnmounted } from "vue";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -12,6 +12,7 @@ interface SelectionPayload {
 
 const payload = ref<SelectionPayload | null>(null);
 const menuRef = ref<HTMLDivElement | null>(null);
+let unlistenSelection: (() => void) | null = null;
 
 onMounted(async () => {
   try {
@@ -20,7 +21,7 @@ onMounted(async () => {
     console.warn("Set background color failed:", e);
   }
 
-  const unlisten = await listen<SelectionPayload>("selection://show", (event) => {
+  unlistenSelection = await listen<SelectionPayload>("selection://show", (event) => {
     payload.value = event.payload;
   });
 
@@ -41,6 +42,13 @@ onMounted(async () => {
     };
     document.addEventListener("mousedown", handleClickOutside);
   }, 100);
+});
+
+onUnmounted(() => {
+  if (unlistenSelection) {
+    unlistenSelection();
+    unlistenSelection = null;
+  }
 });
 
 const closeMenu = async () => {
