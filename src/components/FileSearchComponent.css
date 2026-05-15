@@ -7,7 +7,7 @@
   font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
   user-select: none;
   overflow: hidden;
-  border-radius: 10px;
+  border-radius: 14px;
 }
 
 /* 索引状态栏 */
@@ -299,7 +299,7 @@
   padding: 8px 20px;
   background: rgba(22, 24, 38, 0.95);
   border-top: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 0 0 10px 10px;
+  border-radius: 0 0 14px 14px;
   font-size: 11px;
 }
 

@@ -29,6 +29,7 @@ interface Shape {
     visible: boolean;
     subPoints: SubPoint[];
     expansionPoints: ExpansionPoint[];
+    virtualExpansionDistance?: number; // 虚构外扩距离（cm），undefined表示未启用
 }
 
 let shapeIdCounter = 0;
@@ -74,6 +75,16 @@ function calcDistance(p1: SubPoint, p2: SubPoint): number {
     return Math.round(distM * 100) / 100;
 }
 
+/** 点到线段的投影（夹紧到线段范围内） */
+function clampToSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number): { x: number; y: number } {
+    const dx = bx - ax;
+    const dy = by - ay;
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq < 0.001) return { x: ax, y: ay };
+    const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq));
+    return { x: ax + t * dx, y: ay + t * dy };
+}
+
 export default function MapDrawingComponent() {
     const [shapes, setShapes] = useState<Shape[]>([]);
     const [showPasteInput, setShowPasteInput] = useState(false);
@@ -95,6 +106,13 @@ export default function MapDrawingComponent() {
     // 全屏 / 导出结果
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [exportResult, setExportResult] = useState<{ path: string; label: string } | null>(null);
+
+    // 虚构外扩点
+    const [showVirtualExpInput, setShowVirtualExpInput] = useState<string | null>(null);
+    const [virtualExpTemp, setVirtualExpTemp] = useState<number | null>(null);
+
+    // 外扩边高亮（用于点击选中 + 双击生成外扩点）
+    const [highlightedExpandedEdge, setHighlightedExpandedEdge] = useState<{ shapeId: string; edgeIndex: number } | null>(null);
 
     // 画布变换
     const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -205,6 +223,103 @@ export default function MapDrawingComponent() {
         if (selectedExpPointId === epId) setSelectedExpPointId(null);
     };
 
+    // ===== 虚构外扩点操作 =====
+    const handleToggleVirtualExpansion = (shapeId: string) => {
+        if (showVirtualExpInput === shapeId) {
+            setShowVirtualExpInput(null);
+            setVirtualExpTemp(null);
+        } else {
+            const shape = shapes.find(s => s.id === shapeId);
+            setVirtualExpTemp(shape?.virtualExpansionDistance ?? null);
+            setShowVirtualExpInput(shapeId);
+        }
+    };
+    const handleApplyVirtualExpansion = (shapeId: string) => {
+        if (virtualExpTemp === null || virtualExpTemp === undefined || virtualExpTemp <= 0) return;
+        setShapes(prev => prev.map(s =>
+            s.id === shapeId ? { ...s, virtualExpansionDistance: virtualExpTemp } : s
+        ));
+        setShowVirtualExpInput(null);
+        setVirtualExpTemp(null);
+    };
+    const handleClearVirtualExpansion = (shapeId: string) => {
+        setShapes(prev => prev.map(s =>
+            s.id === shapeId ? { ...s, virtualExpansionDistance: undefined } : s
+        ));
+        setShowVirtualExpInput(null);
+        setVirtualExpTemp(null);
+        // 同时清除该货架的外扩边高亮
+        if (highlightedExpandedEdge?.shapeId === shapeId) setHighlightedExpandedEdge(null);
+    };
+
+    // ===== 外扩边点击/双击 → 高亮 + 生成外扩点 =====
+    const handleExpEdgeClick = (shapeId: string, edgeIndex: number) => {
+        setHighlightedExpandedEdge({ shapeId, edgeIndex });
+    };
+
+    const handleExpEdgeDblClick = (
+        e: React.MouseEvent,
+        shapeId: string,
+        edgeIndex: number,
+        expandedVerts: { x: number; y: number }[],
+        origSps: SubPoint[]
+    ) => {
+        e.stopPropagation();
+        const svgEl = svgRef.current;
+        if (!svgEl) return;
+
+        // 屏幕坐标 → SVG viewport 坐标
+        const pt = svgEl.createSVGPoint();
+        pt.x = e.clientX;
+        pt.y = e.clientY;
+        const ctm = svgEl.getScreenCTM();
+        if (!ctm) return;
+        const svgPt = pt.matrixTransform(ctm.inverse());
+
+        // 逆变换 → 世界坐标
+        const worldX = (svgPt.x - pan.x) / scale;
+        const worldY = (svgPt.y - pan.y) / scale;
+
+        // 投影到外扩边线段上
+        const nExp = expandedVerts.length;
+        const v0 = expandedVerts[edgeIndex];
+        const v1 = expandedVerts[(edgeIndex + 1) % nExp];
+        const clamped = clampToSegment(worldX, worldY, v0.x, v0.y, v1.x, v1.y);
+
+        // 计算原始边的内向法向量（指向多边形内部，即从外扩边指向原始边）
+        const nOrig = origSps.length;
+        const o0 = origSps[edgeIndex];
+        const o1 = origSps[(edgeIndex + 1) % nOrig];
+        const edx = o1.x - o0.x;
+        const edy = o1.y - o0.y;
+        const eLen = Math.sqrt(edx * edx + edy * edy);
+        let inwardNx = 0, inwardNy = -1;
+        if (eLen > 0.001) {
+            const ux = edx / eLen;
+            const uy = edy / eLen;
+            // 判断多边形方向
+            let signedArea = 0;
+            for (let i = 0; i < nOrig; i++) {
+                const j = (i + 1) % nOrig;
+                signedArea += origSps[i].x * origSps[j].y - origSps[j].x * origSps[i].y;
+            }
+            const isClockwise = signedArea < 0;
+            // 外向法向量：顺时针=(-uy,ux), 逆时针=(uy,-ux)
+            // 内向法向量取反：顺时针=(uy,-ux), 逆时针=(-uy,ux)
+            if (isClockwise) { inwardNx = uy; inwardNy = -ux; }
+            else            { inwardNx = -uy; inwardNy = ux; }
+        }
+
+        // Z 角度：内向法向量方向（上=0°, 顺时针增加）
+        const angleRad = Math.atan2(inwardNx, -inwardNy);
+        const zDeg = ((angleRad * 180 / Math.PI + 90) % 360 + 360) % 360;
+
+        const ep: ExpansionPoint = { id: genExpPointId(), x: clamped.x, y: clamped.y, z: zDeg };
+        setShapes(prev => prev.map(s =>
+            s.id === shapeId ? { ...s, expansionPoints: [...s.expansionPoints, ep] } : s
+        ));
+    };
+
     // ===== 清空 =====
     const handleClearAll = () => {
         if (shapes.length === 0) return;
@@ -214,6 +329,7 @@ export default function MapDrawingComponent() {
         setSelectedShapeId(null);
         setSelectedSubPointId(null);
         setSelectedExpPointId(null);
+        setHighlightedExpandedEdge(null);
     };
 
     // ===== 聚焦到画布某点 =====
@@ -268,6 +384,7 @@ export default function MapDrawingComponent() {
         setSelectedShapeId(null);
         setSelectedSubPointId(null);
         setSelectedExpPointId(null);
+        setHighlightedExpandedEdge(null);
     };
 
     // ===== 粘贴解析（支持单个数组 或 多个数组 [[...],[...]]） =====
@@ -751,6 +868,127 @@ export default function MapDrawingComponent() {
         );
     };
 
+    // ===== 渲染单个形状的虚构外扩多边形叠层（绘制在最上层，不被其他货架遮挡） =====
+    const renderVirtualExpansionForShape = (shape: Shape): React.ReactElement | null => {
+        if (shape.type !== "shelf" || !shape.virtualExpansionDistance || shape.subPoints.length < 3) return null;
+        if (!shape.visible) return null;
+        const sps = shape.subPoints;
+        const distCm = shape.virtualExpansionDistance;
+        const distPx = distCm / 5;
+        const n = sps.length;
+        const rectColor = "#f59e0b";
+
+        // 1. 判断多边形方向
+        let signedArea = 0;
+        for (let i = 0; i < n; i++) {
+            const j = (i + 1) % n;
+            signedArea += sps[i].x * sps[j].y - sps[j].x * sps[i].y;
+        }
+        const isClockwise = signedArea < 0;
+
+        // 2. 每条边沿外向法向量平移
+        type ShiftedLine = { px: number; py: number; dx: number; dy: number };
+        const shiftedLines: ShiftedLine[] = [];
+        for (let i = 0; i < n; i++) {
+            const j = (i + 1) % n;
+            const dx = sps[j].x - sps[i].x;
+            const dy = sps[j].y - sps[i].y;
+            const len = Math.sqrt(dx * dx + dy * dy);
+            if (len < 0.001) return null;
+            const ux = dx / len;
+            const uy = dy / len;
+            const nx = isClockwise ? -uy : uy;
+            const ny = isClockwise ? ux : -ux;
+            shiftedLines.push({ px: sps[i].x + distPx * nx, py: sps[i].y + distPx * ny, dx, dy });
+        }
+
+        // 3. 相邻平移边延长线求交
+        const newVertices: { x: number; y: number }[] = [];
+        for (let i = 0; i < n; i++) {
+            const j = (i + 1) % n;
+            const l1 = shiftedLines[i];
+            const l2 = shiftedLines[j];
+            const cross = l1.dx * l2.dy - l1.dy * l2.dx;
+            if (Math.abs(cross) < 0.0001) {
+                newVertices.push({ x: (l1.px + l1.dx + l2.px) / 2, y: (l1.py + l1.dy + l2.py) / 2 });
+            } else {
+                const t = ((l2.px - l1.px) * l2.dy - (l2.py - l1.py) * l2.dx) / cross;
+                newVertices.push({ x: l1.px + t * l1.dx, y: l1.py + t * l1.dy });
+            }
+        }
+
+        // 4. 渲染
+        const pointsStr = newVertices.map(v => `${v.x},${v.y}`).join(" ");
+        const cx = sps.reduce((s, p) => s + p.x, 0) / n;
+        const cy = sps.reduce((s, p) => s + p.y, 0) / n;
+
+        const elements: React.ReactElement[] = [];
+
+        elements.push(
+            <polygon key="vexp-fill" points={pointsStr}
+                fill={rectColor + "08"} stroke="none" fillOpacity={0.3} />
+        );
+
+        const nExp = newVertices.length;
+        for (let i = 0; i < nExp; i++) {
+            const v0 = newVertices[i];
+            const v1 = newVertices[(i + 1) % nExp];
+            const isHighlighted = highlightedExpandedEdge?.shapeId === shape.id && highlightedExpandedEdge?.edgeIndex === i;
+            const edgeColor = isHighlighted ? "#fbbf24" : rectColor;
+            const edgeWidth = isHighlighted ? 1.2 : 0.5;
+            elements.push(
+                <g key={`vexp-edge-${i}`}>
+                    <line x1={v0.x} y1={v0.y} x2={v1.x} y2={v1.y}
+                        stroke="transparent" strokeWidth={8}
+                        style={{ cursor: "pointer" }}
+                        onClick={(e) => { e.stopPropagation(); handleExpEdgeClick(shape.id, i); }}
+                        onDoubleClick={(e) => { e.stopPropagation(); handleExpEdgeDblClick(e, shape.id, i, newVertices, sps); }}
+                    />
+                    <line x1={v0.x} y1={v0.y} x2={v1.x} y2={v1.y}
+                        stroke={edgeColor} strokeWidth={edgeWidth}
+                        strokeDasharray="3 2" pointerEvents="none"
+                    />
+                    {isHighlighted && (
+                        <line x1={v0.x} y1={v0.y} x2={v1.x} y2={v1.y}
+                            stroke="#fbbf24" strokeWidth={3}
+                            opacity={0.25} strokeDasharray="3 2" pointerEvents="none"
+                        />
+                    )}
+                </g>
+            );
+        }
+
+        newVertices.forEach((v, idx) => {
+            const dirX = v.x - cx;
+            const dirY = v.y - cy;
+            const dLen = Math.sqrt(dirX * dirX + dirY * dirY) || 1;
+            elements.push(
+                <text key={`vexp-lbl-${idx}`} x={v.x + dirX / dLen * 5} y={v.y + dirY / dLen * 5}
+                    textAnchor="middle" dominantBaseline="middle"
+                    fill={rectColor} fontSize={4} fontWeight={600}
+                    style={{ paintOrder: "stroke", stroke: "#fff", strokeWidth: "0.8px" }}>
+                    ({v.x.toFixed(1)},{v.y.toFixed(1)})
+                </text>
+            );
+            elements.push(
+                <circle key={`vexp-dot-${idx}`} cx={v.x} cy={v.y} r={0.8}
+                    fill={rectColor} stroke="#fff" strokeWidth={0.3} />
+            );
+        });
+
+        const topY = Math.min(...newVertices.map(v => v.y));
+        const midX = newVertices.reduce((s, v) => s + v.x, 0) / newVertices.length;
+        elements.push(
+            <text key="vexp-dist" x={midX} y={topY - 6} textAnchor="middle"
+                fill={rectColor} fontSize={4} fontWeight={600}
+                style={{ paintOrder: "stroke", stroke: "#fff", strokeWidth: "1px" }}>
+                外扩{distCm}cm
+            </text>
+        );
+
+        return <g key={`vexp-${shape.id}`}>{elements}</g>;
+    };
+
     // ===== 渲染画布 =====
     const renderCanvas = () => {
         return (
@@ -773,6 +1011,8 @@ export default function MapDrawingComponent() {
                 <rect width="100%" height="100%" fill="url(#grid)" onClick={handleCanvasBgClick} />
                 <g transform={`translate(${pan.x}, ${pan.y}) scale(${scale})`}>
                     {shapes.map(renderShape)}
+                    {/* 所有货架的外扩多边形叠层（最上层，不被其他货架遮挡） */}
+                    {shapes.map(renderVirtualExpansionForShape)}
                 </g>
             </svg>
         );
@@ -1007,15 +1247,70 @@ export default function MapDrawingComponent() {
                                         <div className="expansion-area">
                                             <div className="subpoints-header">
                                                 <span className="subpoints-title">外扩点 ({shape.expansionPoints.length})</span>
-                                                <button className="map-btn map-btn-xs map-btn-primary"
-                                                    onClick={e => { e.stopPropagation(); handleAddExpPoint(shape.id); }}
-                                                    disabled={shape.subPoints.length === 0}
-                                                    title={shape.subPoints.length === 0 ? "请先添加坐标点" : "添加外扩点"}>
-                                                    + 外扩点
-                                                </button>
+                                                <div className="expansion-header-actions">
+                                                    <button className="map-btn map-btn-xs map-btn-primary"
+                                                        onClick={e => { e.stopPropagation(); handleAddExpPoint(shape.id); }}
+                                                        disabled={shape.subPoints.length === 0}
+                                                        title={shape.subPoints.length === 0 ? "请先添加坐标点" : "添加外扩点"}>
+                                                        + 外扩点
+                                                    </button>
+                                                    <button className="map-btn map-btn-xs map-btn-accent"
+                                                        onClick={e => { e.stopPropagation(); handleToggleVirtualExpansion(shape.id); }}
+                                                        disabled={shape.subPoints.length < 3}
+                                                        title={shape.subPoints.length < 3 ? "至少需要3个坐标点" : (shape.virtualExpansionDistance ? "修改虚构外扩距离" : "虚构外扩点")}>
+                                                        {shape.virtualExpansionDistance ? `虚构 ${shape.virtualExpansionDistance}cm` : "虚构外扩点"}
+                                                    </button>
+                                                </div>
                                             </div>
                                             {shape.subPoints.length === 0 && (
                                                 <div className="expansion-empty-hint">需先有坐标点才能添加外扩点</div>
+                                            )}
+                                            {shape.subPoints.length > 0 && shape.subPoints.length < 3 && shape.virtualExpansionDistance === undefined && (
+                                                <div className="expansion-empty-hint">至少需要3个坐标点才能使用虚构外扩</div>
+                                            )}
+                                            {/* 虚构外扩距离输入 */}
+                                            {showVirtualExpInput === shape.id && shape.subPoints.length >= 3 && (
+                                                <div className="virtual-exp-input-row">
+                                                    <label className="virtual-exp-label">外扩距离:</label>
+                                                    <input
+                                                        type="number"
+                                                        step="any"
+                                                        min="0"
+                                                        className="virtual-exp-input"
+                                                        placeholder="输入cm"
+                                                        value={virtualExpTemp !== null ? virtualExpTemp : (shape.virtualExpansionDistance ?? "")}
+                                                        onChange={e => setVirtualExpTemp(e.target.value === "" ? null : parseFloat(e.target.value))}
+                                                        onKeyDown={e => {
+                                                            if (e.key === "Enter") {
+                                                                e.stopPropagation();
+                                                                handleApplyVirtualExpansion(shape.id);
+                                                            }
+                                                            if (e.key === "Escape") {
+                                                                e.stopPropagation();
+                                                                setShowVirtualExpInput(null);
+                                                                setVirtualExpTemp(null);
+                                                            }
+                                                        }}
+                                                        autoFocus
+                                                    />
+                                                    <span className="virtual-exp-unit">cm</span>
+                                                    <span className="virtual-exp-hint">(1像素=5cm)</span>
+                                                    <button className="map-btn map-btn-xs map-btn-primary"
+                                                        onClick={e => { e.stopPropagation(); handleApplyVirtualExpansion(shape.id); }}
+                                                        disabled={virtualExpTemp === null || virtualExpTemp === undefined || virtualExpTemp <= 0}>
+                                                        确认
+                                                    </button>
+                                                    <button className="map-btn map-btn-xs map-btn-ghost"
+                                                        onClick={e => { e.stopPropagation(); setShowVirtualExpInput(null); setVirtualExpTemp(null); }}>
+                                                        取消
+                                                    </button>
+                                                    {shape.virtualExpansionDistance && (
+                                                        <button className="map-btn map-btn-xs map-btn-danger"
+                                                            onClick={e => { e.stopPropagation(); handleClearVirtualExpansion(shape.id); }}>
+                                                            清除
+                                                        </button>
+                                                    )}
+                                                </div>
                                             )}
                                             {shape.expansionPoints.length > 0 && (
                                                 <>

@@ -293,7 +293,7 @@ export default function QuickFileSearch() {
     inputRef.current?.focus();
   };
 
-  const visibleResults = results.slice(0, 15);
+  // 显示所有结果，由列表滚动承载
 
   return (
     <div className="quick-search-container">
@@ -348,7 +348,7 @@ export default function QuickFileSearch() {
             </div>
           )}
 
-          {visibleResults.map((file, index) => (
+          {results.map((file, index) => (
             <div
               key={`${file.path}-${index}`}
               className={`quick-result-item ${index === selectedIndex ? "selected" : ""}`}
@@ -375,9 +375,9 @@ export default function QuickFileSearch() {
             </div>
           ))}
 
-          {results.length > 15 && (
+          {results.length > 0 && !isSearching && (
             <div className="quick-more-hint">
-              还有 {results.length - 15} 个结果...
+              共 {results.length} 个结果，向下滚动查看更多
             </div>
           )}
         </div>

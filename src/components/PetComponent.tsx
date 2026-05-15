@@ -214,10 +214,10 @@ export default function PetComponent() {
                 const monitor = await currentMonitor();
                 if (monitor) {
                     const { width: screenWidth, height: screenHeight } = monitor.size;
-                    // 窗口尺寸 60x60，加 15px 边距
+                    // 窗口尺寸 60x60，距右下角各 40px
                     await appWindow.setPosition(new PhysicalPosition(
-                        Math.round(screenWidth - 75),
-                        Math.round(screenHeight - 80)
+                        Math.round(screenWidth - 100),
+                        Math.round(screenHeight - 100)
                     ));
                 }
             } catch (error) {

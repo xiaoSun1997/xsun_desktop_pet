@@ -1,8 +1,7 @@
 .map-drawing-container {
     width: 100vw;
     height: 100vh;
-    background: rgba(255, 255, 255, 0.85);
-    backdrop-filter: blur(20px);
+    background: #fff;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -71,7 +70,7 @@
     border-right: 1px solid rgba(0, 0, 0, 0.06);
     display: flex;
     flex-direction: column;
-    background: rgba(255, 255, 255, 0.5);
+    background: #fff;
 }
 
 /* ===== 地图选择器 ===== */
@@ -327,6 +326,81 @@
     padding: 6px 8px;
 }
 
+.expansion-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* ===== 虚构外扩点按钮 ===== */
+.map-btn-accent {
+    background: rgba(245, 158, 11, 0.12);
+    color: #d97706;
+    padding: 2px 8px;
+    font-size: 10px;
+    border: 1px solid rgba(245, 158, 11, 0.2);
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+.map-btn-accent:hover:not(:disabled) {
+    background: rgba(245, 158, 11, 0.2);
+    border-color: rgba(245, 158, 11, 0.35);
+}
+.map-btn-accent:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* ===== 虚构外扩距离输入行 ===== */
+.virtual-exp-input-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 0;
+    border-top: 1px dashed rgba(245, 158, 11, 0.15);
+    margin-top: 4px;
+    flex-wrap: wrap;
+}
+
+.virtual-exp-label {
+    font-size: 10px;
+    color: #888;
+    flex-shrink: 0;
+}
+
+.virtual-exp-input {
+    width: 60px;
+    height: 22px;
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    border-radius: 3px;
+    padding: 0 4px;
+    font-size: 10px;
+    color: #333;
+    background: rgba(255, 255, 255, 0.9);
+    outline: none;
+    font-family: inherit;
+    transition: border-color 0.2s;
+}
+.virtual-exp-input:focus {
+    border-color: #f59e0b;
+    background: #fff;
+}
+
+.virtual-exp-unit {
+    font-size: 10px;
+    color: #999;
+    flex-shrink: 0;
+}
+
+.virtual-exp-hint {
+    font-size: 9px;
+    color: #bbb;
+    flex-shrink: 0;
+}
+
 .expansion-empty-hint {
     font-size: 10px;
     color: #aaa;
@@ -348,7 +422,7 @@
 /* ===== 右侧面板 ===== */
 .map-right-panel {
     flex: 1; display: flex; flex-direction: column;
-    background: rgba(248, 249, 250, 0.5);
+    background: #f8f9fa;
 }
 
 .canvas-header {
@@ -372,7 +446,7 @@
 /* ===== SVG 画布 ===== */
 .map-canvas-svg {
     width: 100%; height: 100%;
-    background: rgba(255, 255, 255, 0.6);
+    background: #fff;
     border-radius: 12px; border: 1px solid rgba(0, 0, 0, 0.04);
     user-select: none;
 }
