@@ -602,7 +602,7 @@ export default function PetComponent() {
 
     const createOrShowFileSearch = async () => {
         const windows = await getAllWindows();
-        const existing = windows.find((w) => w.label === "file-search");
+        const existing = windows.find((w) => w.label === "quick-file-search");
 
         if (existing) {
             try {
@@ -610,31 +610,32 @@ export default function PetComponent() {
                 await existing.setFocus();
                 return;
             } catch (e) {
-                console.warn("已有文件搜索窗口，但 show/setFocus 失败，尝试重新创建：", e);
+                console.warn("已有快速搜索窗口，但 show/setFocus 失败，尝试重新创建：", e);
             }
         }
 
         const url = import.meta.env.DEV ? "http://localhost:1420" : "index.html";
 
         try {
-            const webview = new WebviewWindow("file-search", {
+            const webview = new WebviewWindow("quick-file-search", {
                 url,
-                title: "文件搜索",
-                width: 700,
-                height: 550,
+                title: "快速搜索",
+                width: 680,
+                height: 460,
                 visible: false,
                 transparent: true,
                 decorations: false,
-                resizable: true,
+                resizable: false,
                 alwaysOnTop: false,
                 center: true,
                 skipTaskbar: true,
                 shadow: false,
+                focus: true,
             });
 
             await new Promise<void>((resolve, reject) => {
                 const timeout = setTimeout(() => {
-                    reject(new Error("等待文件搜索窗口创建超时"));
+                    reject(new Error("等待快速搜索窗口创建超时"));
                 }, 5000);
 
                 webview.once("tauri://created", () => {
@@ -644,15 +645,15 @@ export default function PetComponent() {
 
                 webview.once("tauri://error", (e) => {
                     clearTimeout(timeout);
-                    reject(new Error(`创建文件搜索窗口时出错: ${JSON.stringify(e)}`));
+                    reject(new Error(`创建快速搜索窗口时出错: ${JSON.stringify(e)}`));
                 });
             });
 
             await webview.show();
             await webview.setFocus();
-            console.log("文件搜索窗口已创建并显示");
+            console.log("快速搜索窗口已创建并显示");
         } catch (err) {
-            console.error("创建文件搜索窗口失败：", err);
+            console.error("创建快速搜索窗口失败：", err);
         }
     };
     

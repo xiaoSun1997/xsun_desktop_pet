@@ -353,16 +353,20 @@ export default function MenuPanel() {
                 break;
 
             case "file-search":
-                await createOrShowWindow("file-search", {
+                await createOrShowWindow("quick-file-search", {
                     devUrl: "http://localhost:1420",
                     prodUrl: "index.html",
                     options: {
-                        title: "文件搜索",
-                        width: 700,
-                        height: 550,
+                        title: "快速搜索",
+                        width: 680,
+                        height: 460,
                         center: true,
-                        resizable: true,
+                        resizable: false,
                         skipTaskbar: true,
+                        transparent: true,
+                        decorations: false,
+                        shadow: false,
+                        focus: true,
                     }
                 });
                 break;

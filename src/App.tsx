@@ -18,7 +18,6 @@ import JiraComponent from './components/JiraComponent'; // 添加JIRA组件导�
 import SelectionMenu from './components/SelectionMenu';
 import MapDrawingComponent from './components/MapDrawingComponent';
 import NotepadComponent from "./components/NotepadComponent";
-import FileSearchComponent from "./components/FileSearchComponent";
 import QuickFileSearch from "./components/QuickFileSearch";
 
 function App() {
@@ -324,8 +323,6 @@ function App() {
         return <MapDrawingComponent />;
     } else if (label === "notepad") {
         return <NotepadComponent />;
-    } else if (label === "file-search") {
-        return <FileSearchComponent />;
     } else if (label === "quick-file-search") {
         return <QuickFileSearch />;
     }

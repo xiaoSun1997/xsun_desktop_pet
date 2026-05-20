@@ -158,6 +158,33 @@ export default function JiraComponent() {
         }
     };
 
+    const minimizeWindow = async () => {
+        try {
+            await getCurrentWindow().minimize();
+        } catch (error) {
+            console.error('最小化失败:', error);
+        }
+    };
+
+    const [isMaximized, setIsMaximized] = useState(false);
+    const toggleMaximize = async () => {
+        try {
+            await getCurrentWindow().toggleMaximize();
+            setIsMaximized(!isMaximized);
+        } catch (error) {
+            console.error('最大化切换失败:', error);
+        }
+    };
+
+    // 监听窗口 resize 更新最大化状态
+    useEffect(() => {
+        let unlisten: (() => void) | undefined;
+        getCurrentWindow().onResized(() => {
+            getCurrentWindow().isMaximized().then(setIsMaximized);
+        }).then(fn => { unlisten = fn; });
+        return () => { if (unlisten) unlisten(); };
+    }, []);
+
     // 拖拽支持
     useEffect(() => {
         const header = headerRef.current;
@@ -533,7 +560,6 @@ export default function JiraComponent() {
             <div className="jira-sidebar">
                 <div className="jira-sidebar-header" ref={headerRef} data-tauri-drag-region>
                     <span className="jira-sidebar-title">📋 JIRA 助手</span>
-                    <button className="jira-close-btn" onClick={closeWindow}>✕</button>
                 </div>
 
                 <div className="jira-sidebar-list">
@@ -576,6 +602,11 @@ export default function JiraComponent() {
 
             {/* ===== 右侧主内容区 ===== */}
             <div className="jira-main">
+                <div className="window-controls">
+                    <button className="window-ctrl-btn window-ctrl-min" onClick={minimizeWindow} title="最小化">−</button>
+                    <button className="window-ctrl-btn window-ctrl-max" onClick={toggleMaximize} title={isMaximized ? '还原' : '最大化'}>{isMaximized ? '❐' : '□'}</button>
+                    <button className="window-ctrl-btn window-ctrl-close" onClick={closeWindow} title="关闭">✕</button>
+                </div>
                 {loading && <div className="jira-loading-overlay"><div className="jira-spinner" /> 加载中...</div>}
 
                 {/* --- 仪表板 Tab --- */}

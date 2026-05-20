@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
 use sysinfo::System;
 use tauri::{AppHandle, Emitter, Manager, WebviewWindow,WebviewWindowBuilder,
             menu::{Menu, MenuItemBuilder, PredefinedMenuItem},
@@ -9,7 +10,8 @@ use urlencoding::encode as urlencode;
 use std::collections::HashMap;
 
 mod calendar;
-use calendar::{CalendarManager, HealthRecord, TrainingItem, LearningItem, DailyPlanData, PlanType, LongTermPlan};
+use crate::calendar::{CalendarManager, HealthRecord, TrainingItem, LearningItem, DailyPlanData, PlanType, LongTermPlan};
+use chrono::NaiveDate;
 mod clipboard;
 mod global_mouse;
 mod global_keyboard;
@@ -1206,10 +1208,25 @@ async fn get_daily_health_data(app: AppHandle, date: String) -> Result<HealthRec
 }
 
 #[tauri::command]
-async fn save_health_record(app: AppHandle, record: HealthRecord) -> Result<(), String> {
+async fn save_health_record(app: AppHandle, record: HealthRecord) -> Result<calendar::SaveHealthResult, String> {
     let data_dir = get_data_dir(&app)?;
     let manager = CalendarManager::new(data_dir);
     manager.save_health_record(&record).await
+}
+
+// ===== 用户健康档案命令 =====
+#[tauri::command]
+async fn get_user_health_profile(app: AppHandle) -> Result<calendar::UserHealthProfile, String> {
+    let data_dir = get_data_dir(&app)?;
+    let manager = CalendarManager::new(data_dir);
+    manager.load_user_health_profile().await
+}
+
+#[tauri::command]
+async fn save_user_health_profile(app: AppHandle, profile: calendar::UserHealthProfile) -> Result<(), String> {
+    let data_dir = get_data_dir(&app)?;
+    let manager = CalendarManager::new(data_dir);
+    manager.save_user_health_profile(&profile).await
 }
 
 // ===== 训练数据命令 =====
@@ -1382,15 +1399,150 @@ async fn ai_apply_long_term_plan(
     plan: LongTermPlan,
 ) -> Result<Vec<DailyPlanData>, String> {
     let config = load_deepseek_config(app.clone()).await?;
+    let data_dir = get_data_dir(&app)?;
+    let manager = CalendarManager::new(data_dir.clone());
 
     let plan_type_str = match plan.plan_type {
         PlanType::Health => "健康/锻炼",
         PlanType::Learning => "学习",
     };
 
+    // 解析日期范围
+    let start = NaiveDate::parse_from_str(&plan.start_date, "%Y-%m-%d")
+        .map_err(|e| format!("解析开始日期失败: {}", e))?;
+    let end = NaiveDate::parse_from_str(&plan.end_date, "%Y-%m-%d")
+        .map_err(|e| format!("解析结束日期失败: {}", e))?;
+
+    // 计算批次数量
+    let total_days = (end - start).num_days() + 1;
+    let batch_size: i64 = 7;
+    let total_batches = ((total_days + batch_size - 1) / batch_size) as u32;
+
+    let mut all_daily_plans: Vec<DailyPlanData> = Vec::new();
+    let mut batch_index: u32 = 0;
+    let mut current_start = start;
+
+    // 构建学习时长提示
+    let study_hours_hint = if plan.plan_type == PlanType::Learning {
+        let wd = plan.weekday_study_hours.unwrap_or(1.5);
+        let we = plan.weekend_study_hours.unwrap_or(3.0);
+        format!("\n\n学习时长要求：工作日每天学习{}小时，周末每天学习{}小时。请据此分配每日学习任务量。", wd, we)
+    } else {
+        String::new()
+    };
+
+    while current_start <= end {
+        let batch_end = std::cmp::min(current_start + chrono::Duration::days(batch_size - 1), end);
+        let batch_start_str = current_start.format("%Y-%m-%d").to_string();
+        let batch_end_str = batch_end.format("%Y-%m-%d").to_string();
+        batch_index += 1;
+
+        let _ = app.emit("long-term-plan://batch-progress", serde_json::json!({
+            "current": batch_index,
+            "total": total_batches,
+            "startDate": &batch_start_str,
+            "endDate": &batch_end_str,
+        }));
+
+        // 尝试最多2次
+        let batch_result = try_process_batch(
+            &config, &plan, &plan_type_str,
+            &batch_start_str, &batch_end_str, &study_hours_hint,
+        ).await;
+
+        match batch_result {
+            Ok(plans) => {
+                for daily in &plans {
+                    if !daily.training_items.is_empty() {
+                        let _ = CalendarManager::new(data_dir.clone())
+                            .save_training_items_for_date(&daily.date, daily.training_items.clone()).await;
+                    }
+                    if !daily.learning_items.is_empty() {
+                        let _ = CalendarManager::new(data_dir.clone())
+                            .save_learning_items_for_date(&daily.date, daily.learning_items.clone()).await;
+                    }
+                }
+                all_daily_plans.extend(plans);
+            }
+            Err(ref e) => {
+                // 重试一次
+                let _ = app.emit("long-term-plan://batch-retry", serde_json::json!({
+                    "current": batch_index,
+                    "total": total_batches,
+                    "error": e,
+                }));
+
+                let retry = try_process_batch(
+                    &config, &plan, &plan_type_str,
+                    &batch_start_str, &batch_end_str, &study_hours_hint,
+                ).await;
+
+                match retry {
+                    Ok(plans) => {
+                        for daily in &plans {
+                            if !daily.training_items.is_empty() {
+                                let _ = CalendarManager::new(data_dir.clone())
+                                    .save_training_items_for_date(&daily.date, daily.training_items.clone()).await;
+                            }
+                            if !daily.learning_items.is_empty() {
+                                let _ = CalendarManager::new(data_dir.clone())
+                                    .save_learning_items_for_date(&daily.date, daily.learning_items.clone()).await;
+                            }
+                        }
+                        all_daily_plans.extend(plans);
+                    }
+                    Err(e2) => {
+                        let _ = app.emit("long-term-plan://batch-error", serde_json::json!({
+                            "current": batch_index,
+                            "total": total_batches,
+                            "error": format!("批次 {} 失败（已重试）: {}", batch_index, e2),
+                            "startDate": &batch_start_str,
+                            "endDate": &batch_end_str,
+                        }));
+                        let err_msg = format!(
+                            "批次 {}/{} ({} ~ {}) 失败: {}",
+                            batch_index, total_batches, batch_start_str, batch_end_str, e
+                        );
+                        // 标记已应用并保存已完成的部分
+                        mark_plan_applied(data_dir.clone(), &plan).await?;
+                        return Err(format!("{}。已保存 {} 天的数据。", err_msg, all_daily_plans.len()));
+                    }
+                }
+            }
+        }
+
+        current_start = batch_end + chrono::Duration::days(1);
+    }
+
+    // 标记长期计划已应用
+    mark_plan_applied(data_dir, &plan).await?;
+
+    let _ = app.emit("long-term-plan://all-done", serde_json::json!({
+        "totalDays": all_daily_plans.len(),
+    }));
+
+    Ok(all_daily_plans)
+}
+
+/// 处理单个批次的AI请求
+async fn try_process_batch(
+    config: &DeepSeekConfig,
+    plan: &LongTermPlan,
+    plan_type_str: &str,
+    batch_start: &str,
+    batch_end: &str,
+    study_hours_hint: &str,
+) -> Result<Vec<DailyPlanData>, String> {
     let system_prompt = format!(
-        "你是一个计划拆解助手。请将以下{}长期计划拆解为每日任务，从{}到{}，每天分配具体的任务项。\n\n请以JSON数组格式返回，每个元素包含：\n- date: 日期 (YYYY-MM-DD)\n- trainingItems: 训练项目数组 (仅Health类型)，每项包含 id(用uuid格式), name, sets, reps, weight(可为null), notes(可为null), completed(false), createdAt(时间戳)\n- learningItems: 学习项目数组 (仅Learning类型)，每项包含 id(用uuid格式), title, subtasks(子任务数组，每项id, content, completed:false), completed(false), createdAt(时间戳)\n\n只返回JSON数组，不要包含任何其他文本。",
-        plan_type_str, plan.start_date, plan.end_date
+        "你是一个计划拆解助手。请将以下{}长期计划拆解为每日任务，从{}到{}，每天分配具体的任务项。{}
+
+请以JSON数组格式返回，每个元素包含：
+- date: 日期 (YYYY-MM-DD)
+- trainingItems: 训练项目数组 (仅Health类型)，每项包含 id(用uuid格式), name, sets, reps, weight(可为null), notes(可为null), completed(false), createdAt(时间戳)
+- learningItems: 学习项目数组 (仅Learning类型)，每项包含 id(用uuid格式), title, subtasks(子任务数组，每项id, content, completed:false), completed(false), createdAt(时间戳)
+
+只返回JSON数组，不要包含任何其他文本。",
+        plan_type_str, batch_start, batch_end, study_hours_hint
     );
 
     let messages = vec![
@@ -1400,7 +1552,7 @@ async fn ai_apply_long_term_plan(
 
     let client = reqwest::Client::new();
     let chat_request = ChatRequest {
-        model: config.model,
+        model: config.model.clone(),
         messages,
         stream: false,
     };
@@ -1431,41 +1583,51 @@ async fn ai_apply_long_term_plan(
         .map(|choice| choice.message.content.clone())
         .ok_or_else(|| "AI响应为空".to_string())?;
 
-    // 尝试从AI响应中提取JSON
-    let json_str = if let Some(start) = ai_content.find('[') {
-        if let Some(end) = ai_content.rfind(']') {
-            &ai_content[start..=end]
-        } else {
-            return Err("AI返回格式错误：未找到有效的JSON数组".to_string());
-        }
-    } else {
-        return Err("AI返回格式错误：未找到JSON数组".to_string());
-    };
+    // JSON 清洗 + 解析
+    parse_daily_plans_json(&ai_content)
+}
 
-    let daily_plans: Vec<DailyPlanData> = serde_json::from_str(json_str)
-        .map_err(|e| format!("解析AI返回的每日计划失败: {}", e))?;
+/// JSON清洗函数：去除markdown代码块标记，提取最外层数组
+fn clean_json_str(ai_content: &str) -> Option<&str> {
+    let content = ai_content.trim();
 
-    // 将每日计划保存到对应的日期
-    let data_dir = get_data_dir(&app)?;
-    let manager = CalendarManager::new(data_dir);
-
-    for daily in &daily_plans {
-        if !daily.training_items.is_empty() {
-            let _ = manager.save_training_items_for_date(&daily.date, daily.training_items.clone()).await;
-        }
-        if !daily.learning_items.is_empty() {
-            let _ = manager.save_learning_items_for_date(&daily.date, daily.learning_items.clone()).await;
+    // 尝试去除 ```json ... ``` 包裹
+    if let Some(inner) = content
+        .strip_prefix("```json")
+        .or_else(|| content.strip_prefix("```"))
+    {
+        if let Some(json_part) = inner.strip_suffix("```") {
+            return Some(json_part.trim());
         }
     }
 
-    // 标记长期计划已应用
+    // 直接找 [ ... ]
+    let start = content.find('[')?;
+    let end = content.rfind(']')?;
+    if start < end {
+        Some(&content[start..=end])
+    } else {
+        None
+    }
+}
+
+/// 解析AI返回的每日计划JSON
+fn parse_daily_plans_json(ai_content: &str) -> Result<Vec<DailyPlanData>, String> {
+    let json_str = clean_json_str(ai_content)
+        .ok_or_else(|| "AI返回格式错误：未找到有效的JSON数组".to_string())?;
+
+    serde_json::from_str::<Vec<DailyPlanData>>(json_str)
+        .map_err(|e| format!("解析AI返回的每日计划失败: {}. 原始内容: {}...", e, &ai_content[..std::cmp::min(200, ai_content.len())]))
+}
+
+/// 标记长期计划为已应用
+async fn mark_plan_applied(data_dir: std::path::PathBuf, plan: &LongTermPlan) -> Result<(), String> {
+    let manager = CalendarManager::new(data_dir);
     let mut plans = manager.load_long_term_plans().await?;
     if let Some(p) = plans.iter_mut().find(|p| p.id == plan.id) {
         p.applied = true;
     }
-    manager.save_long_term_plans(&plans).await?;
-
-    Ok(daily_plans)
+    manager.save_long_term_plans(&plans).await
 }
 
 // 添加创建托盘菜单的函数
@@ -2144,6 +2306,8 @@ pub fn run() {
             refresh_calendar_data,
             get_daily_health_data,
             save_health_record,
+            get_user_health_profile,
+            save_user_health_profile,
             get_daily_training_data,
             save_training_items,
             get_daily_learning_data,
@@ -2272,8 +2436,9 @@ pub fn run() {
                 }
             }
 
-            // 创建托盘图标（先检查是否已存在，避免重复创建导致多个图标）
-            if app.tray_by_id("main_tray").is_none() {
+            // 创建托盘图标（使用 AtomicBool 防止重复创建，比 tray_by_id 更可靠）
+            static TRAY_CREATED: AtomicBool = AtomicBool::new(false);
+            if !TRAY_CREATED.swap(true, Ordering::SeqCst) {
                 // 创建托盘菜单
                 let tray_menu = create_tray_menu(app.handle())?;
 

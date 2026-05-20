@@ -203,6 +203,41 @@
     min-width: 0;
     overflow-y: auto;
     background: #f0f2f5;
+    position: relative;
+}
+
+/* ===== 窗口控件 ===== */
+.window-controls {
+    position: absolute;
+    top: 12px;
+    right: 16px;
+    display: flex;
+    gap: 6px;
+    z-index: 100;
+}
+
+.window-ctrl-btn {
+    width: 32px;
+    height: 28px;
+    border: none;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.06);
+    color: #6b7280;
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+}
+
+.window-ctrl-btn:hover {
+    background: rgba(0, 0, 0, 0.1);
+}
+
+.window-ctrl-close:hover {
+    background: #ef4444;
+    color: #fff;
 }
 
 .jira-main::-webkit-scrollbar {

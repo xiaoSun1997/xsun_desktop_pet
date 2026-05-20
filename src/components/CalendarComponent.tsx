@@ -13,6 +13,17 @@ interface HealthRecord {
     note?: string;
 }
 
+interface UserHealthProfile {
+    height?: number;
+    age?: number;
+    gender?: string;
+}
+
+interface SaveHealthResult {
+    previousMorningWeight?: number;
+    previousDate?: string;
+}
+
 interface TrainingItem {
     id: string;
     name: string;
@@ -47,6 +58,8 @@ interface LongTermPlan {
     planContent: string;
     createdAt: number;
     applied: boolean;
+    weekdayStudyHours?: number;
+    weekendStudyHours?: number;
 }
 
 interface AIMessage {
@@ -96,6 +109,8 @@ export default function CalendarComponent() {
 
     // ===== 健康数据 =====
     const [weightInput, setWeightInput] = useState({morning: "", evening: ""});
+    const [userHealthProfile, setUserHealthProfile] = useState<UserHealthProfile>({});
+    const [weightComparison, setWeightComparison] = useState<{diff: number; prevDate: string} | null>(null);
     const [trainingItems, setTrainingItems] = useState<TrainingItem[]>([]);
     const [showAddTraining, setShowAddTraining] = useState(false);
     const [newTraining, setNewTraining] = useState({name: "", sets: "", reps: "", weight: ""});
@@ -113,9 +128,30 @@ export default function CalendarComponent() {
         startDate: "",
         endDate: "",
         targetDesc: "",
+        weekdayStudyHours: 1.5,
+        weekendStudyHours: 3.0,
     });
     const [planGenerating, setPlanGenerating] = useState(false);
     const [planApplying, setPlanApplying] = useState<string | null>(null);
+    const [batchProgress, setBatchProgress] = useState<string | null>(null);
+
+    // ===== PlanModal 状态 =====
+    const [modalOpen, setModalOpen] = useState(false);
+    const [modalPlan, setModalPlan] = useState<LongTermPlan | null>(null);
+    const [streamContent, setStreamContent] = useState("");
+    const [streamDone, setStreamDone] = useState(false);
+    const [streamPlanType, setStreamPlanType] = useState<"Health" | "Learning">("Health");
+
+    // Esc 键关闭 PlanModal
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape' && modalOpen) {
+                closePlanModal();
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [modalOpen]);
 
     // ===== AI 对话 =====
     const [aiOpen, setAiOpen] = useState(false);
@@ -156,7 +192,12 @@ export default function CalendarComponent() {
     // ===== 初始化 & 数据加载 =====
     useEffect(() => {
         loadAllData();
+        loadUserHealthProfile();
     }, [selectedDate]);
+
+    useEffect(() => {
+        loadUserHealthProfile();
+    }, []);
 
     useEffect(() => {
         // 拖拽
@@ -207,6 +248,69 @@ export default function CalendarComponent() {
         return () => { unlistens.forEach(fn => fn()); };
     }, [aiType]);
 
+    // 监听长期计划流式生成事件
+    useEffect(() => {
+        const unlistens: (() => void)[] = [];
+
+        listen<{token: string; planType: string}>('calendar-ai://stream-token', (event) => {
+            const {token, planType} = event.payload;
+            if (planType === 'long_term_health' || planType === 'long_term_learning') {
+                setStreamContent(prev => prev + token);
+            }
+        }).then(fn => unlistens.push(fn));
+
+        listen<{content: string; planType: string}>('calendar-ai://stream-done', (event) => {
+            const {content, planType} = event.payload;
+            if (planType === 'long_term_health' || planType === 'long_term_learning') {
+                setStreamContent(content);
+                setStreamDone(true);
+                setPlanGenerating(false);
+            }
+        }).then(fn => unlistens.push(fn));
+
+        listen<{error: string; planType: string}>('calendar-ai://stream-error', (event) => {
+            const {error, planType} = event.payload;
+            if (planType === 'long_term_health' || planType === 'long_term_learning') {
+                setStreamContent(prev => prev + `\n\n❌ ${error}`);
+                setStreamDone(true);
+                setPlanGenerating(false);
+            }
+        }).then(fn => unlistens.push(fn));
+
+        return () => { unlistens.forEach(fn => fn()); };
+    }, []);
+
+    // 监听批次拆解事件
+    useEffect(() => {
+        const unlistens: (() => void)[] = [];
+
+        listen<{current: number; total: number; startDate: string; endDate: string}>('long-term-plan://batch-progress', (event) => {
+            const {current, total} = event.payload;
+            setBatchProgress(`正在拆解 ${current}/${total} 批次...`);
+        }).then(fn => unlistens.push(fn));
+
+        listen<{current: number; total: number; error: string}>('long-term-plan://batch-retry', (event) => {
+            const {current, total} = event.payload;
+            setBatchProgress(`批次 ${current}/${total} 失败，正在重试...`);
+        }).then(fn => unlistens.push(fn));
+
+        listen<{current: number; total: number; error: string}>('long-term-plan://batch-error', (event) => {
+            const {current, total, error} = event.payload;
+            setBatchProgress(`❌ 批次 ${current}/${total} 失败: ${error}`);
+            alert(`批次 ${current}/${total} 失败: ${error}`);
+        }).then(fn => unlistens.push(fn));
+
+        listen<{totalPlans: number}>('long-term-plan://all-done', async (event) => {
+            setBatchProgress(null);
+            setPlanApplying(null);
+            await loadLongTermPlans();
+            await loadAllData();
+            alert(`✅ 计划已成功应用到 ${event.payload.totalPlans} 天！`);
+        }).then(fn => unlistens.push(fn));
+
+        return () => { unlistens.forEach(fn => fn()); };
+    }, []);
+
     const loadAllData = async () => {
         const dateStr = formatDateStr(selectedDate);
         await Promise.all([
@@ -224,6 +328,8 @@ export default function CalendarComponent() {
                 morning: record.morningWeight?.toString() || "",
                 evening: record.eveningWeight?.toString() || "",
             });
+            // 清除体重对比（新日期无对比，保存时重新计算）
+            setWeightComparison(null);
         } catch (e) { console.error('加载健康数据失败:', e); }
     };
 
@@ -248,15 +354,56 @@ export default function CalendarComponent() {
         } catch (e) { console.error('加载长期规划失败:', e); }
     };
 
+    // ===== BMI / 体脂计算 =====
+    const bmiValue: number | null = (() => {
+        const h = userHealthProfile.height;
+        const w = weightInput.morning ? parseFloat(weightInput.morning) : NaN;
+        if (!h || h <= 0 || isNaN(w) || w <= 0) return null;
+        return w / ((h / 100) ** 2);
+    })();
+
+    const bmiDisplay = bmiValue !== null ? bmiValue.toFixed(1) : '--';
+
+    const bodyFatValue: number | null = (() => {
+        if (bmiValue === null) return null;
+        const age = userHealthProfile.age;
+        if (age === undefined || !userHealthProfile.gender) return null;
+        const genderVal = userHealthProfile.gender === 'male' ? 1 : 0;
+        return 1.20 * bmiValue + 0.23 * age - 10.8 * genderVal - 5.4;
+    })();
+
+    const bodyFatDisplay = bodyFatValue !== null ? bodyFatValue.toFixed(1) + '%' : '--';
+
     // ===== 健康数据操作 =====
-    const saveWeight = async () => {
+    const loadUserHealthProfile = async () => {
+        try {
+            const profile = await invoke<UserHealthProfile>('get_user_health_profile');
+            setUserHealthProfile(profile);
+        } catch (e) { console.error('加载用户健康档案失败:', e); }
+    };
+
+    const saveWeightWithProfile = async () => {
+        // 先保存用户健康档案
+        try {
+            await invoke('save_user_health_profile', {profile: userHealthProfile});
+        } catch (e) { console.error('保存用户健康档案失败:', e); }
+
+        // 保存体重记录
         const record: HealthRecord = {
             date: formatDateStr(selectedDate),
             morningWeight: weightInput.morning ? parseFloat(weightInput.morning) : undefined,
             eveningWeight: weightInput.evening ? parseFloat(weightInput.evening) : undefined,
         };
         try {
-            await invoke('save_health_record', {record});
+            const result = await invoke<SaveHealthResult>('save_health_record', {record});
+            if (result.previousMorningWeight !== undefined && result.previousMorningWeight !== null && weightInput.morning) {
+                const currentWeight = parseFloat(weightInput.morning);
+                const diff = currentWeight - result.previousMorningWeight;
+                setWeightComparison({
+                    diff,
+                    prevDate: result.previousDate || '未知',
+                });
+            }
         } catch (e) { alert('保存体重失败: ' + e); }
     };
 
@@ -403,55 +550,101 @@ export default function CalendarComponent() {
     };
 
     // ===== 长期规划操作 =====
+    const openPlanModal = (plan: LongTermPlan) => {
+        setModalPlan(plan);
+        setStreamContent("");
+        setStreamDone(false);
+        setModalOpen(true);
+    };
+
+    const closePlanModal = () => {
+        setModalOpen(false);
+        setModalPlan(null);
+        setStreamContent("");
+        setStreamDone(false);
+    };
+
     const createLongTermPlan = async () => {
         if (!newPlan.startDate || !newPlan.endDate || !newPlan.targetDesc.trim()) {
             alert('请填写完整的计划信息');
             return;
         }
+
+        // 30天校验
+        const start = new Date(newPlan.startDate);
+        const end = new Date(newPlan.endDate);
+        const diffDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+        if (diffDays > 30) {
+            alert('计划最长不超过30天');
+            return;
+        }
+        if (diffDays < 1) {
+            alert('结束日期必须晚于开始日期');
+            return;
+        }
+
+        const planTypeKey = newPlan.planType === 'Health' ? 'long_term_health' : 'long_term_learning';
+        const studyHoursHint = newPlan.planType === 'Learning'
+            ? `。注意：工作日每天学习${newPlan.weekdayStudyHours}小时，周末每天学习${newPlan.weekendStudyHours}小时`
+            : '';
+
+        // 打开流式 Modal
+        setStreamPlanType(newPlan.planType);
+        setStreamContent("");
+        setStreamDone(false);
+        setModalPlan(null);
+        setModalOpen(true);
         setPlanGenerating(true);
+
         try {
-            // 先让 AI 生成计划内容
-            const planContent = await invoke<string>('send_chat_message', {
-                messages: [
-                    {role: "system", content: `你是一个${newPlan.planType === 'Health' ? '健身教练和营养师' : '学习规划师'}。请根据用户的描述，制定一个从${newPlan.startDate}到${newPlan.endDate}的详细计划。用中文回复。`},
-                    {role: "user", content: newPlan.targetDesc},
-                ],
+            await invoke('ai_calendar_plan_stream', {
+                planType: planTypeKey,
+                userPrompt: `请制定一个从${newPlan.startDate}到${newPlan.endDate}的详细${newPlan.planType === 'Health' ? '健康/锻炼' : '学习'}计划。目标：${newPlan.targetDesc}${studyHoursHint}`,
             });
+        } catch (e) {
+            setPlanGenerating(false);
+            setStreamContent(prev => prev + `\n\n❌ ${e}`);
+            setStreamDone(true);
+        }
+    };
 
-            const plan: LongTermPlan = {
-                id: generateUUID(),
-                planType: newPlan.planType,
-                startDate: newPlan.startDate,
-                endDate: newPlan.endDate,
-                targetDesc: newPlan.targetDesc.trim(),
-                planContent,
-                createdAt: Date.now(),
-                applied: false,
-            };
+    const saveGeneratedPlan = async () => {
+        if (!streamContent.trim()) return;
+        const plan: LongTermPlan = {
+            id: generateUUID(),
+            planType: streamPlanType,
+            startDate: newPlan.startDate,
+            endDate: newPlan.endDate,
+            targetDesc: newPlan.targetDesc.trim(),
+            planContent: streamContent,
+            createdAt: Date.now(),
+            applied: false,
+            weekdayStudyHours: streamPlanType === 'Learning' ? newPlan.weekdayStudyHours : undefined,
+            weekendStudyHours: streamPlanType === 'Learning' ? newPlan.weekendStudyHours : undefined,
+        };
 
+        try {
             await invoke('save_long_term_plan', {plan});
             await loadLongTermPlans();
+            closePlanModal();
             setShowCreatePlan(false);
-            setNewPlan({planType: "Health", startDate: "", endDate: "", targetDesc: ""});
+            setNewPlan({planType: "Health", startDate: "", endDate: "", targetDesc: "", weekdayStudyHours: 1.5, weekendStudyHours: 3.0});
         } catch (e) {
-            alert('创建计划失败: ' + e);
-        } finally {
-            setPlanGenerating(false);
+            alert('保存计划失败: ' + e);
         }
     };
 
     const applyPlan = async (plan: LongTermPlan) => {
         if (!confirm(`确认将 "${plan.targetDesc}" 拆解并应用到每日计划？\n\nAI将自动分配从 ${plan.startDate} 到 ${plan.endDate} 的每日任务。`)) return;
         setPlanApplying(plan.id);
+        setBatchProgress('正在准备拆解...');
         try {
             await invoke('ai_apply_long_term_plan', {plan});
-            alert('✅ 长期计划已成功拆解到每日！');
-            await loadLongTermPlans();
-            await loadAllData();
+            // success handled by long-term-plan://all-done event
         } catch (e) {
-            alert('应用计划失败: ' + e);
-        } finally {
             setPlanApplying(null);
+            setBatchProgress(null);
+            alert('应用计划失败: ' + e);
         }
     };
 
@@ -471,6 +664,27 @@ export default function CalendarComponent() {
         catch (error) { console.error('关闭窗口失败:', error); }
     };
 
+    const minimizeWindow = async () => {
+        try { await getCurrentWindow().minimize(); }
+        catch (error) { console.error('最小化失败:', error); }
+    };
+
+    const [isMaximized, setIsMaximized] = useState(false);
+    const toggleMaximize = async () => {
+        try {
+            await getCurrentWindow().toggleMaximize();
+            setIsMaximized(!isMaximized);
+        } catch (error) { console.error('最大化切换失败:', error); }
+    };
+
+    useEffect(() => {
+        let unlisten: (() => void) | undefined;
+        getCurrentWindow().onResized(() => {
+            getCurrentWindow().isMaximized().then(setIsMaximized);
+        }).then(fn => { unlisten = fn; });
+        return () => { if (unlisten) unlisten(); };
+    }, []);
+
     // ===== 选中日期 =====
     const handleDateSelect = (date: Date) => {
         setSelectedDate(date);
@@ -483,7 +697,6 @@ export default function CalendarComponent() {
             <div className="calendar-sidebar">
                 <div className="calendar-sidebar-header" ref={headerRef} data-tauri-drag-region>
                     <span className="calendar-sidebar-title">📅 智能日历</span>
-                    <button className="calendar-close-btn" onClick={closeWindow}>✕</button>
                 </div>
 
                 {/* 日期列表 */}
@@ -526,25 +739,26 @@ export default function CalendarComponent() {
 
             {/* ===== 右侧主内容区 ===== */}
             <div className="calendar-main">
+                <div className="window-controls">
+                    <button className="window-ctrl-btn window-ctrl-min" onClick={minimizeWindow} title="最小化">−</button>
+                    <button className="window-ctrl-btn window-ctrl-max" onClick={toggleMaximize} title={isMaximized ? '还原' : '最大化'}>{isMaximized ? '❐' : '□'}</button>
+                    <button className="window-ctrl-btn window-ctrl-close" onClick={closeWindow} title="关闭">✕</button>
+                </div>
                 {activeTab === 'calendar' && (
                     <div className="calendar-main-content">
-                        {/* 健康看板 */}
-                        <div className="calendar-board">
-                            <div className="calendar-board-header">
-                                <div className="calendar-board-title">
-                                    <span className="board-icon">💪</span>
-                                    <span>健康 & 锻炼</span>
+                        {/* 体重 & 体脂卡片（左上） */}
+                        <div className="calendar-card weight-card">
+                            <div className="card-header">
+                                <div className="card-title">
+                                    <span className="card-icon">⚖️</span>
+                                    <span>体重 & 体脂</span>
                                 </div>
-                                <button className="calendar-board-ai-btn" onClick={() => openAiChat('health')}>
-                                    🤖 AI 规划
-                                </button>
                             </div>
-                            <div className="calendar-board-body">
-                                {/* 体重记录 */}
-                                <div className="health-weight-card">
-                                    <div className="weight-entry">
-                                        <span className="weight-label">🌅 晨重</span>
-                                        <div className="weight-input-group">
+                            <div className="card-body">
+                                <div className="weight-input-group-new">
+                                    <div className="weight-input-col">
+                                        <span className="wlabel">🌅 晨重</span>
+                                        <div className="winput-wrap">
                                             <input
                                                 type="number"
                                                 value={weightInput.morning}
@@ -552,12 +766,12 @@ export default function CalendarComponent() {
                                                 placeholder="--"
                                                 step="0.1"
                                             />
-                                            <span className="weight-unit">kg</span>
+                                            <span className="wunit">kg</span>
                                         </div>
                                     </div>
-                                    <div className="weight-entry">
-                                        <span className="weight-label">🌙 晚重</span>
-                                        <div className="weight-input-group">
+                                    <div className="weight-input-col">
+                                        <span className="wlabel">🌙 晚重</span>
+                                        <div className="winput-wrap">
                                             <input
                                                 type="number"
                                                 value={weightInput.evening}
@@ -565,13 +779,72 @@ export default function CalendarComponent() {
                                                 placeholder="--"
                                                 step="0.1"
                                             />
-                                            <span className="weight-unit">kg</span>
+                                            <span className="wunit">kg</span>
                                         </div>
                                     </div>
-                                    <button className="weight-save-btn" onClick={saveWeight}>保存</button>
                                 </div>
+                                {weightComparison && (
+                                    <div className={`weight-comparison ${weightComparison.diff < 0 ? 'loss' : 'gain'}`}>
+                                        {weightComparison.diff < 0 ? '📉' : '📈'} {weightComparison.diff > 0 ? '+' : ''}{weightComparison.diff.toFixed(1)} kg (上次: {weightComparison.prevDate})
+                                    </div>
+                                )}
+                                <div className="weight-stats-row">
+                                    <div className="weight-stat">
+                                        <span className="stat-label">📊 BMI</span>
+                                        <span className="stat-value">{bmiDisplay}</span>
+                                    </div>
+                                    <div className="weight-stat">
+                                        <span className="stat-label">📊 体脂率</span>
+                                        <span className="stat-value">{bodyFatDisplay}</span>
+                                        {bodyFatDisplay !== '--' && <span className="stat-note">估算</span>}
+                                    </div>
+                                </div>
+                                <div className="height-row">
+                                    <label>📏 身高</label>
+                                    <input
+                                        type="number"
+                                        value={userHealthProfile.height || ''}
+                                        onChange={e => setUserHealthProfile({...userHealthProfile, height: e.target.value ? parseFloat(e.target.value) : undefined})}
+                                        placeholder="cm"
+                                        min="100"
+                                        max="250"
+                                    />
+                                    <span>cm</span>
+                                    <label style={{marginLeft: 8}}>🎂 年龄</label>
+                                    <input
+                                        type="number"
+                                        value={userHealthProfile.age || ''}
+                                        onChange={e => setUserHealthProfile({...userHealthProfile, age: e.target.value ? parseInt(e.target.value) : undefined})}
+                                        placeholder="--"
+                                        min="10"
+                                        max="100"
+                                    />
+                                    <select
+                                        value={userHealthProfile.gender || ''}
+                                        onChange={e => setUserHealthProfile({...userHealthProfile, gender: e.target.value || undefined})}
+                                        style={{marginLeft: 6, padding: '3px 4px', borderRadius: 4, border: '1px solid #d1d5db', fontSize: 11}}
+                                    >
+                                        <option value="">性别</option>
+                                        <option value="male">男</option>
+                                        <option value="female">女</option>
+                                    </select>
+                                </div>
+                                <button className="card-save-btn" onClick={saveWeightWithProfile}>💾 保存</button>
+                            </div>
+                        </div>
 
-                                {/* 训练项目列表 */}
+                        {/* 锻炼计划卡片（左下） */}
+                        <div className="calendar-card exercise-card">
+                            <div className="card-header">
+                                <div className="card-title">
+                                    <span className="card-icon">💪</span>
+                                    <span>今日训练</span>
+                                </div>
+                                <button className="calendar-board-ai-btn" onClick={() => openAiChat('health')}>
+                                    🤖 AI 规划
+                                </button>
+                            </div>
+                            <div className="card-body">
                                 <div className="training-list">
                                     {trainingItems.map(item => (
                                         <div key={item.id} className={`training-item ${item.completed ? 'completed' : ''}`}>
@@ -593,16 +866,9 @@ export default function CalendarComponent() {
                                         </div>
                                     ))}
                                 </div>
-
-                                {/* 添加训练项 */}
                                 {showAddTraining ? (
                                     <div className="add-training-form">
-                                        <input
-                                            type="text"
-                                            value={newTraining.name}
-                                            onChange={e => setNewTraining({...newTraining, name: e.target.value})}
-                                            placeholder="训练项目名称"
-                                        />
+                                        <input type="text" value={newTraining.name} onChange={e => setNewTraining({...newTraining, name: e.target.value})} placeholder="训练项目名称" />
                                         <div className="add-training-row">
                                             <input type="number" value={newTraining.sets} onChange={e => setNewTraining({...newTraining, sets: e.target.value})} placeholder="组数" />
                                             <input type="number" value={newTraining.reps} onChange={e => setNewTraining({...newTraining, reps: e.target.value})} placeholder="次数" />
@@ -614,39 +880,29 @@ export default function CalendarComponent() {
                                         </div>
                                     </div>
                                 ) : (
-                                    <button className="show-add-btn" onClick={() => setShowAddTraining(true)}>
-                                        + 添加训练项目
-                                    </button>
+                                    <button className="show-add-btn" onClick={() => setShowAddTraining(true)}>+ 添加训练项目</button>
                                 )}
-
-                                {trainingItems.length === 0 && !showAddTraining && (
-                                    <div className="calendar-empty">暂无训练项目，点击上方添加</div>
-                                )}
+                                {trainingItems.length === 0 && !showAddTraining && <div className="calendar-empty">暂无训练项目</div>}
                             </div>
                         </div>
 
-                        {/* 学习看板 */}
-                        <div className="calendar-board">
-                            <div className="calendar-board-header">
-                                <div className="calendar-board-title">
-                                    <span className="board-icon">📚</span>
+                        {/* 学习计划卡片（右竖列，跨两行） */}
+                        <div className="calendar-card learning-card">
+                            <div className="card-header">
+                                <div className="card-title">
+                                    <span className="card-icon">📚</span>
                                     <span>学习 & 任务</span>
                                 </div>
                                 <button className="calendar-board-ai-btn" onClick={() => openAiChat('learning')}>
                                     🤖 AI 拆解
                                 </button>
                             </div>
-                            <div className="calendar-board-body">
+                            <div className="card-body">
                                 <div className="learning-list">
                                     {learningItems.map(item => (
                                         <div key={item.id} className={`learning-item ${item.completed ? 'completed' : ''}`}>
                                             <div className="learning-item-header">
-                                                <input
-                                                    type="checkbox"
-                                                    className="learning-item-checkbox"
-                                                    checked={item.completed}
-                                                    onChange={() => toggleLearningComplete(item)}
-                                                />
+                                                <input type="checkbox" className="learning-item-checkbox" checked={item.completed} onChange={() => toggleLearningComplete(item)} />
                                                 <span className="learning-item-title">{item.title}</span>
                                                 <button className="learning-item-delete" onClick={() => deleteLearningItem(item.id)}>✕</button>
                                             </div>
@@ -654,11 +910,7 @@ export default function CalendarComponent() {
                                                 <div className="learning-subtasks">
                                                     {item.subtasks.map(sub => (
                                                         <label key={sub.id} className={`learning-subtask ${sub.completed ? 'completed' : ''}`}>
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={sub.completed}
-                                                                onChange={() => toggleSubtask(item.id, sub.id)}
-                                                            />
+                                                            <input type="checkbox" checked={sub.completed} onChange={() => toggleSubtask(item.id, sub.id)} />
                                                             <span>{sub.content}</span>
                                                         </label>
                                                     ))}
@@ -667,44 +919,19 @@ export default function CalendarComponent() {
                                         </div>
                                     ))}
                                 </div>
-
-                                {/* 添加学习项 */}
                                 {showAddLearning ? (
                                     <div className="add-learning-form">
-                                        <input
-                                            type="text"
-                                            value={newLearning.title}
-                                            onChange={e => setNewLearning({...newLearning, title: e.target.value})}
-                                            placeholder="学习目标标题"
-                                        />
+                                        <input type="text" value={newLearning.title} onChange={e => setNewLearning({...newLearning, title: e.target.value})} placeholder="学习目标标题" />
                                         <div style={{display: 'flex', gap: 6}}>
-                                            <input
-                                                type="text"
-                                                value={newLearning.subtaskInput}
-                                                onChange={e => setNewLearning({...newLearning, subtaskInput: e.target.value})}
-                                                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addSubtaskToNew(); }}}
-                                                placeholder="添加子任务"
-                                                style={{flex: 1}}
-                                            />
+                                            <input type="text" value={newLearning.subtaskInput} onChange={e => setNewLearning({...newLearning, subtaskInput: e.target.value})} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addSubtaskToNew(); }}} placeholder="添加子任务" style={{flex: 1}} />
                                             <button onClick={addSubtaskToNew} className="add-training-btn" style={{padding: '5px 10px'}}>+</button>
                                         </div>
                                         {newLearning.subtasks.length > 0 && (
                                             <div style={{display: 'flex', flexWrap: 'wrap', gap: 4}}>
                                                 {newLearning.subtasks.map((s, i) => (
-                                                    <span key={i} style={{
-                                                        padding: '2px 8px',
-                                                        background: '#f3f4f6',
-                                                        borderRadius: 4,
-                                                        fontSize: 11,
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: 4,
-                                                    }}>
+                                                    <span key={i} style={{padding: '2px 8px', background: '#f3f4f6', borderRadius: 4, fontSize: 11, display: 'flex', alignItems: 'center', gap: 4}}>
                                                         {s}
-                                                        <button
-                                                            onClick={() => setNewLearning({...newLearning, subtasks: newLearning.subtasks.filter((_, j) => j !== i)})}
-                                                            style={{border: 'none', background: 'transparent', cursor: 'pointer', color: '#9ca3af', padding: 0, fontSize: 12}}
-                                                        >✕</button>
+                                                        <button onClick={() => setNewLearning({...newLearning, subtasks: newLearning.subtasks.filter((_, j) => j !== i)})} style={{border: 'none', background: 'transparent', cursor: 'pointer', color: '#9ca3af', padding: 0, fontSize: 12}}>✕</button>
                                                     </span>
                                                 ))}
                                             </div>
@@ -715,14 +942,9 @@ export default function CalendarComponent() {
                                         </div>
                                     </div>
                                 ) : (
-                                    <button className="show-add-btn" onClick={() => setShowAddLearning(true)}>
-                                        + 添加学习目标
-                                    </button>
+                                    <button className="show-add-btn" onClick={() => setShowAddLearning(true)}>+ 添加学习目标</button>
                                 )}
-
-                                {learningItems.length === 0 && !showAddLearning && (
-                                    <div className="calendar-empty">暂无学习目标，点击上方添加</div>
-                                )}
+                                {learningItems.length === 0 && !showAddLearning && <div className="calendar-empty">暂无学习目标</div>}
                             </div>
                         </div>
                     </div>
@@ -750,6 +972,50 @@ export default function CalendarComponent() {
                             />
                             <button className="ai-chat-send-btn" onClick={() => sendAiMessage()} disabled={aiLoading}>发送</button>
                             <button className="ai-chat-close-btn" onClick={closeAiChat}>关闭</button>
+                        </div>
+                    </div>
+                )}
+
+                {/* ===== PlanModal ===== */}
+                {modalOpen && (
+                    <div className="plan-modal-overlay" onClick={closePlanModal}>
+                        <div className="plan-modal-content" onClick={e => e.stopPropagation()} onKeyDown={e => { if (e.key === 'Escape') closePlanModal(); }}>
+                            <div className="plan-modal-header">
+                                <h3>
+                                    {modalPlan
+                                        ? `📋 ${modalPlan.targetDesc}`
+                                        : (streamDone ? '✅ 计划已生成' : `🤖 AI 正在生成${streamPlanType === 'Health' ? '健康' : '学习'}计划...`)
+                                    }
+                                </h3>
+                                <button className="plan-modal-close-btn" onClick={closePlanModal}>✕</button>
+                            </div>
+                            <div className="plan-modal-body">
+                                {modalPlan ? (
+                                    <>
+                                        <div className="plan-modal-meta">
+                                            <span className={`plan-card-type ${modalPlan.planType.toLowerCase()}`}>
+                                                {modalPlan.planType === 'Health' ? '💪 健康/锻炼' : '📚 学习'}
+                                            </span>
+                                            <span>📅 {modalPlan.startDate} → {modalPlan.endDate}</span>
+                                            {modalPlan.weekdayStudyHours !== undefined && (
+                                                <span>📅 工作日 {modalPlan.weekdayStudyHours}h | 🏖️ 周末 {modalPlan.weekendStudyHours}h</span>
+                                            )}
+                                            {modalPlan.applied && <span>✅ 已应用</span>}
+                                        </div>
+                                        <pre className="plan-modal-text">{modalPlan.planContent}</pre>
+                                    </>
+                                ) : (
+                                    <>
+                                        <pre className="plan-modal-text">{streamContent || '⏳ 等待AI响应...'}</pre>
+                                        {streamDone && (
+                                            <div className="plan-modal-actions">
+                                                <button className="plan-modal-cancel-btn" onClick={closePlanModal}>取消</button>
+                                                <button className="plan-modal-save-btn" onClick={saveGeneratedPlan}>💾 保存计划</button>
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+                            </div>
                         </div>
                     </div>
                 )}
@@ -800,6 +1066,32 @@ export default function CalendarComponent() {
                                         placeholder={newPlan.planType === 'Health' ? '例如：减重5kg，每周锻炼4次，每天摄入1800卡路里...' : '例如：3个月内完成《算法导论》学习，每天学习2小时...'}
                                     />
                                 </div>
+                                {newPlan.planType === 'Learning' && (
+                                    <div className="form-row">
+                                        <div className="form-group">
+                                            <label>📅 工作日每天 (h)</label>
+                                            <input
+                                                type="number"
+                                                value={newPlan.weekdayStudyHours}
+                                                onChange={e => setNewPlan({...newPlan, weekdayStudyHours: parseFloat(e.target.value) || 0})}
+                                                min="0"
+                                                max="12"
+                                                step="0.5"
+                                            />
+                                        </div>
+                                        <div className="form-group">
+                                            <label>🏖️ 周末每天 (h)</label>
+                                            <input
+                                                type="number"
+                                                value={newPlan.weekendStudyHours}
+                                                onChange={e => setNewPlan({...newPlan, weekendStudyHours: parseFloat(e.target.value) || 0})}
+                                                min="0"
+                                                max="12"
+                                                step="0.5"
+                                            />
+                                        </div>
+                                    </div>
+                                )}
                                 <div className="form-actions">
                                     <button className="form-cancel-btn" onClick={() => setShowCreatePlan(false)}>取消</button>
                                     <button className="form-submit-btn" onClick={createLongTermPlan} disabled={planGenerating}>
@@ -828,7 +1120,7 @@ export default function CalendarComponent() {
                                         📅 {plan.startDate} → {plan.endDate}
                                     </div>
                                     <div className="plan-card-target">{plan.targetDesc}</div>
-                                    <div className="plan-card-content">{plan.planContent}</div>
+                                    <div className="plan-card-content" onClick={() => openPlanModal(plan)} style={{cursor: 'pointer'}}>{plan.planContent}</div>
                                     <div className="plan-card-actions">
                                         <button className="plan-delete-btn" onClick={() => deletePlan(plan.id)}>删除</button>
                                         {!plan.applied && (
@@ -837,10 +1129,13 @@ export default function CalendarComponent() {
                                                 onClick={() => applyPlan(plan)}
                                                 disabled={planApplying === plan.id}
                                             >
-                                                {planApplying === plan.id ? '⏳ 拆解中...' : '🚀 应用到每日'}
+                                                {planApplying === plan.id ? (batchProgress || '⏳ 拆解中...') : '🚀 应用到每日'}
                                             </button>
                                         )}
                                     </div>
+                                    {planApplying === plan.id && batchProgress && (
+                                        <div className="batch-progress-hint">{batchProgress}</div>
+                                    )}
                                 </div>
                             ))}
                         </div>

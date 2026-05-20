@@ -88,7 +88,17 @@ pub struct HealthRecord {
     pub morning_weight: Option<f64>,
     #[serde(rename = "eveningWeight")]
     pub evening_weight: Option<f64>,
+    pub height: Option<f64>,
     pub note: Option<String>,
+}
+
+/// 返回体重历史记录用于前端比较
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SaveHealthResult {
+    #[serde(rename = "previousMorningWeight")]
+    pub previous_morning_weight: Option<f64>,
+    #[serde(rename = "previousDate")]
+    pub previous_date: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -132,6 +142,14 @@ pub struct DailyPlanData {
     pub ai_generated_plan: Option<String>,
 }
 
+// ===== 用户健康档案 =====
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct UserHealthProfile {
+    pub height: Option<f64>,   // cm
+    pub age: Option<i32>,
+    pub gender: Option<String>, // "male" | "female"
+}
+
 // ===== 长期规划 =====
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum PlanType {
@@ -156,6 +174,10 @@ pub struct LongTermPlan {
     pub created_at: i64,
     #[serde(rename = "applied")]
     pub applied: bool,
+    #[serde(rename = "weekdayStudyHours")]
+    pub weekday_study_hours: Option<f64>,
+    #[serde(rename = "weekendStudyHours")]
+    pub weekend_study_hours: Option<f64>,
 }
 
 pub struct CalendarManager {
@@ -403,23 +425,67 @@ impl CalendarManager {
     pub async fn load_health_record_for_date(&self, date: &str) -> Result<HealthRecord, String> {
         let file = self.data_dir.join("health_records.json");
         if !tokio::fs::try_exists(&file).await.unwrap_or(false) {
-            return Ok(HealthRecord { date: date.to_string(), morning_weight: None, evening_weight: None, note: None });
+            return Ok(HealthRecord { date: date.to_string(), morning_weight: None, evening_weight: None, height: None, note: None });
         }
         let content = tokio::fs::read_to_string(&file).await.map_err(|e| format!("读取健康数据失败: {}", e))?;
         let all: HashMap<String, HealthRecord> = serde_json::from_str(&content).unwrap_or_default();
-        Ok(all.get(date).cloned().unwrap_or(HealthRecord { date: date.to_string(), morning_weight: None, evening_weight: None, note: None }))
+        Ok(all.get(date).cloned().unwrap_or(HealthRecord { date: date.to_string(), morning_weight: None, evening_weight: None, height: None, note: None }))
     }
 
-    pub async fn save_health_record(&self, record: &HealthRecord) -> Result<(), String> {
+    pub async fn save_health_record(&self, record: &HealthRecord) -> Result<SaveHealthResult, String> {
         self.ensure_data_dir().await?;
         let file = self.data_dir.join("health_records.json");
         let mut all: HashMap<String, HealthRecord> = if tokio::fs::try_exists(&file).await.unwrap_or(false) {
             let content = tokio::fs::read_to_string(&file).await.unwrap_or_default();
             serde_json::from_str(&content).unwrap_or_default()
         } else { HashMap::new() };
+
+        // 查找上一次有晨重的记录
+        let mut prev_morning: Option<f64> = None;
+        let mut prev_date: Option<String> = None;
+        let mut dates: Vec<String> = all.keys().cloned().collect();
+        dates.sort();
+        dates.reverse();
+        for d in &dates {
+            if d < &record.date {
+                if let Some(r) = all.get(d) {
+                    if let Some(w) = r.morning_weight {
+                        prev_morning = Some(w);
+                        prev_date = Some(d.clone());
+                        break;
+                    }
+                }
+            }
+        }
+
         all.insert(record.date.clone(), record.clone());
         let json = serde_json::to_string_pretty(&all).map_err(|e| format!("序列化健康数据失败: {}", e))?;
-        tokio::fs::write(&file, json).await.map_err(|e| format!("保存健康数据失败: {}", e))
+        tokio::fs::write(&file, json).await.map_err(|e| format!("保存健康数据失败: {}", e))?;
+
+        Ok(SaveHealthResult {
+            previous_morning_weight: prev_morning,
+            previous_date: prev_date,
+        })
+    }
+
+    // ===== 用户健康档案 =====
+    pub async fn load_user_health_profile(&self) -> Result<UserHealthProfile, String> {
+        let file = self.data_dir.join("user_health_profile.json");
+        if !tokio::fs::try_exists(&file).await.unwrap_or(false) {
+            return Ok(UserHealthProfile { height: None, age: None, gender: None });
+        }
+        let content = tokio::fs::read_to_string(&file).await
+            .map_err(|e| format!("读取用户健康档案失败: {}", e))?;
+        serde_json::from_str(&content).map_err(|e| format!("解析用户健康档案失败: {}", e))
+    }
+
+    pub async fn save_user_health_profile(&self, profile: &UserHealthProfile) -> Result<(), String> {
+        self.ensure_data_dir().await?;
+        let file = self.data_dir.join("user_health_profile.json");
+        let json = serde_json::to_string_pretty(profile)
+            .map_err(|e| format!("序列化用户健康档案失败: {}", e))?;
+        tokio::fs::write(&file, json).await
+            .map_err(|e| format!("保存用户健康档案失败: {}", e))
     }
 
     // ===== 训练数据 CRUD =====
