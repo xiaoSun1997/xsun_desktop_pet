@@ -1295,6 +1295,7 @@ async fn fetch_worklogs_for_date(
         .map_err(|e| format!("发送请求失败: {}", e))?;
 
     if !response.status().is_success() {
+        println!("[jira_tools] fetch_worklogs_for_date: 日期 {} API 返回错误状态 {}", target_date, response.status());
         return Ok(Vec::new()); // 某天查询失败不阻塞整体
     }
 
@@ -1323,7 +1324,14 @@ async fn fetch_worklogs_for_date(
 
             let worklog_response = match worklog_response {
                 Ok(r) if r.status().is_success() => r,
-                _ => continue,
+                Ok(r) => {
+                    println!("[jira_tools] fetch_worklogs_for_date: issue {} worklog 请求返回状态 {}", issue_key, r.status());
+                    continue;
+                }
+                Err(e) => {
+                    println!("[jira_tools] fetch_worklogs_for_date: issue {} worklog 请求失败: {}", issue_key, e);
+                    continue;
+                }
             };
 
             let worklog_json: Value = worklog_response
@@ -1403,11 +1411,17 @@ pub async fn get_worklogs_by_date_range(
         return Err("查询范围不能超过30天".to_string());
     }
 
+    let total_days = (end - start).num_days() + 1;
+    println!("[jira_tools] get_worklogs_by_date_range: 开始查询 {} 至 {} (共 {} 天)", start_date, end_date, total_days);
+
     let mut summaries: Vec<DateWorklogSummary> = Vec::new();
     let mut current = start;
+    let mut day_index = 0;
 
     while current <= end {
+        day_index += 1;
         let date_str = current.format("%Y-%m-%d").to_string();
+        println!("[jira_tools] get_worklogs_by_date_range: 正在查询第 {}/{} 天 ({})", day_index, total_days, date_str);
         let worklogs = fetch_worklogs_for_date(&config, current).await?;
         let total_hours: f64 = worklogs.iter().map(|w| w.time_spent_hours).sum();
 
@@ -1426,5 +1440,6 @@ pub async fn get_worklogs_by_date_range(
         }
     }
 
+    println!("[jira_tools] get_worklogs_by_date_range: 查询完成，共 {} 天有工单记录", summaries.len());
     Ok(summaries)
 }

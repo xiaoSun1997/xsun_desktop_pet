@@ -38,6 +38,8 @@ export default function MenuPanel() {
     const [dragIndex, setDragIndex] = useState<number | null>(null);
     const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
     const panelRef = useRef<HTMLDivElement>(null);
+    const clickThrottleRef = useRef<boolean>(false);
+    const throttleTimerRef = useRef<number | null>(null);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -103,7 +105,26 @@ export default function MenuPanel() {
         setDragOverIndex(null);
     }, []);
 
+    // 清理函数
+    useEffect(() => {
+        return () => {
+            if (throttleTimerRef.current) {
+                clearTimeout(throttleTimerRef.current);
+            }
+        };
+    }, []);
+
     const createOrShowWindow = async (label: string, config: any) => {
+        // 防重复点击节流
+        if (clickThrottleRef.current) {
+            console.log(`[MenuPanel] 节流中，跳过 ${label}`);
+            return;
+        }
+        clickThrottleRef.current = true;
+        throttleTimerRef.current = window.setTimeout(() => {
+            clickThrottleRef.current = false;
+        }, 250);
+
         const windows = await getAllWindows();
         const existing = windows.find((w) => w.label === label);
 
@@ -120,7 +141,8 @@ export default function MenuPanel() {
                 } catch (closeErr) {
                     console.warn(`关闭僵尸${label}窗口失败:`, closeErr);
                 }
-                await new Promise(r => setTimeout(r, 300));
+                // 增加等待时间，确保窗口资源完全释放
+                await new Promise(r => setTimeout(r, 500));
             }
         }
 
@@ -135,7 +157,7 @@ export default function MenuPanel() {
             await new Promise<void>((resolve, reject) => {
                 const timeout = setTimeout(() => {
                     reject(new Error(`等待${label}窗口创建超时`));
-                }, 5000);
+                }, 8000);
 
                 webview.once("tauri://created", () => {
                     clearTimeout(timeout);
@@ -300,25 +322,6 @@ export default function MenuPanel() {
                         decorations: false,
                         resizable: true,
                         minWidth: 800,
-                        minHeight: 600,
-                        center: true,
-                    }
-                });
-                break;
-
-            case "map-drawing":
-                await createOrShowWindow("map-drawing", {
-                    devUrl: "http://localhost:1420",
-                    prodUrl: "index.html",
-                    options: {
-                        title: "图形绘制",
-                        width: 1200,
-                        height: 800,
-                        visible: true,
-                        transparent: true,
-                        decorations: false,
-                        resizable: true,
-                        minWidth: 900,
                         minHeight: 600,
                         center: true,
                     }

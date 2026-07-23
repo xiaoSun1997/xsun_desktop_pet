@@ -31,6 +31,7 @@ use clipboard::{
     add_to_clipboard_history, clear_clipboard_history, copy_to_clipboard, get_clipboard_history,
     get_clipboard_history_paginated, delete_clipboard_item,
     get_current_clipboard, manual_clipboard_check, ClipboardHistory,
+    start_windows_clipboard_listener,
 };
 
 use global_mouse::init_global_mouse_hook;
@@ -2554,6 +2555,11 @@ pub fn run() {
             });
             // 初始化定时任务调度器
             init_scheduler(app.app_handle().clone());
+
+            // 启动 Windows 剪贴板事件监听器（非 Windows 平台为 no-op）
+            let app_handle_clip = app.app_handle().clone();
+            let clipboard_hist = app.state::<Arc<ClipboardHistory>>().inner().clone();
+            start_windows_clipboard_listener(app_handle_clip, clipboard_hist);
 
             println!("应用初始化完成，剪贴板监控已启动");
             Ok(())

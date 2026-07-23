@@ -1,5 +1,6 @@
 // src-tauri/src/clipboard.rs
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use tauri::{State, AppHandle, Manager};
 use tauri_plugin_clipboard_manager::ClipboardExt;
@@ -17,8 +18,16 @@ pub struct ClipboardItem {
 pub struct ClipboardHistory {
     pub items: Mutex<VecDeque<ClipboardItem>>,
     pub next_id: Mutex<usize>,
-    pub last_content: Mutex<Option<String>>,
+    pub last_content_hash: AtomicU64,
     pub last_image_hash: Mutex<Option<u64>>,
+}
+
+/// 计算字符串的64位哈希值
+fn calculate_hash(text: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    text.hash(&mut hasher);
+    hasher.finish()
 }
 
 impl ClipboardHistory {
@@ -26,17 +35,27 @@ impl ClipboardHistory {
         Self {
             items: Mutex::new(VecDeque::new()),
             next_id: Mutex::new(0),
-            last_content: Mutex::new(None),
+            last_content_hash: AtomicU64::new(0),
             last_image_hash: Mutex::new(None),
         }
     }
 
     fn add_item_safe(&self, content: String, content_type: &str) -> Result<(), String> {
-        let mut items = self.items.lock()
-            .map_err(|e| format!("获取items锁失败: {}", e))?;
+        let mut items = match self.items.try_lock() {
+            Ok(lock) => lock,
+            Err(_) => {
+                eprintln!("获取items锁失败(被占用)，静默跳过添加");
+                return Ok(());
+            }
+        };
 
-        let mut next_id = self.next_id.lock()
-            .map_err(|e| format!("获取next_id锁失败: {}", e))?;
+        let mut next_id = match self.next_id.try_lock() {
+            Ok(lock) => lock,
+            Err(_) => {
+                eprintln!("获取next_id锁失败(被占用)，静默跳过添加");
+                return Ok(());
+            }
+        };
 
         // 检查是否与最近的内容重复
         if let Some(last_item) = items.front() {
@@ -86,15 +105,18 @@ impl ClipboardHistory {
         if let Some(ref current_text) = text_opt {
             let trimmed = current_text.trim();
             if !trimmed.is_empty() && trimmed.len() <= 5_000_000 { // 提高到5MB
-                let mut last_content = self.last_content.lock()
-                    .map_err(|e| format!("获取last_content锁失败: {}", e))?;
+                // 计算当前文本哈希，用于快速无锁比较
+                let current_hash = calculate_hash(current_text);
+                let last_hash = self.last_content_hash.load(Ordering::Relaxed);
 
-                let is_new = match &*last_content {
-                    Some(last) => last != current_text,
-                    None => true,
-                };
+                if current_hash == last_hash && last_hash != 0 {
+                    return Ok(false); // 哈希相同，内容未变化
+                }
 
-                if is_new {
+                // 哈希不同，需要更新（原子存储新哈希）
+                self.last_content_hash.store(current_hash, Ordering::Relaxed);
+
+                {
                     let preview = if current_text.chars().count() > 50 {
                         let truncated: String = current_text.chars().take(50).collect();
                         format!("{}...", truncated)
@@ -102,31 +124,28 @@ impl ClipboardHistory {
                         current_text.clone()
                     };
                     println!("发现新的文本剪贴板内容: {}", preview);
-
-                    *last_content = Some(current_text.clone());
-                    drop(last_content);
-
-                    self.add_item_safe(current_text.clone(), "text")?;
-
-                    // 同步保存到数据库
-                    if let Some(db) = app.try_state::<Database>() {
-                        let timestamp = std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_secs() as i64;
-                        let db_item = ClipboardItem {
-                            id: 0,
-                            content: current_text.clone(),
-                            content_type: "text".to_string(),
-                            timestamp,
-                        };
-                        let _ = db.add_clipboard_item(&db_item);
-                    }
-
-                    return Ok(true);
                 }
-                return Ok(false);
+
+                self.add_item_safe(current_text.clone(), "text")?;
+
+                // 同步保存到数据库
+                if let Some(db) = app.try_state::<Database>() {
+                    let timestamp = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs() as i64;
+                    let db_item = ClipboardItem {
+                        id: 0,
+                        content: current_text.clone(),
+                        content_type: "text".to_string(),
+                        timestamp,
+                    };
+                    let _ = db.add_clipboard_item(&db_item);
+                }
+
+                return Ok(true);
             }
+            return Ok(false);
         }
 
         // 2. 尝试读取图片
@@ -177,8 +196,8 @@ impl ClipboardHistory {
             }
             let hash = hasher.finish();
 
-            let mut last_hash = self.last_image_hash.lock()
-                .map_err(|e| format!("获取last_image_hash锁失败: {}", e))?;
+            let mut last_hash = self.last_image_hash.try_lock()
+                .map_err(|e| format!("获取last_image_hash锁失败(可能被占用): {}", e))?;
 
             if Some(hash) != *last_hash {
                 *last_hash = Some(hash);
@@ -309,19 +328,17 @@ pub fn clear_clipboard_history(
     let db = app.state::<Database>();
     db.clear_clipboard_history()?;
 
-    if let Ok(mut items) = history.items.lock() {
+    if let Ok(mut items) = history.items.try_lock() {
         items.clear();
     }
 
-    if let Ok(mut next_id) = history.next_id.lock() {
+    if let Ok(mut next_id) = history.next_id.try_lock() {
         *next_id = 0;
     }
 
-    if let Ok(mut last_content) = history.last_content.lock() {
-        *last_content = None;
-    }
+    history.last_content_hash.store(0, Ordering::Relaxed);
 
-    if let Ok(mut last_hash) = history.last_image_hash.lock() {
+    if let Ok(mut last_hash) = history.last_image_hash.try_lock() {
         *last_hash = None;
     }
 
@@ -369,9 +386,131 @@ pub fn test_add_multiple_items(
         }
     }
 
-    let items_count = history.items.lock()
+    let items_count = history.items.try_lock()
         .map(|items| items.len())
         .unwrap_or(0);
 
     Ok(format!("批量添加测试完成，当前共 {} 条记录", items_count))
+}
+
+// ===== Windows 剪贴板事件监听器 =====
+
+#[cfg(target_os = "windows")]
+pub fn start_windows_clipboard_listener(
+    app_handle: tauri::AppHandle,
+    clipboard_history: std::sync::Arc<ClipboardHistory>,
+) {
+    use windows::Win32::{
+        Foundation::{HWND, LPARAM, LRESULT, WPARAM},
+        System::DataExchange::{AddClipboardFormatListener, RemoveClipboardFormatListener},
+        System::LibraryLoader::GetModuleHandleW,
+        UI::WindowsAndMessaging::{
+            CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetMessageW,
+            HMENU, RegisterClassExW, CS_HREDRAW, CS_VREDRAW, MSG, WINDOW_STYLE, WNDCLASSEXW,
+            WM_CLIPBOARDUPDATE,
+        },
+    };
+
+    // 窗口过程：处理消息（仅转发给默认处理）
+    unsafe extern "system" fn clipboard_wnd_proc(
+        hwnd: HWND,
+        msg: u32,
+        wparam: WPARAM,
+        lparam: LPARAM,
+    ) -> LRESULT {
+        DefWindowProcW(hwnd, msg, wparam, lparam)
+    }
+
+    std::thread::spawn(move || {
+        unsafe {
+            let hmodule = match GetModuleHandleW(None) {
+                Ok(h) => h,
+                Err(e) => {
+                    eprintln!("[Clipboard] 获取模块句柄失败: {:?}", e);
+                    return;
+                }
+            };
+            let hinstance = hmodule.into();
+            let class_name = windows::core::w!("XSUN_CLIPBOARD_LISTENER");
+
+            let wnd_class = WNDCLASSEXW {
+                cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
+                style: CS_HREDRAW | CS_VREDRAW,
+                lpfnWndProc: Some(clipboard_wnd_proc),
+                hInstance: hinstance,
+                lpszClassName: class_name,
+                ..Default::default()
+            };
+
+            if RegisterClassExW(&wnd_class) == 0 {
+                eprintln!("[Clipboard] 无法注册剪贴板监听窗口类");
+                return;
+            }
+
+            // 创建隐藏消息窗口（仅用于接收剪贴板事件）
+            let hwnd = match CreateWindowExW(
+                Default::default(),
+                class_name,
+                windows::core::w!("XSUN_CLIP_LISTENER"),
+                WINDOW_STYLE(0), // 无样式，隐藏窗口
+                0,
+                0,
+                0,
+                0,
+                HWND(std::ptr::null_mut()), // 无父窗口
+                HMENU(std::ptr::null_mut()), // 无菜单
+                hinstance,
+                None,
+            ) {
+                Ok(h) => h,
+                Err(e) => {
+                    eprintln!("[Clipboard] 无法创建剪贴板监听窗口: {:?}", e);
+                    return;
+                }
+            };
+
+            if hwnd.0.is_null() {
+                eprintln!("[Clipboard] 无法创建剪贴板监听窗口");
+                return;
+            }
+
+            if AddClipboardFormatListener(hwnd).is_ok() {
+                println!("[Clipboard] Windows 剪贴板事件监听器已启动");
+            } else {
+                eprintln!("[Clipboard] 无法注册剪贴板格式监听器");
+                let _ = DestroyWindow(hwnd);
+                return;
+            }
+
+            let mut msg = MSG::default();
+            loop {
+                let ret = GetMessageW(&mut msg, HWND(std::ptr::null_mut()), 0, 0);
+                if ret.0 <= 0 {
+                    break; // WM_QUIT 或错误，退出消息循环
+                }
+
+                if msg.message == WM_CLIPBOARDUPDATE {
+                    match clipboard_history.check_and_update_safe(&app_handle) {
+                        Ok(true) => println!("[Clipboard] ✓ 事件驱动：发现新内容"),
+                        Ok(false) => {} // 无变化或重复
+                        Err(e) => eprintln!("[Clipboard] 事件驱动检查失败: {}", e),
+                    }
+                }
+
+                DispatchMessageW(&msg);
+            }
+
+            let _ = RemoveClipboardFormatListener(hwnd);
+            let _ = DestroyWindow(hwnd);
+            println!("[Clipboard] Windows 剪贴板事件监听器已停止");
+        }
+    });
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn start_windows_clipboard_listener(
+    _app_handle: tauri::AppHandle,
+    _clipboard_history: std::sync::Arc<ClipboardHistory>,
+) {
+    // 非 Windows 平台：此函数为空操作，使用轮询机制
 }

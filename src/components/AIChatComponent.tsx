@@ -48,6 +48,31 @@ type TreeNode = {
     children?: TreeNode[];
 };
 
+// Spec/Loop 模式类型定义
+type LoopStepStatus = 'pending' | 'running' | 'needs_review' | 'completed' | 'failed';
+
+type LoopStep = {
+    id: string;
+    title: string;
+    description: string;
+    status: LoopStepStatus;
+    result?: string;
+    reviewResult?: string;
+    error?: string;
+};
+
+type SpecDocument = {
+    title: string;
+    description: string;
+    requirements: string[];
+    steps: LoopStep[];
+};
+
+type ThinkingStep = {
+    step: string;
+    content: string;
+};
+
 export default function AIChatComponent() {
     const [messages, setMessages] = useState<Message[]>([]);
     const [inputValue, setInputValue] = useState("");
@@ -80,7 +105,15 @@ export default function AIChatComponent() {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
     // Tab 导航
-    const [activeTab, setActiveTab] = useState<'history' | 'skill' | 'flowchart'>('history');
+    const [activeTab, setActiveTab] = useState<'history' | 'skill' | 'flowchart' | 'spec'>('history');
+
+    // Spec/Loop 模块
+    const [specInput, setSpecInput] = useState('');
+    const [specDocument, setSpecDocument] = useState<SpecDocument | null>(null);
+    const [isGeneratingSpec, setIsGeneratingSpec] = useState(false);
+    const [isExecutingLoop, setIsExecutingLoop] = useState(false);
+    const [specError, setSpecError] = useState<string | null>(null);
+    const [thinkingChain, setThinkingChain] = useState<ThinkingStep[]>([]);
 
     // Skill 模块
     const [skillFileTree, setSkillFileTree] = useState<TreeNode[]>([]);
@@ -550,6 +583,216 @@ export default function AIChatComponent() {
             console.error('重命名失败:', error);
             setEditingSessionId(null);
         }
+    };
+
+    // ===== Spec/Loop 模块函数 =====
+    const handleGenerateSpec = async () => {
+        if (!specInput.trim() || isGeneratingSpec) return;
+        
+        setIsGeneratingSpec(true);
+        setSpecError(null);
+        setSpecDocument(null);
+        
+        try {
+            // 使用AI生成Spec文档
+            const specPrompt = `根据以下需求描述，生成一个结构化的Spec文档和执行步骤。
+
+需求：${specInput}
+
+请以JSON格式返回，包含以下字段：
+{
+  "title": "项目标题",
+  "description": "项目描述",
+  "requirements": ["需求1", "需求2", ...],
+  "steps": [
+    {"id": "1", "title": "步骤标题", "description": "步骤描述"},
+    ...
+  ]
+}`;
+            
+            const chatMessages: ChatMessage[] = [
+                { role: 'user', content: specPrompt }
+            ];
+            
+            // 调用AI生成
+            const result = await invoke<string>('send_chat_message', { messages: chatMessages });
+            
+            // 解析JSON结果
+            try {
+                let jsonStr: string | null = null;
+
+                // 策略1: 优先提取 ```json ... ``` 代码块
+                const jsonBlockMatch = result.match(/```json\s*\n?([\s\S]*?)\n?```/);
+                if (jsonBlockMatch) {
+                    jsonStr = jsonBlockMatch[1].trim();
+                }
+
+                // 策略2: 提取 ``` ... ``` 通用代码块
+                if (!jsonStr) {
+                    const codeBlockMatch = result.match(/```\s*\n?([\s\S]*?)\n?```/);
+                    if (codeBlockMatch && codeBlockMatch[1].trim().startsWith('{')) {
+                        jsonStr = codeBlockMatch[1].trim();
+                    }
+                }
+
+                // 策略3: 从文本中提取第一个完整的JSON对象（非贪婪逐层匹配）
+                if (!jsonStr) {
+                    const jsonObjMatch = result.match(/\{(?:[^{}]|\{[^{}]*\})*\}/);
+                    if (jsonObjMatch) {
+                        jsonStr = jsonObjMatch[0];
+                    }
+                }
+
+                // 策略4: fallback - 贪婪匹配（最后手段）
+                if (!jsonStr) {
+                    const greedyMatch = result.match(/\{[\s\S]*\}/);
+                    if (greedyMatch) {
+                        jsonStr = greedyMatch[0];
+                    }
+                }
+
+                if (jsonStr) {
+                    const parsed = JSON.parse(jsonStr) as SpecDocument;
+                    // 为每个步骤添加初始状态
+                    const stepsWithStatus = parsed.steps.map((step, index) => ({
+                        ...step,
+                        id: step.id || String(index + 1),
+                        status: 'pending' as LoopStepStatus
+                    }));
+                    setSpecDocument({
+                        ...parsed,
+                        steps: stepsWithStatus
+                    });
+                } else {
+                    setSpecError('AI返回的格式不正确，请重试');
+                }
+            } catch (parseErr) {
+                console.error('解析Spec JSON失败:', parseErr);
+                setSpecError('解析AI返回内容失败，请重试');
+            }
+        } catch (err) {
+            console.error('生成Spec失败:', err);
+            setSpecError(`生成失败: ${err}`);
+        } finally {
+            setIsGeneratingSpec(false);
+        }
+    };
+
+    const handleExecuteLoopStep = async (stepId: string) => {
+        if (!specDocument || isExecutingLoop) return;
+        
+        // 更新步骤状态为运行中
+        setSpecDocument(prev => {
+            if (!prev) return prev;
+            return {
+                ...prev,
+                steps: prev.steps.map(step => 
+                    step.id === stepId ? { ...step, status: 'running' as LoopStepStatus } : step
+                )
+            };
+        });
+        
+        setIsExecutingLoop(true);
+        
+        try {
+            const step = specDocument.steps.find(s => s.id === stepId);
+            if (!step) throw new Error('步骤不存在');
+            
+            // 构建执行提示
+            const executePrompt = `你是一个执行者。请根据以下Spec文档和步骤描述，生成该步骤的执行结果。
+
+## Spec文档
+标题：${specDocument.title}
+描述：${specDocument.description}
+
+## 当前执行步骤
+标题：${step.title}
+描述：${step.description}
+
+请直接输出该步骤的执行结果内容。`;
+            
+            const chatMessages: ChatMessage[] = [
+                { role: 'user', content: executePrompt }
+            ];
+            
+            const result = await invoke<string>('send_chat_message', { messages: chatMessages });
+            
+            // 记录思考链
+            setThinkingChain(prev => [...prev, { step: step.title, content: `执行完成，等待审核。` }]);
+
+            // 更新步骤状态为需审核
+            setSpecDocument(prev => {
+                if (!prev) return prev;
+                return {
+                    ...prev,
+                    steps: prev.steps.map(step => 
+                        step.id === stepId ? { ...step, status: 'needs_review' as LoopStepStatus, result } : step
+                    )
+                };
+            });
+        } catch (err) {
+            console.error('执行步骤失败:', err);
+            setSpecDocument(prev => {
+                if (!prev) return prev;
+                return {
+                    ...prev,
+                    steps: prev.steps.map(step => 
+                        step.id === stepId ? { ...step, status: 'failed' as LoopStepStatus, error: String(err) } : step
+                    )
+                };
+            });
+        } finally {
+            setIsExecutingLoop(false);
+        }
+    };
+
+    const handleExecuteAllSteps = async () => {
+        if (!specDocument || isExecutingLoop) return;
+        
+        for (const step of specDocument.steps) {
+            if (step.status === 'pending') {
+                await handleExecuteLoopStep(step.id);
+            }
+        }
+    };
+
+    const handleReviewStep = async (stepId: string, approved: boolean) => {
+        if (!specDocument) return;
+        
+        const step = specDocument.steps.find(s => s.id === stepId);
+        if (!step || step.status !== 'needs_review') return;
+
+        if (approved) {
+            // 审核通过
+            setSpecDocument(prev => {
+                if (!prev) return prev;
+                return {
+                    ...prev,
+                    steps: prev.steps.map(s => 
+                        s.id === stepId ? { ...s, status: 'completed' as LoopStepStatus, reviewResult: 'approved' } : s
+                    )
+                };
+            });
+            setThinkingChain(prev => [...prev, { step: step.title, content: '审核通过。' }]);
+        } else {
+            // 驳回 - 回退到 pending 并清除结果
+            setSpecDocument(prev => {
+                if (!prev) return prev;
+                return {
+                    ...prev,
+                    steps: prev.steps.map(s => 
+                        s.id === stepId ? { ...s, status: 'pending' as LoopStepStatus, result: undefined, reviewResult: 'rejected', error: '审核未通过，请重新执行' } : s
+                    )
+                };
+            });
+            setThinkingChain(prev => [...prev, { step: step.title, content: '审核驳回，需重新执行。' }]);
+        }
+    };
+
+    const handleResetSpec = () => {
+        setSpecDocument(null);
+        setSpecInput('');
+        setSpecError(null);
     };
 
     // ===== Skill 模块函数 =====
@@ -1185,6 +1428,13 @@ export default function AIChatComponent() {
                         <span className="nav-icon">📊</span>
                         <span className="nav-label">流程图</span>
                     </button>
+                    <button
+                        className={`sidebar-nav-item ${activeTab === 'spec' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('spec')}
+                    >
+                        <span className="nav-icon">📋</span>
+                        <span className="nav-label">Spec</span>
+                    </button>
                 </div>
             </div>
 
@@ -1441,6 +1691,187 @@ export default function AIChatComponent() {
                             <div className="flowchart-icon">📊</div>
                             <h3>流程图绘制</h3>
                             <p>功能开发中，敬请期待...</p>
+                        </div>
+                    </div>
+                )}
+
+                {activeTab === 'spec' && (
+                    <div className="spec-main">
+                        <div className="spec-header">
+                            <h3 className="spec-title">📋 Spec 模式</h3>
+                            <div className="header-actions">
+                                {specDocument && (
+                                    <button className="chat-action-btn" onClick={handleResetSpec} title="重置Spec">
+                                        <span className="chat-action-icon">🔄</span>
+                                        <span>重置</span>
+                                    </button>
+                                )}
+                                <button className="chat-action-btn fullscreen-btn" onClick={handleToggleFullscreen} title={isFullscreen ? "退出全屏" : "全屏"}>
+                                    <span className="chat-action-icon">{isFullscreen ? '⤡' : '⤢'}</span>
+                                    <span>{isFullscreen ? '退出全屏' : '全屏'}</span>
+                                </button>
+                                <button className="chat-action-btn close-window-btn" onClick={handleClose} title="关闭窗口">
+                                    <span className="chat-action-icon">✕</span>
+                                    <span>关闭</span>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div className="spec-content">
+                            {/* Spec 输入区域 */}
+                            {!specDocument && (
+                                <div className="spec-input-section">
+                                    <div className="spec-input-header">
+                                        <h4>输入你的需求</h4>
+                                        <p>描述你想要实现的功能，AI将为你生成结构化的Spec文档和执行步骤</p>
+                                    </div>
+                                    <textarea
+                                        className="spec-textarea"
+                                        value={specInput}
+                                        onChange={(e) => setSpecInput(e.target.value)}
+                                        placeholder="例如：创建一个用户登录系统，包含注册、登录、忘记密码功能..."
+                                        disabled={isGeneratingSpec}
+                                    />
+                                    <button 
+                                        className={`spec-generate-btn ${specInput.trim() && !isGeneratingSpec ? 'active' : ''}`}
+                                        onClick={handleGenerateSpec}
+                                        disabled={!specInput.trim() || isGeneratingSpec}
+                                    >
+                                        {isGeneratingSpec ? (
+                                            <>
+                                                <div className="spec-spinner"></div>
+                                                生成中...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <span>✨</span>
+                                                生成 Spec
+                                            </>
+                                        )}
+                                    </button>
+                                    {specError && (
+                                        <div className="spec-error">
+                                            <span className="spec-error-icon">⚠️</span>
+                                            {specError}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                            
+                            {/* Spec 文档展示 */}
+                            {specDocument && (
+                                <div className="spec-document">
+                                    <div className="spec-card">
+                                        <div className="spec-card-header">
+                                            <h4>{specDocument.title}</h4>
+                                            <span className="spec-steps-count">{specDocument.steps.length} 个步骤</span>
+                                        </div>
+                                        <p className="spec-description">{specDocument.description}</p>
+                                        
+                                        {specDocument.requirements.length > 0 && (
+                                            <div className="spec-requirements">
+                                                <h5>需求列表</h5>
+                                                <ul>
+                                                    {specDocument.requirements.map((req, idx) => (
+                                                        <li key={idx}>{req}</li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        )}
+                                    </div>
+                                    
+                                    {/* ThinkingChain 思考链 */}
+                                    {thinkingChain.length > 0 && (
+                                        <details className="spec-thinking-chain">
+                                            <summary className="spec-thinking-summary">
+                                                🧠 思考链 ({thinkingChain.length} 步)
+                                            </summary>
+                                            <div className="spec-thinking-list">
+                                                {thinkingChain.map((t, idx) => (
+                                                    <div key={idx} className="spec-thinking-item">
+                                                        <span className="spec-thinking-step">{idx + 1}. {t.step}</span>
+                                                        <span className="spec-thinking-content">{t.content}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </details>
+                                    )}
+
+                                    {/* Loop 步骤列表 */}
+                                    <div className="spec-steps-section">
+                                        <div className="spec-steps-header">
+                                            <h4>执行步骤</h4>
+                                            <button 
+                                                className="spec-execute-all-btn"
+                                                onClick={handleExecuteAllSteps}
+                                                disabled={isExecutingLoop || specDocument.steps.every(s => s.status === 'completed')}
+                                            >
+                                                {isExecutingLoop ? '执行中...' : '执行全部'}
+                                            </button>
+                                        </div>
+                                        
+                                        <div className="spec-steps-list">
+                                            {specDocument.steps.map((step, idx) => (
+                                                <div key={step.id} className={`spec-step spec-step-${step.status}`}>
+                                                    <div className="spec-step-header">
+                                                        <div className="spec-step-number">
+                                                            {step.status === 'completed' ? '✅' : 
+                                                             step.status === 'running' ? '⏳' : 
+                                                             step.status === 'needs_review' ? '🧐' :
+                                                             step.status === 'failed' ? '❌' : `${idx + 1}`}
+                                                        </div>
+                                                        <div className="spec-step-info">
+                                                            <h5>{step.title}</h5>
+                                                            <p>{step.description}</p>
+                                                        </div>
+                                                        {step.status === 'pending' && (
+                                                            <button 
+                                                                className="spec-step-execute-btn"
+                                                                onClick={() => handleExecuteLoopStep(step.id)}
+                                                                disabled={isExecutingLoop}
+                                                            >
+                                                                执行
+                                                            </button>
+                                                        )}
+                                                        {step.status === 'needs_review' && (
+                                                            <div className="spec-review-btns">
+                                                                <button 
+                                                                    className="spec-review-approve-btn"
+                                                                    onClick={() => handleReviewStep(step.id, true)}
+                                                                >
+                                                                    ✓ 通过
+                                                                </button>
+                                                                <button 
+                                                                    className="spec-review-reject-btn"
+                                                                    onClick={() => handleReviewStep(step.id, false)}
+                                                                >
+                                                                    ✕ 驳回
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    
+                                                    {step.result && (
+                                                        <div className="spec-step-result">
+                                                            <div className="spec-step-result-header">执行结果</div>
+                                                            <div className="spec-step-result-content markdown-body" 
+                                                                dangerouslySetInnerHTML={{ __html: renderMarkdown(step.result) }} 
+                                                            />
+                                                        </div>
+                                                    )}
+                                                    
+                                                    {step.error && (
+                                                        <div className="spec-step-error">
+                                                            <span className="spec-step-error-icon">⚠️</span>
+                                                            {step.error}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}

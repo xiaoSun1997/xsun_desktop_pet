@@ -125,6 +125,14 @@ export default function JiraComponent() {
     const [dateRangeSummaries, setDateRangeSummaries] = useState<DateWorklogSummary[]>([]);
     const [historyLoading, setHistoryLoading] = useState<boolean>(false);
 
+    // === 周报/月报状态 ===
+    const [reportType, setReportType] = useState<'weekly' | 'monthly' | null>(null);
+    const [generatedReport, setGeneratedReport] = useState<string>('');
+    const [reportGenerating, setReportGenerating] = useState<boolean>(false);
+    const [reportStartDate, setReportStartDate] = useState<string>('');
+    const [reportEndDate, setReportEndDate] = useState<string>('');
+    const [reportError, setReportError] = useState<string>('');
+
     const headerRef = useRef<HTMLDivElement>(null);
 
     // 生成日期列表（前后各15天，共31天）
@@ -550,6 +558,229 @@ export default function JiraComponent() {
         }
     };
 
+    // === 日期范围快捷选择 ===
+    const getDateRange = (type: 'thisWeek' | 'lastWeek' | 'thisMonth' | 'lastMonth'): { start: string; end: string } => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        let start: Date, end: Date;
+
+        switch (type) {
+            case 'thisWeek': {
+                const day = today.getDay();
+                const diff = day === 0 ? 6 : day - 1; // 周一为一周开始
+                start = new Date(today);
+                start.setDate(today.getDate() - diff);
+                end = new Date(start);
+                end.setDate(start.getDate() + 6);
+                break;
+            }
+            case 'lastWeek': {
+                const day = today.getDay();
+                const diff = day === 0 ? 6 : day - 1;
+                end = new Date(today);
+                end.setDate(today.getDate() - diff - 1);
+                start = new Date(end);
+                start.setDate(end.getDate() - 6);
+                break;
+            }
+            case 'thisMonth': {
+                start = new Date(today.getFullYear(), today.getMonth(), 1);
+                end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+                break;
+            }
+            case 'lastMonth': {
+                start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+                end = new Date(today.getFullYear(), today.getMonth(), 0);
+                break;
+            }
+        }
+
+        return { start: formatDateStr(start), end: formatDateStr(end) };
+    };
+
+    const selectDateRange = (type: 'thisWeek' | 'lastWeek' | 'thisMonth' | 'lastMonth') => {
+        const range = getDateRange(type);
+        setReportStartDate(range.start);
+        setReportEndDate(range.end);
+        // 自动选中该范围内的所有日期
+        const dates: string[] = [];
+        const current = new Date(range.start);
+        const end = new Date(range.end);
+        while (current <= end) {
+            dates.push(formatDateStr(current));
+            current.setDate(current.getDate() + 1);
+        }
+        setSelectedHistoryDates(new Set(dates));
+    };
+
+    // === 周报/月报生成 ===
+    const generateReport = async (type: 'weekly' | 'monthly') => {
+        const range = reportStartDate && reportEndDate
+            ? { start: reportStartDate, end: reportEndDate }
+            : getDateRange(type === 'weekly' ? 'thisWeek' : 'thisMonth');
+
+        setReportType(type);
+        setReportGenerating(true);
+        setGeneratedReport('');
+        setReportError('');
+        try {
+            // 添加 30 秒超时控制，避免月报大量请求时永久卡住
+            const timeoutPromise = new Promise<never>((_, reject) =>
+                setTimeout(() => reject(new Error('报告生成超时（30秒），数据量较大请稍后重试')), 30000)
+            );
+            const summaries = await Promise.race([
+                invoke<DateWorklogSummary[]>('get_worklogs_by_date_range', {
+                    startDate: range.start,
+                    endDate: range.end,
+                }),
+                timeoutPromise,
+            ]);
+
+            if (!summaries || summaries.length === 0) {
+                setGeneratedReport(`# ${type === 'weekly' ? '周报' : '月报'}\n\n> 该时间段内没有工作记录。`);
+                return;
+            }
+
+            // 汇总统计
+            const totalHours = summaries.reduce((s, d) => s + d.total_hours, 0);
+            const issueMap = new Map<string, { hours: number; comments: string[] }>();
+            for (const day of summaries) {
+                for (const wl of day.worklogs) {
+                    const existing = issueMap.get(wl.issue_key) || { hours: 0, comments: [] };
+                    existing.hours += wl.time_spent_hours;
+                    if (wl.comment && !existing.comments.includes(wl.comment)) {
+                        existing.comments.push(wl.comment);
+                    }
+                    issueMap.set(wl.issue_key, existing);
+                }
+            }
+
+            // 生成Markdown报告
+            let md = '';
+            if (type === 'weekly') {
+                md += `# 工作周报 (${range.start} ~ ${range.end})\n\n`;
+                md += `## 总览\n\n`;
+                md += `| 指标 | 数值 |\n|---|---|\n`;
+                md += `| 工作天数 | ${summaries.length} 天 |\n`;
+                md += `| 总工时 | ${totalHours.toFixed(1)} 小时 |\n`;
+                md += `| 涉及问题 | ${issueMap.size} 个 |\n`;
+                md += `| 日均工时 | ${(totalHours / summaries.length).toFixed(1)} 小时 |\n\n`;
+
+                md += `## 按问题汇总\n\n`;
+                for (const [key, data] of issueMap) {
+                    md += `### ${key}\n`;
+                    md += `- 工时: ${data.hours.toFixed(1)}h\n`;
+                    if (data.comments.length > 0) {
+                        md += `- 工作内容:\n`;
+                        for (const c of data.comments) {
+                            md += `  - ${c}\n`;
+                        }
+                    }
+                    md += '\n';
+                }
+
+                md += `## 每日明细\n\n`;
+                for (const day of summaries) {
+                    md += `### ${day.date} (${day.total_hours.toFixed(1)}h)\n`;
+                    for (const wl of day.worklogs) {
+                        md += `- **${wl.issue_key}** ${wl.time_spent_hours}h — ${wl.comment}\n`;
+                    }
+                    md += '\n';
+                }
+            } else {
+                // 月报
+                md += `# 工作月报 (${range.start} ~ ${range.end})\n\n`;
+                md += `## 总览\n\n`;
+                md += `| 指标 | 数值 |\n|---|---|\n`;
+                md += `| 工作天数 | ${summaries.length} 天 |\n`;
+                md += `| 总工时 | ${totalHours.toFixed(1)} 小时 |\n`;
+                md += `| 涉及问题 | ${issueMap.size} 个 |\n`;
+                md += `| 日均工时 | ${(totalHours / summaries.length).toFixed(1)} 小时 |\n\n`;
+
+                // 按周分组
+                const weeks = new Map<string, DateWorklogSummary[]>();
+                for (const day of summaries) {
+                    const d = new Date(day.date);
+                    const dayOfWeek = d.getDay();
+                    const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+                    const monday = new Date(d);
+                    monday.setDate(d.getDate() - mondayOffset);
+                    const weekKey = formatDateStr(monday);
+                    const arr = weeks.get(weekKey) || [];
+                    arr.push(day);
+                    weeks.set(weekKey, arr);
+                }
+
+                md += `## 按周汇总\n\n`;
+                let weekNum = 1;
+                for (const [weekStart, days] of weeks) {
+                    const weekHours = days.reduce((s, d) => s + d.total_hours, 0);
+                    const weekEnd = new Date(weekStart);
+                    weekEnd.setDate(weekEnd.getDate() + 6);
+                    md += `### 第${weekNum}周 (${weekStart} ~ ${formatDateStr(weekEnd)}) — ${weekHours.toFixed(1)}h\n`;
+                    for (const day of days) {
+                        md += `- ${day.date}: ${day.total_hours.toFixed(1)}h\n`;
+                        for (const wl of day.worklogs) {
+                            md += `  - **${wl.issue_key}** ${wl.time_spent_hours}h — ${wl.comment}\n`;
+                        }
+                    }
+                    md += '\n';
+                    weekNum++;
+                }
+
+                md += `## 按问题汇总\n\n`;
+                for (const [key, data] of issueMap) {
+                    md += `### ${key}\n`;
+                    md += `- 总工时: ${data.hours.toFixed(1)}h\n`;
+                    if (data.comments.length > 0) {
+                        md += `- 工作内容:\n`;
+                        for (const c of data.comments) {
+                            md += `  - ${c}\n`;
+                        }
+                    }
+                    md += '\n';
+                }
+            }
+
+            setGeneratedReport(md);
+        } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            setReportError(errorMsg);
+        } finally {
+            setReportGenerating(false);
+        }
+    };
+
+    const copyReportToClipboard = async () => {
+        if (!generatedReport) return;
+        try {
+            await navigator.clipboard.writeText(generatedReport);
+            alert('报告已复制到剪贴板！');
+        } catch {
+            // fallback
+            const textarea = document.createElement('textarea');
+            textarea.value = generatedReport;
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+            alert('报告已复制到剪贴板！');
+        }
+    };
+
+    const exportReportAsFile = () => {
+        if (!generatedReport) return;
+        const blob = new Blob([generatedReport], { type: 'text/markdown;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${reportType === 'weekly' ? '周报' : '月报'}_${reportStartDate}_${reportEndDate}.md`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    };
+
     // === 计算统计 ===
     const totalWorkedHours = todayWorklogs.reduce((sum, w) => sum + w.time_spent_hours, 0);
 
@@ -821,6 +1052,62 @@ export default function JiraComponent() {
                 {/* --- 历史总结 Tab --- */}
                 {activeTab === 'history' && (
                     <div className="jira-history">
+                        {/* 快捷日期范围选择 */}
+                        <div className="jira-section">
+                            <h3 className="jira-section-title">📅 快捷选择</h3>
+                            <div className="jira-report-quick-btns">
+                                <button onClick={() => selectDateRange('thisWeek')} className="jira-btn jira-btn-outline">本周</button>
+                                <button onClick={() => selectDateRange('lastWeek')} className="jira-btn jira-btn-outline">上周</button>
+                                <button onClick={() => selectDateRange('thisMonth')} className="jira-btn jira-btn-outline">本月</button>
+                                <button onClick={() => selectDateRange('lastMonth')} className="jira-btn jira-btn-outline">上月</button>
+                            </div>
+                            <div className="jira-report-custom-range">
+                                <label className="jira-report-range-label">自定义范围：</label>
+                                <input
+                                    type="date"
+                                    value={reportStartDate}
+                                    onChange={(e) => {
+                                        setReportStartDate(e.target.value);
+                                        if (e.target.value && reportEndDate) {
+                                            const dates: string[] = [];
+                                            const current = new Date(e.target.value);
+                                            const end = new Date(reportEndDate);
+                                            while (current <= end) {
+                                                dates.push(formatDateStr(current));
+                                                current.setDate(current.getDate() + 1);
+                                            }
+                                            setSelectedHistoryDates(new Set(dates));
+                                        }
+                                    }}
+                                    className="jira-report-date-input"
+                                />
+                                <span className="jira-report-range-sep">~</span>
+                                <input
+                                    type="date"
+                                    value={reportEndDate}
+                                    onChange={(e) => {
+                                        setReportEndDate(e.target.value);
+                                        if (reportStartDate && e.target.value) {
+                                            const dates: string[] = [];
+                                            const current = new Date(reportStartDate);
+                                            const end = new Date(e.target.value);
+                                            while (current <= end) {
+                                                dates.push(formatDateStr(current));
+                                                current.setDate(current.getDate() + 1);
+                                            }
+                                            setSelectedHistoryDates(new Set(dates));
+                                        }
+                                    }}
+                                    className="jira-report-date-input"
+                                />
+                            </div>
+                            {reportStartDate && reportEndDate && (
+                                <div className="jira-report-date-range">
+                                    📆 {reportStartDate} ~ {reportEndDate}
+                                </div>
+                            )}
+                        </div>
+
                         <div className="jira-section">
                             <h3 className="jira-section-title">📋 多日工单汇总</h3>
                             <p className="jira-section-desc">选择多个日期，查看汇总的工作日志</p>
@@ -874,6 +1161,56 @@ export default function JiraComponent() {
                                             </table>
                                         </div>
                                     ))}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* 周报/月报生成 */}
+                        <div className="jira-section">
+                            <h3 className="jira-section-title">📊 报告生成</h3>
+                            <div className="jira-report-btns">
+                                <button
+                                    onClick={() => generateReport('weekly')}
+                                    className="jira-btn jira-btn-primary"
+                                    disabled={reportGenerating}
+                                >
+                                    {reportGenerating && reportType === 'weekly' ? '⏳ 生成中...' : '📝 生成周报'}
+                                </button>
+                                <button
+                                    onClick={() => generateReport('monthly')}
+                                    className="jira-btn jira-btn-success"
+                                    disabled={reportGenerating}
+                                >
+                                    {reportGenerating && reportType === 'monthly' ? '⏳ 生成中...' : '📊 生成月报'}
+                                </button>
+                            </div>
+
+                            {reportGenerating && (
+                                <div className="jira-loading-inline">正在生成报告...</div>
+                            )}
+
+                            {reportError && !reportGenerating && (
+                                <div className="jira-report-preview" style={{borderColor: '#e74c3c'}}>
+                                    <pre className="jira-report-content" style={{color: '#e74c3c'}}>{`# 报告生成失败\n\n> ${reportError}\n\n请检查：\n1. JIRA 配置是否正确\n2. 网络连接是否正常\n3. 日期范围是否有效`}</pre>
+                                </div>
+                            )}
+
+                            {generatedReport && !reportGenerating && !reportError && (
+                                <div className="jira-report-preview">
+                                    <div className="jira-report-toolbar">
+                                        <span className="jira-report-type-badge">
+                                            {reportType === 'weekly' ? '周报' : '月报'}
+                                        </span>
+                                        <div className="jira-report-actions">
+                                            <button onClick={copyReportToClipboard} className="jira-btn jira-btn-outline jira-btn-sm">
+                                                📋 复制Markdown
+                                            </button>
+                                            <button onClick={exportReportAsFile} className="jira-btn jira-btn-outline jira-btn-sm">
+                                                💾 导出文件
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <pre className="jira-report-content">{generatedReport}</pre>
                                 </div>
                             )}
                         </div>

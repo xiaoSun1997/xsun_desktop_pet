@@ -43,18 +43,15 @@ fn handle_middle_click(app_handle: AppHandle) {
     // 2. 模拟 Ctrl+C
     simulate_ctrl_c();
 
-    // 3. 等待剪贴板更新
-    thread::sleep(Duration::from_millis(100));
+    // 3. 轮询等待剪贴板更新（事件驱动，最大等待200ms）
+    let selected_text = poll_clipboard_until_change(&app_handle, &saved_clipboard, Duration::from_millis(200));
 
-    // 4. 读取选中文本
-    let selected_text = app_handle.clipboard().read_text().ok().unwrap_or_default();
-
-    // 5. 恢复原剪贴板
+    // 4. 恢复原剪贴板
     if let Some(ref saved) = saved_clipboard {
         let _ = app_handle.clipboard().write_text(saved.clone());
     }
 
-    // 6. 获取鼠标屏幕坐标
+    // 5. 获取鼠标屏幕坐标
     let (x, y) = get_cursor_pos();
 
     // 7. 如果有选中文本，发射事件
@@ -97,6 +94,32 @@ fn simulate_ctrl_c() {
         input.Anonymous.ki.wVk = VK_CONTROL;
         input.Anonymous.ki.dwFlags = KEYEVENTF_KEYUP;
         SendInput(&[input], std::mem::size_of::<INPUT>() as i32);
+    }
+}
+
+/// 轮询剪贴板直到内容变化或超时，返回最终剪贴板内容
+fn poll_clipboard_until_change(
+    app_handle: &AppHandle,
+    saved: &Option<String>,
+    timeout: Duration,
+) -> String {
+    let poll_interval = Duration::from_millis(5);
+    let start = std::time::Instant::now();
+    
+    loop {
+        let current = app_handle.clipboard().read_text().ok().unwrap_or_default();
+        
+        // 剪贴板内容已变化且非空
+        if !current.trim().is_empty() && Some(&current) != saved.as_ref() {
+            return current;
+        }
+        
+        // 超时
+        if start.elapsed() >= timeout {
+            return current;
+        }
+        
+        thread::sleep(poll_interval);
     }
 }
 

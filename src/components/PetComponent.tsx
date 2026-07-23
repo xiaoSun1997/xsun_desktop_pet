@@ -254,10 +254,10 @@ export default function PetComponent() {
         };
     }, [showBubbles]);
 
-    // 创建或显示系统信息窗口
-    const createOrShowMain = async () => {
+    // 通用窗口创建/显示辅助函数
+    const createOrShowWindowHelper = async (label: string, url: string, options: any) => {
         const windows = await getAllWindows();
-        const existing = windows.find((w) => w.label === "main");
+        const existing = windows.find((w) => w.label === label);
 
         if (existing) {
             try {
@@ -265,29 +265,28 @@ export default function PetComponent() {
                 await existing.setFocus();
                 return;
             } catch (e) {
-                console.warn("已有主窗口，但 show/setFocus 失败，尝试重新创建：", e);
+                console.warn(`已有${label}窗口，但 show/setFocus 失败，尝试关闭并重建：`, e);
+                // 关闭僵尸窗口
+                try {
+                    await existing.close();
+                } catch (closeErr) {
+                    console.warn(`关闭僵尸${label}窗口失败:`, closeErr);
+                }
+                // 等待窗口资源释放
+                await new Promise(r => setTimeout(r, 500));
             }
         }
 
-        const url = import.meta.env.DEV ? "http://localhost:1420" : "index.html";
-
         try {
-            const webview = new WebviewWindow("main", {
+            const webview = new WebviewWindow(label, {
                 url,
-                title: "系统信息",
-                width: 400,
-                height: 600,
-                visible: true,
-                transparent: true,
-                decorations: false,
-                center: true,
-                skipTaskbar: true,
+                ...options,
             });
 
             await new Promise<void>((resolve, reject) => {
                 const timeout = setTimeout(() => {
-                    reject(new Error("等待窗口创建超时"));
-                }, 5000);
+                    reject(new Error(`等待${label}窗口创建超时`));
+                }, 8000);
 
                 webview.once("tauri://created", () => {
                     clearTimeout(timeout);
@@ -296,365 +295,135 @@ export default function PetComponent() {
 
                 webview.once("tauri://error", (e) => {
                     clearTimeout(timeout);
-                    reject(new Error(`创建窗口时出错: ${JSON.stringify(e)}`));
+                    reject(new Error(`创建${label}窗口时出错: ${JSON.stringify(e)}`));
                 });
             });
 
-            try {
-                await webview.show();
-                await webview.setFocus();
-                console.log("主窗口已创建并显示");
-            } catch (e) {
-                console.warn("创建后 show/setFocus 失败：", e);
-            }
+            await webview.show();
+            await webview.setFocus();
         } catch (err) {
-            console.error("创建主窗口失败：", err);
+            console.error(`创建${label}窗口失败：`, err);
         }
+    };
+
+    // 创建或显示系统信息窗口
+    const createOrShowMain = async () => {
+        const url = import.meta.env.DEV ? "http://localhost:1420" : "index.html";
+        await createOrShowWindowHelper("main", url, {
+            title: "系统信息",
+            width: 400,
+            height: 600,
+            visible: true,
+            transparent: true,
+            decorations: false,
+            center: true,
+            skipTaskbar: true,
+        });
     };
 
     // 创建或显示剪贴板窗口
     const createOrShowClipboard = async () => {
-        const windows = await getAllWindows();
-        const existing = windows.find((w) => w.label === "clipboard");
-
-        if (existing) {
-            try {
-                await existing.show();
-                await existing.setFocus();
-                return;
-            } catch (e) {
-                console.warn("已有剪贴板窗口，但 show/setFocus 失败，尝试重新创建：", e);
-            }
-        }
-
-        const url = import.meta.env.DEV
-            ? "http://localhost:1420/clipboard"
-            : "clipboard.html";
-
-        try {
-            const webview = new WebviewWindow("clipboard", {
-                url,
-                title: "剪贴板历史",
-                width: 400,
-                height: 500,
-                visible: true,
-                transparent: true,
-                decorations: false,
-                center: true,
-                skipTaskbar: true,
-            });
-
-            await new Promise<void>((resolve, reject) => {
-                const timeout = setTimeout(() => {
-                    reject(new Error("等待剪贴板窗口创建超时"));
-                }, 5000);
-
-                webview.once("tauri://created", () => {
-                    clearTimeout(timeout);
-                    resolve();
-                });
-
-                webview.once("tauri://error", (e) => {
-                    clearTimeout(timeout);
-                    reject(new Error(`创建剪贴板窗口时出错: ${JSON.stringify(e)}`));
-                });
-            });
-
-            try {
-                await webview.show();
-                await webview.setFocus();
-                console.log("剪贴板窗口已创建并显示");
-            } catch (e) {
-                console.warn("创建后 show/setFocus 失败：", e);
-            }
-        } catch (err) {
-            console.error("创建剪贴板窗口失败：", err);
-        }
+        const url = import.meta.env.DEV ? "http://localhost:1420/clipboard" : "clipboard.html";
+        await createOrShowWindowHelper("clipboard", url, {
+            title: "剪贴板历史",
+            width: 400,
+            height: 500,
+            visible: true,
+            transparent: true,
+            decorations: false,
+            center: true,
+            skipTaskbar: true,
+        });
     };
+
     const createOrShowAIChat = async () => {
-        const windows = await getAllWindows();
-        const existing = windows.find((w) => w.label === "ai-chat");
-
-        if (existing) {
-            try {
-                await existing.show();
-                await existing.setFocus();
-                return;
-            } catch (e) {
-                console.warn("已有AI对话窗口，但 show/setFocus 失败，尝试重新创建：", e);
-            }
-        }
-
         const url = import.meta.env.DEV ? "http://localhost:1420" : "index.html";
-
-        try {
-            const webview = new WebviewWindow("ai-chat", {
-                url,
-                title: "AI对话助手",
-                width: 800,
-                height: 600,
-                visible: true,
-                transparent: true,
-                decorations: false,
-                resizable: true,
-                minWidth: 600,
-                minHeight: 500,
-                center: true,
-                skipTaskbar: true,
-            });
-
-            await new Promise<void>((resolve, reject) => {
-                const timeout = setTimeout(() => {
-                    reject(new Error("等待AI对话窗口创建超时"));
-                }, 5000);
-
-                webview.once("tauri://created", () => {
-                    clearTimeout(timeout);
-                    resolve();
-                });
-
-                webview.once("tauri://error", (e) => {
-                    clearTimeout(timeout);
-                    reject(new Error(`创建AI对话窗口时出错: ${JSON.stringify(e)}`));
-                });
-            });
-
-            await webview.show();
-            await webview.setFocus();
-            console.log("AI对话窗口已创建并显示");
-        } catch (err) {
-            console.error("创建AI对话窗口失败：", err);
-        }
+        await createOrShowWindowHelper("ai-chat", url, {
+            title: "AI对话助手",
+            width: 800,
+            height: 600,
+            visible: true,
+            transparent: true,
+            decorations: false,
+            resizable: true,
+            minWidth: 600,
+            minHeight: 500,
+            center: true,
+            skipTaskbar: true,
+        });
     };
 
-    // 创建或显示翻译器窗口 (新增)
+    // 创建或显示翻译器窗口
     const createOrShowTranslator = async () => {
-        const windows = await getAllWindows();
-        const existing = windows.find((w) => w.label === "translator");
-
-        if (existing) {
-            try {
-                await existing.show();
-                await existing.setFocus();
-                return;
-            } catch (e) {
-                console.warn("已有翻译器窗口，但 show/setFocus 失败，尝试重新创建：", e);
-            }
-        }
-
         const url = import.meta.env.DEV ? "http://localhost:1420" : "index.html";
-
-        try {
-            const webview = new WebviewWindow("translator", {
-                url,
-                title: "有道翻译",
-                width: 1000,
-                height: 700,
-                visible: true,
-                transparent: true,
-                decorations: false,
-                resizable: true,
-                minWidth: 800,
-                minHeight: 600,
-                center: true,
-                skipTaskbar: true,
-            });
-
-            await new Promise<void>((resolve, reject) => {
-                const timeout = setTimeout(() => {
-                    reject(new Error("等待翻译器窗口创建超时"));
-                }, 5000);
-
-                webview.once("tauri://created", () => {
-                    clearTimeout(timeout);
-                    resolve();
-                });
-
-                webview.once("tauri://error", (e) => {
-                    clearTimeout(timeout);
-                    reject(new Error(`创建翻译器窗口时出错: ${JSON.stringify(e)}`));
-                });
-            });
-
-            await webview.show();
-            await webview.setFocus();
-            console.log("翻译器窗口已创建并显示");
-        } catch (err) {
-            console.error("创建翻译器窗口失败：", err);
-        }
+        await createOrShowWindowHelper("translator", url, {
+            title: "有道翻译",
+            width: 1000,
+            height: 700,
+            visible: true,
+            transparent: true,
+            decorations: false,
+            resizable: true,
+            minWidth: 800,
+            minHeight: 600,
+            center: true,
+            skipTaskbar: true,
+        });
     };
 
-// 创建或显示日历窗口
+    // 创建或显示日历窗口
     const createOrShowCalendar = async () => {
-        const windows = await getAllWindows();
-        const existing = windows.find((w) => w.label === "calendar");
-
-        if (existing) {
-            try {
-                await existing.show();
-                await existing.setFocus();
-                return;
-            } catch (e) {
-                console.warn("已有日历窗口，但 show/setFocus 失败，尝试重新创建：", e);
-            }
-        }
-
         const url = import.meta.env.DEV ? "http://localhost:1420" : "index.html";
-
-        try {
-            const webview = new WebviewWindow("calendar", {
-                url,
-                title: "智能日历",
-                width: 800,
-                height: 600,
-                visible: true,
-                transparent: true,
-                decorations: false,
-                resizable: true,
-                minWidth: 900,
-                minHeight: 950,
-                shadow: false,
-                center: true,
-                skipTaskbar: true, // 不在任务栏显示
-
-            });
-
-            await new Promise<void>((resolve, reject) => {
-                const timeout = setTimeout(() => {
-                    reject(new Error("等待日历窗口创建超时"));
-                }, 5000);
-
-                webview.once("tauri://created", () => {
-                    clearTimeout(timeout);
-                    resolve();
-                });
-
-                webview.once("tauri://error", (e) => {
-                    clearTimeout(timeout);
-                    reject(new Error(`创建日历窗口时出错: ${JSON.stringify(e)}`));
-                });
-            });
-
-            await webview.show();
-            await webview.setFocus();
-            console.log("日历窗口已创建并显示");
-        } catch (err) {
-            console.error("创建日历窗口失败：", err);
-        }
+        await createOrShowWindowHelper("calendar", url, {
+            title: "智能日历",
+            width: 800,
+            height: 600,
+            visible: true,
+            transparent: true,
+            decorations: false,
+            resizable: true,
+            minWidth: 900,
+            minHeight: 950,
+            shadow: false,
+            center: true,
+            skipTaskbar: true,
+        });
     };
     
     // 创建或显示JIRA窗口
     const createOrShowJira = async () => {
-        const windows = await getAllWindows();
-        const existing = windows.find((w) => w.label === "jira");
-
-        if (existing) {
-            try {
-                await existing.show();
-                await existing.setFocus();
-                return;
-            } catch (e) {
-                console.warn("已有JIRA窗口，但 show/setFocus 失败，尝试重新创建：", e);
-            }
-        }
-
         const url = import.meta.env.DEV ? "http://localhost:1420" : "index.html";
-
-        try {
-            const webview = new WebviewWindow("jira", {
-                url,
-                title: "JIRA工作流助手",
-                width: 1000,
-                height: 600,
-                visible: false,
-                transparent: true,
-                decorations: false,
-                resizable: true,
-                alwaysOnTop: false,
-                center: true,
-                skipTaskbar: true,
-                shadow: false,
-            });
-
-            await new Promise<void>((resolve, reject) => {
-                const timeout = setTimeout(() => {
-                    reject(new Error("等待JIRA窗口创建超时"));
-                }, 5000);
-
-                webview.once("tauri://created", () => {
-                    clearTimeout(timeout);
-                    resolve();
-                });
-
-                webview.once("tauri://error", (e) => {
-                    clearTimeout(timeout);
-                    reject(new Error(`创建JIRA窗口时出错: ${JSON.stringify(e)}`));
-                });
-            });
-
-            await webview.show();
-            await webview.setFocus();
-            console.log("JIRA窗口已创建并显示");
-        } catch (err) {
-            console.error("创建JIRA窗口失败：", err);
-        }
+        await createOrShowWindowHelper("jira", url, {
+            title: "JIRA工作流助手",
+            width: 1000,
+            height: 600,
+            visible: false,
+            transparent: true,
+            decorations: false,
+            resizable: true,
+            alwaysOnTop: false,
+            center: true,
+            skipTaskbar: true,
+            shadow: false,
+        });
     };
 
     const createOrShowFileSearch = async () => {
-        const windows = await getAllWindows();
-        const existing = windows.find((w) => w.label === "quick-file-search");
-
-        if (existing) {
-            try {
-                await existing.show();
-                await existing.setFocus();
-                return;
-            } catch (e) {
-                console.warn("已有快速搜索窗口，但 show/setFocus 失败，尝试重新创建：", e);
-            }
-        }
-
         const url = import.meta.env.DEV ? "http://localhost:1420" : "index.html";
-
-        try {
-            const webview = new WebviewWindow("quick-file-search", {
-                url,
-                title: "快速搜索",
-                width: 680,
-                height: 460,
-                visible: false,
-                transparent: true,
-                decorations: false,
-                resizable: false,
-                alwaysOnTop: false,
-                center: true,
-                skipTaskbar: true,
-                shadow: false,
-                focus: true,
-            });
-
-            await new Promise<void>((resolve, reject) => {
-                const timeout = setTimeout(() => {
-                    reject(new Error("等待快速搜索窗口创建超时"));
-                }, 5000);
-
-                webview.once("tauri://created", () => {
-                    clearTimeout(timeout);
-                    resolve();
-                });
-
-                webview.once("tauri://error", (e) => {
-                    clearTimeout(timeout);
-                    reject(new Error(`创建快速搜索窗口时出错: ${JSON.stringify(e)}`));
-                });
-            });
-
-            await webview.show();
-            await webview.setFocus();
-            console.log("快速搜索窗口已创建并显示");
-        } catch (err) {
-            console.error("创建快速搜索窗口失败：", err);
-        }
+        await createOrShowWindowHelper("quick-file-search", url, {
+            title: "快速搜索",
+            width: 680,
+            height: 460,
+            visible: false,
+            transparent: true,
+            decorations: false,
+            resizable: false,
+            alwaysOnTop: false,
+            center: true,
+            skipTaskbar: true,
+            shadow: false,
+            focus: true,
+        });
     };
     
     // 添加最小化到托盘的函数
@@ -721,8 +490,8 @@ export default function PetComponent() {
             // 等待窗口加载完成，然后通过事件发送数据
             await webview.show();
             await webview.setFocus();
-            // 延迟一下确保窗口已加载完毕
-            await new Promise((resolve) => setTimeout(resolve, 300));
+            // 延迟一下确保窗口已加载完毕（缩短等待提高响应速度）
+            await new Promise((resolve) => setTimeout(resolve, 100));
             // 通过事件发送选中文本数据
             await webview.emit("selection://show", payload);
             console.log("选中文本快捷菜单已显示");

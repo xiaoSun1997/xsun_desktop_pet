@@ -38,11 +38,6 @@
     "label": "JIRA助手",
     "action": "jira",
     "icon": "/menu/jira_512.png"
-  },  
-  {
-    "label": "地图绘制",
-    "action": "map-drawing",
-    "icon": "/menu/map.png"
   },
   {
     "label": "记事本",

@@ -16,7 +16,6 @@ import PomodoroTimerComponent from "./components/PomodoroTimerComponent"; // 添
 import PomodoroNotification from './components/PomodoroNotification';
 import JiraComponent from './components/JiraComponent'; // 添加JIRA组件导入
 import SelectionMenu from './components/SelectionMenu';
-import MapDrawingComponent from './components/MapDrawingComponent';
 import NotepadComponent from "./components/NotepadComponent";
 import QuickFileSearch from "./components/QuickFileSearch";
 
@@ -319,8 +318,6 @@ function App() {
         return <JiraComponent />;
     } else if (label === "selection-menu") {
         return <SelectionMenu />;
-    } else if (label === "map-drawing") {
-        return <MapDrawingComponent />;
     } else if (label === "notepad") {
         return <NotepadComponent />;
     } else if (label === "quick-file-search") {

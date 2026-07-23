@@ -71,6 +71,41 @@ export default function TranslatorComponent() {
     ]);
     const [inputText, setInputText] = useState('');
     const [inputLanguage, setInputLanguage] = useState('auto');
+    const [isAutoTranslating, setIsAutoTranslating] = useState(false);
+
+    // 检测文本是否包含中文
+    const containsChinese = (text: string): boolean => {
+        return /[一-鿿]/.test(text);
+    };
+
+    // 智能设置语言并自动翻译
+    const autoDetectAndTranslate = async (text: string) => {
+        if (!text.trim() || !config.appKey) return;
+        
+        const hasChinese = containsChinese(text);
+        const fromLang = hasChinese ? 'zh-CHS' : 'en';
+        const toLang = hasChinese ? 'en' : 'zh-CHS';
+        
+        setInputLanguage(fromLang);
+        
+        // 更新第一个翻译面板的目标语言
+        if (translationPanels.length > 0) {
+            updatePanel(translationPanels[0].id, { targetLanguage: toLang });
+        }
+        
+        setIsAutoTranslating(true);
+        
+        // 延迟一下等待状态更新，然后自动翻译
+        setTimeout(async () => {
+            try {
+                await translateText(translationPanels[0]?.id || '1', text, fromLang, toLang);
+            } catch (error) {
+                console.error('自动翻译失败:', error);
+            } finally {
+                setIsAutoTranslating(false);
+            }
+        }, 100);
+    };
 
     useEffect(() => {
         checkConfig();
@@ -161,7 +196,7 @@ export default function TranslatorComponent() {
         );
     };
 
-    const translateText = async (panelId: string, text?: string) => {
+    const translateText = async (panelId: string, text?: string, fromLang?: string, toLang?: string) => {
         const panel = translationPanels.find(p => p.id === panelId);
         if (!panel) return;
 
@@ -173,8 +208,8 @@ export default function TranslatorComponent() {
         try {
             const translatedText = await invoke<string>('youdao_translate', {
                 text: sourceText,
-                from: inputLanguage,
-                to: panel.targetLanguage
+                from: fromLang || inputLanguage,
+                to: toLang || panel.targetLanguage
             });
             updatePanel(panelId, { translatedText, isTranslating: false });
         } catch (error) {
@@ -308,7 +343,17 @@ export default function TranslatorComponent() {
                         className="input-textarea"
                         value={inputText}
                         onChange={(e) => setInputText(e.target.value)}
-                        placeholder="请输入要翻译的内容..."
+                        onPaste={(e) => {
+                            // 获取粘贴的文本
+                            const pastedText = e.clipboardData.getData('text');
+                            if (pastedText) {
+                                // 延迟一下等待state更新
+                                setTimeout(() => {
+                                    autoDetectAndTranslate(pastedText);
+                                }, 50);
+                            }
+                        }}
+                        placeholder={isAutoTranslating ? "正在翻译..." : "请输入要翻译的内容..."}
                     />
                 </div>
 

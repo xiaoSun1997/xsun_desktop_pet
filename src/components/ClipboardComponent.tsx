@@ -29,7 +29,7 @@ export default function ClipboardComponent() {
 
     useEffect(() => {
         loadClipboardHistory(1);
-        // 每2秒检查是否有新的剪贴板内容，有则追加到前面，不替换整个列表
+        // 每1.5秒检查是否有新的剪贴板内容，有则追加到前面，不替换整个列表
         const interval = setInterval(async () => {
             try {
                 const history = await invoke<ClipboardItem[]>("get_clipboard_history");
@@ -48,7 +48,7 @@ export default function ClipboardComponent() {
             } catch (error) {
                 console.error("自动刷新剪贴板失败:", error);
             }
-        }, 2000);
+        }, 1500);
         return () => clearInterval(interval);
     }, []);
 

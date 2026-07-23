@@ -101,7 +101,7 @@ export default function JsonCompareComponent() {
                     for (const lineNum of lines) {
                         const lineNum1 = Math.min(lineNum + 1, tr.state.doc.lines);
                         const line = tr.state.doc.line(lineNum1);
-                        builder.push(Decoration.line({ class: 'cm-error-line' }).range(line.from));
+                        builder.push(Decoration.line({ class: 'cm-error-line cm-error-wavy-underline' }).range(line.from));
                     }
                     return Decoration.set(builder);
                 }
